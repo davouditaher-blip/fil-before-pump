@@ -31,22 +31,27 @@ jobs:
         run: |
           python - <<'PY'
           import os
+          import json
           import requests
+          from pathlib import Path
+          from datetime import datetime, timezone
 
           CMC_API_KEY = os.environ["CMC_API_KEY"]
           BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
           CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
 
+          DATA_FILE = Path("volume_history.json")
+
           headers = {
               "X-CMC_PRO_API_KEY": CMC_API_KEY,
-              "Accepts": "application/json"
+              "Accept": "application/json"
           }
 
           url = "https://pro-api.coinmarketcap.com/v1/cryptocurrency/listings/latest"
 
           params = {
               "start": 1,
-              "limit": 100,
+              "limit": 400,
               "convert": "USD"
           }
 
@@ -54,51 +59,226 @@ jobs:
               url,
               headers=headers,
               params=params,
-              timeout=30
+              timeout=60
           )
 
           response.raise_for_status()
-          data = response.json()["data"]
+
+          payload = response.json()
+
+          if "data" not in payload:
+              raise RuntimeError("CMC returned no data")
+
+          coins = payload["data"]
+
+          # ---------------------------------------------------------
+          # Load previous volume history
+          # ---------------------------------------------------------
+
+          if DATA_FILE.exists():
+              try:
+                  history = json.loads(DATA_FILE.read_text())
+              except Exception:
+                  history = {}
+          else:
+              history = {}
+
+          now = datetime.now(timezone.utc)
+          now_ts = int(now.timestamp())
 
           candidates = []
 
-          for coin in data:
-              quote = coin["quote"]["USD"]
+          for coin in coins:
 
-              price_change_24h = quote.get("percent_change_24h") or 0
-              volume_24h = quote.get("volume_24h") or 0
-              volume_change_24h = quote.get("volume_change_24h") or 0
+              symbol = coin.get("symbol", "")
+              name = coin.get("name", "")
+              rank = coin.get("cmc_rank")
 
-              # Early-move filter:
-              # roughly 2% to 3% daily move
-              if 2 <= price_change_24h <= 3.5:
-                  candidates.append({
-                      "name": coin["name"],
-                      "symbol": coin["symbol"],
-                      "rank": coin["cmc_rank"],
-                      "price": quote["price"],
-                      "change": price_change_24h,
-                      "volume": volume_24h,
-                      "volume_change": volume_change_24h
-                  })
+              quote = coin.get("quote", {}).get("USD", {})
+
+              price = quote.get("price") or 0
+              volume = quote.get("volume_24h") or 0
+
+              change_1h = quote.get("percent_change_1h") or 0
+              change_24h = quote.get("percent_change_24h") or 0
+              change_7d = quote.get("percent_change_7d") or 0
+
+              if not symbol or volume <= 0:
+                  continue
+
+              # -----------------------------------------------------
+              # Save current snapshot
+              # -----------------------------------------------------
+
+              if symbol not in history:
+                  history[symbol] = []
+
+              history[symbol].append({
+                  "timestamp": now_ts,
+                  "volume": volume,
+                  "price": price
+              })
+
+              # Keep approximately 30 days of snapshots
+              cutoff = now_ts - (30 * 24 * 60 * 60)
+
+              history[symbol] = [
+                  x for x in history[symbol]
+                  if x["timestamp"] >= cutoff
+              ]
+
+              previous_7d = None
+              previous_14d = None
+
+              # -----------------------------------------------------
+              # Find closest historical snapshot
+              # -----------------------------------------------------
+
+              target_7d = now_ts - (7 * 24 * 60 * 60)
+              target_14d = now_ts - (14 * 24 * 60 * 60)
+
+              for snapshot in history[symbol]:
+
+                  diff7 = abs(snapshot["timestamp"] - target_7d)
+                  diff14 = abs(snapshot["timestamp"] - target_14d)
+
+                  if diff7 <= (36 * 60 * 60):
+                      if (
+                          previous_7d is None
+                          or diff7 <
+                          abs(previous_7d["timestamp"] - target_7d)
+                      ):
+                          previous_7d = snapshot
+
+                  if diff14 <= (36 * 60 * 60):
+                      if (
+                          previous_14d is None
+                          or diff14 <
+                          abs(previous_14d["timestamp"] - target_14d)
+                      ):
+                          previous_14d = snapshot
+
+              volume_change_7d = None
+              volume_change_14d = None
+
+              if previous_7d and previous_7d["volume"] > 0:
+                  volume_change_7d = (
+                      (volume / previous_7d["volume"]) - 1
+                  ) * 100
+
+              if previous_14d and previous_14d["volume"] > 0:
+                  volume_change_14d = (
+                      (volume / previous_14d["volume"]) - 1
+                  ) * 100
+
+              # -----------------------------------------------------
+              # EARLY PRE-PUMP FILTER
+              #
+              # Volume increase of roughly 2% or more is enough
+              # to put the coin under observation.
+              #
+              # Price does NOT need to have pumped 10-15%.
+              # -----------------------------------------------------
+
+              early_volume_signal = False
+
+              if volume_change_7d is not None:
+                  if volume_change_7d >= 2:
+                      early_volume_signal = True
+
+              if volume_change_14d is not None:
+                  if volume_change_14d >= 2:
+                      early_volume_signal = True
+
+              if not early_volume_signal:
+                  continue
+
+              # -----------------------------------------------------
+              # Avoid obvious already-pumped coins
+              # -----------------------------------------------------
+
+              if change_24h >= 15 and change_7d >= 30:
+                  continue
+
+              candidates.append({
+                  "name": name,
+                  "symbol": symbol,
+                  "rank": rank,
+                  "price": price,
+                  "change_1h": change_1h,
+                  "change_24h": change_24h,
+                  "change_7d": change_7d,
+                  "volume": volume,
+                  "volume_change_7d": volume_change_7d,
+                  "volume_change_14d": volume_change_14d
+              })
+
+          # ---------------------------------------------------------
+          # Save history
+          # ---------------------------------------------------------
+
+          DATA_FILE.write_text(
+              json.dumps(history, indent=2)
+          )
+
+          # ---------------------------------------------------------
+          # Sort candidates by strongest volume signal
+          # ---------------------------------------------------------
+
+          def score(c):
+              values = [
+                  c["volume_change_7d"] or 0,
+                  c["volume_change_14d"] or 0
+              ]
+              return max(values)
+
+          candidates.sort(key=score, reverse=True)
+
+          # ---------------------------------------------------------
+          # Telegram message
+          # ---------------------------------------------------------
 
           if candidates:
-              message = "🐋 FIL BEFORE PUMP — EARLY CANDIDATES\n\n"
 
-              for c in candidates:
+              message = (
+                  "🐋 FIL BEFORE PUMP — EARLY VOLUME CANDIDATES\n\n"
+                  "🔎 Volume window: 7–14 days\n"
+                  "⚡ Early signal: volume +2% or more\n"
+                  "🚫 No requirement for 10–15% price pump\n\n"
+              )
+
+              for c in candidates[:30]:
+
+                  v7 = (
+                      f"{c['volume_change_7d']:+.2f}%"
+                      if c["volume_change_7d"] is not None
+                      else "N/A"
+                  )
+
+                  v14 = (
+                      f"{c['volume_change_14d']:+.2f}%"
+                      if c["volume_change_14d"] is not None
+                      else "N/A"
+                  )
+
                   message += (
                       f"🔹 {c['name']} ({c['symbol']})\n"
                       f"Rank: #{c['rank']}\n"
                       f"Price: ${c['price']:.8f}\n"
-                      f"24h: +{c['change']:.2f}%\n"
+                      f"1h: {c['change_1h']:+.2f}%\n"
+                      f"24h: {c['change_24h']:+.2f}%\n"
+                      f"7d: {c['change_7d']:+.2f}%\n"
                       f"24h Volume: ${c['volume']:,.0f}\n"
-                      f"Volume Change: {c['volume_change']:+.2f}%\n\n"
+                      f"Volume vs 7d: {v7}\n"
+                      f"Volume vs 14d: {v14}\n\n"
                   )
+
           else:
+
               message = (
                   "🐋 FIL BEFORE PUMP\n\n"
-                  "No early 2–3% candidates found in the Top 100 "
-                  "on this scan."
+                  "No early volume candidates found.\n"
+                  "Scanner checked up to Top 400."
               )
 
           telegram_url = (
@@ -118,4 +298,16 @@ jobs:
 
           print(message)
           print("✅ Telegram message sent successfully.")
+
           PY
+
+      - name: Save volume history
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add volume_history.json
+
+          git diff --cached --quiet || git commit -m "Update volume history"
+
+          git push
