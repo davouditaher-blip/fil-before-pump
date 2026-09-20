@@ -1,0 +1,121 @@
+name: Fil Before Pump Scanner
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "*/30 * * * *"
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests
+
+      - name: Run scanner
+        env:
+          CMC_API_KEY: ${{ secrets.CMC_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          python - <<'PY'
+          import os
+          import requests
+
+          CMC_API_KEY = os.environ["CMC_API_KEY"]
+          BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
+          CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
+
+          headers = {
+              "X-CMC_PRO_API_KEY": CMC_API_KEY,
+              "Accepts": "application/json"
+          }
+
+          url = "https://pro-api.coinmarketcap.com/v1/cryptocurrency/listings/latest"
+
+          params = {
+              "start": 1,
+              "limit": 100,
+              "convert": "USD"
+          }
+
+          response = requests.get(
+              url,
+              headers=headers,
+              params=params,
+              timeout=30
+          )
+
+          response.raise_for_status()
+          data = response.json()["data"]
+
+          candidates = []
+
+          for coin in data:
+              quote = coin["quote"]["USD"]
+
+              price_change_24h = quote.get("percent_change_24h") or 0
+              volume_24h = quote.get("volume_24h") or 0
+              volume_change_24h = quote.get("volume_change_24h") or 0
+
+              # Early-move filter:
+              # roughly 2% to 3% daily move
+              if 2 <= price_change_24h <= 3.5:
+                  candidates.append({
+                      "name": coin["name"],
+                      "symbol": coin["symbol"],
+                      "rank": coin["cmc_rank"],
+                      "price": quote["price"],
+                      "change": price_change_24h,
+                      "volume": volume_24h,
+                      "volume_change": volume_change_24h
+                  })
+
+          if candidates:
+              message = "🐋 FIL BEFORE PUMP — EARLY CANDIDATES\n\n"
+
+              for c in candidates:
+                  message += (
+                      f"🔹 {c['name']} ({c['symbol']})\n"
+                      f"Rank: #{c['rank']}\n"
+                      f"Price: ${c['price']:.8f}\n"
+                      f"24h: +{c['change']:.2f}%\n"
+                      f"24h Volume: ${c['volume']:,.0f}\n"
+                      f"Volume Change: {c['volume_change']:+.2f}%\n\n"
+                  )
+          else:
+              message = (
+                  "🐋 FIL BEFORE PUMP\n\n"
+                  "No early 2–3% candidates found in the Top 100 "
+                  "on this scan."
+              )
+
+          telegram_url = (
+              f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+          )
+
+          telegram_response = requests.post(
+              telegram_url,
+              data={
+                  "chat_id": CHAT_ID,
+                  "text": message
+              },
+              timeout=30
+          )
+
+          telegram_response.raise_for_status()
+
+          print(message)
+          print("✅ Telegram message sent successfully.")
+          PY
