@@ -1,15 +1,28 @@
+
 name: Pump Alert
 
 on:
   workflow_dispatch:
 
 jobs:
-  telegram-test:
+  scan:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Send Telegram test
+      - name: Get crypto data and send Telegram
+        env:
+          CMC_API_KEY: ${{ secrets.CMC_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
-            -d "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
-            --data-urlencode "text=✅ GitHub → Telegram connection is working!"
+          RESPONSE=$(curl -s \
+            -H "X-CMC_PRO_API_KEY: $CMC_API_KEY" \
+            -H "Accept: application/json" \
+            "https://pro-api.coinmarketcap.com/v1/cryptocurrency/listings/latest?start=1&limit=10&convert=USD")
+
+          MESSAGE="✅ CMC connection working.%0A%0AFirst 10 coins received successfully."
+
+          curl -s -X POST \
+            "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -d "chat_id=${TELEGRAM_CHAT_ID}" \
+            --data-urlencode "text=${MESSAGE}"
