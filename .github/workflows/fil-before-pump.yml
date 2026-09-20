@@ -5,6 +5,9 @@ on:
   schedule:
     - cron: "*/30 * * * *"
 
+permissions:
+  contents: write
+
 jobs:
   scan:
     runs-on: ubuntu-latest
@@ -28,6 +31,7 @@ jobs:
           CMC_API_KEY: ${{ secrets.CMC_API_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+
         run: |
           python - <<'PY'
           import os
@@ -71,10 +75,7 @@ jobs:
 
           coins = payload["data"]
 
-          # ---------------------------------------------------------
           # Load previous volume history
-          # ---------------------------------------------------------
-
           if DATA_FILE.exists():
               try:
                   history = json.loads(DATA_FILE.read_text())
@@ -106,20 +107,17 @@ jobs:
               if not symbol or volume <= 0:
                   continue
 
-              # -----------------------------------------------------
-              # Save current snapshot
-              # -----------------------------------------------------
-
               if symbol not in history:
                   history[symbol] = []
 
+              # Save current volume snapshot
               history[symbol].append({
                   "timestamp": now_ts,
                   "volume": volume,
                   "price": price
               })
 
-              # Keep approximately 30 days of snapshots
+              # Keep last 30 days
               cutoff = now_ts - (30 * 24 * 60 * 60)
 
               history[symbol] = [
@@ -127,77 +125,88 @@ jobs:
                   if x["timestamp"] >= cutoff
               ]
 
-              previous_7d = None
-              previous_14d = None
-
-              # -----------------------------------------------------
-              # Find closest historical snapshot
-              # -----------------------------------------------------
-
+              # Targets for 7 and 14 days ago
               target_7d = now_ts - (7 * 24 * 60 * 60)
               target_14d = now_ts - (14 * 24 * 60 * 60)
 
+              previous_7d = None
+              previous_14d = None
+
+              # Find closest historical snapshot
               for snapshot in history[symbol]:
 
-                  diff7 = abs(snapshot["timestamp"] - target_7d)
-                  diff14 = abs(snapshot["timestamp"] - target_14d)
+                  diff7 = abs(
+                      snapshot["timestamp"] - target_7d
+                  )
+
+                  diff14 = abs(
+                      snapshot["timestamp"] - target_14d
+                  )
 
                   if diff7 <= (36 * 60 * 60):
+
                       if (
                           previous_7d is None
                           or diff7 <
-                          abs(previous_7d["timestamp"] - target_7d)
+                          abs(
+                              previous_7d["timestamp"]
+                              - target_7d
+                          )
                       ):
                           previous_7d = snapshot
 
                   if diff14 <= (36 * 60 * 60):
+
                       if (
                           previous_14d is None
                           or diff14 <
-                          abs(previous_14d["timestamp"] - target_14d)
+                          abs(
+                              previous_14d["timestamp"]
+                              - target_14d
+                          )
                       ):
                           previous_14d = snapshot
 
               volume_change_7d = None
               volume_change_14d = None
 
+              # Compare current volume with 7 days ago
               if previous_7d and previous_7d["volume"] > 0:
+
                   volume_change_7d = (
                       (volume / previous_7d["volume"]) - 1
                   ) * 100
 
+              # Compare current volume with 14 days ago
               if previous_14d and previous_14d["volume"] > 0:
+
                   volume_change_14d = (
                       (volume / previous_14d["volume"]) - 1
                   ) * 100
 
-              # -----------------------------------------------------
-              # EARLY PRE-PUMP FILTER
+              # IMPORTANT:
+              # No 2% threshold.
+              # No price-growth filter.
               #
-              # Volume increase of roughly 2% or more is enough
-              # to put the coin under observation.
-              #
-              # Price does NOT need to have pumped 10-15%.
-              # -----------------------------------------------------
+              # Candidate means:
+              # volume is increasing compared with
+              # 7 days ago OR 14 days ago.
 
-              early_volume_signal = False
+              volume_is_increasing = False
 
-              if volume_change_7d is not None:
-                  if volume_change_7d >= 2:
-                      early_volume_signal = True
+              if (
+                  volume_change_7d is not None
+                  and volume_change_7d > 0
+              ):
+                  volume_is_increasing = True
 
-              if volume_change_14d is not None:
-                  if volume_change_14d >= 2:
-                      early_volume_signal = True
+              if (
+                  volume_change_14d is not None
+                  and volume_change_14d > 0
+              ):
+                  volume_is_increasing = True
 
-              if not early_volume_signal:
-                  continue
-
-              # -----------------------------------------------------
-              # Avoid obvious already-pumped coins
-              # -----------------------------------------------------
-
-              if change_24h >= 15 and change_7d >= 30:
+              if not volume_is_increasing:
                   continue
 
               candidates.append({
@@ -213,38 +222,36 @@ jobs:
                   "volume_change_14d": volume_change_14d
               })
 
-          # ---------------------------------------------------------
           # Save history
-          # ---------------------------------------------------------
-
           DATA_FILE.write_text(
               json.dumps(history, indent=2)
           )
 
-          # ---------------------------------------------------------
-          # Sort candidates by strongest volume signal
-          # ---------------------------------------------------------
+          # Sort by strongest volume increase
+          def score(candidate):
 
-          def score(c):
               values = [
-                  c["volume_change_7d"] or 0,
-                  c["volume_change_14d"] or 0
+                  candidate["volume_change_7d"] or 0,
+                  candidate["volume_change_14d"] or 0
               ]
+
               return max(values)
 
-          candidates.sort(key=score, reverse=True)
+          candidates.sort(
+              key=score,
+              reverse=True
+          )
 
-          # ---------------------------------------------------------
           # Telegram message
-          # ---------------------------------------------------------
-
           if candidates:
 
               message = (
-                  "🐋 FIL BEFORE PUMP — EARLY VOLUME CANDIDATES\n\n"
-                  "🔎 Volume window: 7–14 days\n"
-                  "⚡ Early signal: volume +2% or more\n"
-                  "🚫 No requirement for 10–15% price pump\n\n"
+                  "🐋 FIL BEFORE PUMP — VOLUME CANDIDATES\n\n"
+                  "📊 Scanner: Top 400\n"
+                  "📈 Filter: Volume increase only\n"
+                  "🔎 Windows: 7D / 14D\n"
+                  "❌ No price % filter\n"
+                  "❌ No 2% volume threshold\n\n"
               )
 
               for c in candidates[:30]:
@@ -267,7 +274,7 @@ jobs:
                       f"Price: ${c['price']:.8f}\n"
                       f"1h: {c['change_1h']:+.2f}%\n"
                       f"24h: {c['change_24h']:+.2f}%\n"
-                      f"7d: {c['change_7d']:+.2f}%\n"
+                      f"7d Price: {c['change_7d']:+.2f}%\n"
                       f"24h Volume: ${c['volume']:,.0f}\n"
                       f"Volume vs 7d: {v7}\n"
                       f"Volume vs 14d: {v14}\n\n"
@@ -277,10 +284,12 @@ jobs:
 
               message = (
                   "🐋 FIL BEFORE PUMP\n\n"
-                  "No early volume candidates found.\n"
-                  "Scanner checked up to Top 400."
+                  "No coins with increasing volume "
+                  "were found in the Top 400.\n\n"
+                  "📊 Checked: 7D / 14D volume history"
               )
 
+          # Send Telegram
           telegram_url = (
               f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
           )
