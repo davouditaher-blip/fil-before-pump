@@ -268,6 +268,10 @@ def binance_symbol(symbol):
 
 
 
+def gate_contract(symbol):
+    return f"{str(symbol).upper()}_USDT"
+
+
 def load_gate_futures_symbols():
     global GATE_FUTURES_SYMBOLS
     if GATE_FUTURES_SYMBOLS is not None:
@@ -278,11 +282,13 @@ def load_gate_futures_symbols():
         for item in data if isinstance(data, list) else []:
             name = item.get("name")
             state = str(item.get("status") or item.get("state") or "normal").lower()
-            if name and state in ("normal", "trading"):
-                symbols.add(name)
+            if name and state in ("normal", "trading") and name.endswith("_USDT"):
+                # Normalize Gate's BTC_USDT form to the scanner's BTCUSDT form.
+                symbols.add(name.replace("_", ""))
     except requests.RequestException as e:
         print(f"Gate Futures contracts warning: {e}")
     GATE_FUTURES_SYMBOLS = symbols
+    print(f"Gate Futures contract coverage: {len(symbols)} USDT perpetual contracts")
     return GATE_FUTURES_SYMBOLS
 
 
@@ -342,6 +348,7 @@ def candles(symbol, interval, limit=220):
 
     gate_pair = pair
     if gate_pair in load_gate_futures_symbols():
+        gate_pair = gate_contract(symbol)
         gate_interval = {"5m": "5m", "15m": "15m", "1h": "1h", "4h": "4h", "1d": "1d"}.get(interval)
         if gate_interval:
             try:
@@ -414,7 +421,8 @@ def futures_tickers():
     try:
         data = get_json(BASE_GATE + "/api/v4/futures/usdt/tickers", timeout=30)
         for x in data if isinstance(data, list) else []:
-            symbol = x.get("contract")
+            raw_symbol = x.get("contract")
+            symbol = raw_symbol.replace("_", "") if raw_symbol else None
             if not symbol or not symbol.endswith("USDT"):
                 continue
             volume = float(x.get("volume_24h_quote") or x.get("volume_24h_usd") or x.get("volume_24h") or 0)
@@ -492,7 +500,7 @@ def futures_daily_backfill(symbols, history):
             try:
                 data = get_json(
                     BASE_GATE + "/api/v4/futures/usdt/candlesticks",
-                    {"contract": pair, "interval": "1d", "limit": 16},
+                    {"contract": gate_contract(pair[:-4]), "interval": "1d", "limit": 16},
                     timeout=15,
                 )
                 rows3 = data if isinstance(data, list) else []
