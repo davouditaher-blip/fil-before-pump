@@ -78,7 +78,10 @@ jobs:
 
           coins = payload["data"]
 
-          # Load existing history
+          # ---------------------------------------------
+          # LOAD HISTORY
+          # ---------------------------------------------
+
           if DATA_FILE.exists():
               try:
                   history = json.loads(
@@ -93,6 +96,10 @@ jobs:
           now_ts = int(now.timestamp())
 
           candidates = []
+
+          # ---------------------------------------------
+          # SCAN TOP 400
+          # ---------------------------------------------
 
           for coin in coins:
 
@@ -126,14 +133,20 @@ jobs:
               if symbol not in history:
                   history[symbol] = []
 
-              # Save current snapshot
+              # ---------------------------------------------
+              # SAVE CURRENT SNAPSHOT
+              # ---------------------------------------------
+
               history[symbol].append({
                   "timestamp": now_ts,
                   "volume": volume,
                   "price": price
               })
 
-              # Keep maximum 30 days of history
+              # ---------------------------------------------
+              # KEEP 30 DAYS
+              # ---------------------------------------------
+
               cutoff = (
                   now_ts -
                   (30 * 24 * 60 * 60)
@@ -142,10 +155,23 @@ jobs:
               history[symbol] = [
                   item
                   for item in history[symbol]
-                  if item["timestamp"] >= cutoff
+                  if item.get("timestamp", 0) >= cutoff
               ]
 
-              # Target times
+              # ---------------------------------------------
+              # FIND HISTORICAL SNAPSHOTS
+              # ---------------------------------------------
+
+              target_1d = (
+                  now_ts -
+                  (1 * 24 * 60 * 60)
+              )
+
+              target_3d = (
+                  now_ts -
+                  (3 * 24 * 60 * 60)
+              )
+
               target_7d = (
                   now_ts -
                   (7 * 24 * 60 * 60)
@@ -156,21 +182,47 @@ jobs:
                   (14 * 24 * 60 * 60)
               )
 
+              previous_1d = None
+              previous_3d = None
               previous_7d = None
               previous_14d = None
 
-              # Find closest snapshot to 7d and 14d
+              # ---------------------------------------------
+              # FIND CLOSEST AVAILABLE SNAPSHOTS
+              # ---------------------------------------------
+
               for snapshot in history[symbol]:
 
-                  diff7 = abs(
-                      snapshot["timestamp"] -
-                      target_7d
-                  )
+                  ts = snapshot.get("timestamp", 0)
 
-                  diff14 = abs(
-                      snapshot["timestamp"] -
-                      target_14d
-                  )
+                  diff1 = abs(ts - target_1d)
+                  diff3 = abs(ts - target_3d)
+                  diff7 = abs(ts - target_7d)
+                  diff14 = abs(ts - target_14d)
+
+                  if diff1 <= (18 * 60 * 60):
+
+                      if (
+                          previous_1d is None
+                          or diff1 <
+                          abs(
+                              previous_1d["timestamp"]
+                              - target_1d
+                          )
+                      ):
+                          previous_1d = snapshot
+
+                  if diff3 <= (24 * 60 * 60):
+
+                      if (
+                          previous_3d is None
+                          or diff3 <
+                          abs(
+                              previous_3d["timestamp"]
+                              - target_3d
+                          )
+                      ):
+                          previous_3d = snapshot
 
                   if diff7 <= (36 * 60 * 60):
 
@@ -178,8 +230,8 @@ jobs:
                           previous_7d is None
                           or diff7 <
                           abs(
-                              previous_7d["timestamp"] -
-                              target_7d
+                              previous_7d["timestamp"]
+                              - target_7d
                           )
                       ):
                           previous_7d = snapshot
@@ -190,21 +242,47 @@ jobs:
                           previous_14d is None
                           or diff14 <
                           abs(
-                              previous_14d["timestamp"] -
-                              target_14d
+                              previous_14d["timestamp"]
+                              - target_14d
                           )
                       ):
                           previous_14d = snapshot
 
+              # ---------------------------------------------
+              # CALCULATE VOLUME CHANGES
+              # ---------------------------------------------
+
+              volume_change_1d = None
+              volume_change_3d = None
               volume_change_7d = None
               volume_change_14d = None
 
-              # Current volume vs 7 days ago
+              if (
+                  previous_1d
+                  and previous_1d["volume"] > 0
+              ):
+                  volume_change_1d = (
+                      (
+                          volume /
+                          previous_1d["volume"]
+                      ) - 1
+                  ) * 100
+
+              if (
+                  previous_3d
+                  and previous_3d["volume"] > 0
+              ):
+                  volume_change_3d = (
+                      (
+                          volume /
+                          previous_3d["volume"]
+                      ) - 1
+                  ) * 100
+
               if (
                   previous_7d
                   and previous_7d["volume"] > 0
               ):
-
                   volume_change_7d = (
                       (
                           volume /
@@ -212,12 +290,10 @@ jobs:
                       ) - 1
                   ) * 100
 
-              # Current volume vs 14 days ago
               if (
                   previous_14d
                   and previous_14d["volume"] > 0
               ):
-
                   volume_change_14d = (
                       (
                           volume /
@@ -225,31 +301,51 @@ jobs:
                       ) - 1
                   ) * 100
 
-              # ------------------------------------------------
-              # FIL BEFORE PUMP FILTER
+              # ---------------------------------------------
+              # EARLY HISTORY FALLBACK
               #
-              # ONLY VOLUME INCREASE
+              # No minimum % requirement.
               #
-              # No 2-3% price filter.
-              # No 2% volume threshold.
-              # ------------------------------------------------
+              # If 7D/14D data is not available yet,
+              # use 1D/3D history.
+              # ---------------------------------------------
 
               volume_is_increasing = False
 
-              if (
-                  volume_change_7d is not None
-                  and volume_change_7d > 0
-              ):
-                  volume_is_increasing = True
+              available_changes = [
+                  x for x in [
+                      volume_change_1d,
+                      volume_change_3d,
+                      volume_change_7d,
+                      volume_change_14d
+                  ]
+                  if x is not None
+              ]
 
-              if (
-                  volume_change_14d is not None
-                  and volume_change_14d > 0
+              if any(
+                  change > 0
+                  for change in available_changes
               ):
                   volume_is_increasing = True
 
               if not volume_is_increasing:
                   continue
+
+              # ---------------------------------------------
+              # SCORE
+              # ---------------------------------------------
+
+              score_values = [
+                  x for x in [
+                      volume_change_1d,
+                      volume_change_3d,
+                      volume_change_7d,
+                      volume_change_14d
+                  ]
+                  if x is not None
+              ]
+
+              volume_score = max(score_values)
 
               candidates.append({
                   "name": name,
@@ -260,13 +356,17 @@ jobs:
                   "change_24h": change_24h,
                   "change_7d": change_7d,
                   "volume": volume,
-                  "volume_change_7d":
-                      volume_change_7d,
-                  "volume_change_14d":
-                      volume_change_14d
+                  "volume_change_1d": volume_change_1d,
+                  "volume_change_3d": volume_change_3d,
+                  "volume_change_7d": volume_change_7d,
+                  "volume_change_14d": volume_change_14d,
+                  "volume_score": volume_score
               })
 
-          # Save history
+          # ---------------------------------------------
+          # SAVE HISTORY
+          # ---------------------------------------------
+
           DATA_FILE.write_text(
               json.dumps(
                   history,
@@ -274,57 +374,39 @@ jobs:
               )
           )
 
-          # Sort by strongest volume increase
-          def score(candidate):
-
-              v7 = (
-                  candidate["volume_change_7d"]
-                  or 0
-              )
-
-              v14 = (
-                  candidate["volume_change_14d"]
-                  or 0
-              )
-
-              return max(v7, v14)
+          # ---------------------------------------------
+          # SORT
+          # ---------------------------------------------
 
           candidates.sort(
-              key=score,
+              key=lambda x: x["volume_score"],
               reverse=True
           )
 
-          # ------------------------------------------------
-          # TELEGRAM MESSAGE
-          # ------------------------------------------------
+          # ---------------------------------------------
+          # TELEGRAM
+          # ---------------------------------------------
 
           if candidates:
 
               message = (
                   "🐋 FIL BEFORE PUMP — "
-                  "VOLUME CANDIDATES\n\n"
+                  "EARLY VOLUME SCAN\n\n"
                   "📊 Scanner: Top 400\n"
-                  "📈 Filter: Volume increase only\n"
-                  "🔎 Comparison: 7D / 14D\n"
+                  "📈 Filter: Increasing volume\n"
+                  "🔎 History: 1D / 3D / 7D / 14D\n"
                   "❌ No price % filter\n"
                   "❌ No minimum volume %\n\n"
+                  "⚠️ Volume signal only — "
+                  "technical/wallet confirmation required.\n\n"
               )
 
               for candidate in candidates[:30]:
 
-                  v7 = (
-                      f"{candidate['volume_change_7d']:+.2f}%"
-                      if candidate["volume_change_7d"]
-                      is not None
-                      else "N/A"
-                  )
-
-                  v14 = (
-                      f"{candidate['volume_change_14d']:+.2f}%"
-                      if candidate["volume_change_14d"]
-                      is not None
-                      else "N/A"
-                  )
+                  def fmt(value):
+                      if value is None:
+                          return "N/A"
+                      return f"{value:+.2f}%"
 
                   message += (
                       f"🔹 {candidate['name']} "
@@ -340,21 +422,32 @@ jobs:
                       f"{candidate['change_7d']:+.2f}%\n"
                       f"24h Volume: "
                       f"${candidate['volume']:,.0f}\n"
-                      f"Volume vs 7d: {v7}\n"
-                      f"Volume vs 14d: {v14}\n\n"
+                      f"Volume vs 1D: "
+                      f"{fmt(candidate['volume_change_1d'])}\n"
+                      f"Volume vs 3D: "
+                      f"{fmt(candidate['volume_change_3d'])}\n"
+                      f"Volume vs 7D: "
+                      f"{fmt(candidate['volume_change_7d'])}\n"
+                      f"Volume vs 14D: "
+                      f"{fmt(candidate['volume_change_14d'])}\n\n"
                   )
 
           else:
 
               message = (
                   "🐋 FIL BEFORE PUMP\n\n"
-                  "No coins with increasing volume "
-                  "were found in Top 400.\n\n"
-                  "📊 Checking volume history: "
-                  "7D / 14D"
+                  "No increasing-volume candidates "
+                  "found in Top 400.\n\n"
+                  "📊 History checked: "
+                  "1D / 3D / 7D / 14D\n"
+                  "❌ No price filter\n"
+                  "❌ No minimum volume threshold"
               )
 
-          # Send Telegram
+          # ---------------------------------------------
+          # SEND TELEGRAM
+          # ---------------------------------------------
+
           telegram_url = (
               f"https://api.telegram.org/"
               f"bot{BOT_TOKEN}/sendMessage"
