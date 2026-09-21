@@ -494,4 +494,7 @@ jobs:
 
           git commit -m "Update volume history"
 
+          # Sync with the latest main branch before pushing.
+          git pull --rebase origin main
+
           git push origin HEAD:main
