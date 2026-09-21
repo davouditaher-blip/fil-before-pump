@@ -15,6 +15,7 @@ import requests
 import scanner
 
 HISTORY = Path("wallet_history.json")
+EVENTS = Path("wallet_events.json")
 
 _original_goldrush = scanner.goldrush_wallet_layer
 _original_apply = scanner.apply_wallet_signals
@@ -27,6 +28,15 @@ def _history():
         return json.loads(HISTORY.read_text()) if HISTORY.exists() else {}
     except Exception:
         return {}
+
+def _events():
+    try:
+        return json.loads(EVENTS.read_text()) if EVENTS.exists() else []
+    except Exception:
+        return []
+
+def _save_events(events):
+    EVENTS.write_text(json.dumps(events[-5000:], indent=2))
 
 
 def _prior_wallet_row(history, wallet, symbol, mint, before_timestamp=None):
@@ -325,6 +335,39 @@ def enhanced_goldrush_with_history(coin):
     layer["accumulation_count"] = len(accumulating)
     layer["reduction_count"] = len(reducing)
 
+    # Persist derived wallet events separately from raw holder snapshots.
+    # This makes the scanner able to reconstruct a wallet's behavior across
+    # assets without confusing "holder overlap" with actual accumulation.
+    events = _events()
+    event_ts = int(datetime.now(timezone.utc).timestamp())
+    for item in accumulating:
+        events.append({
+            "timestamp": event_ts,
+            "event": "accumulation",
+            "wallet": item["wallet"],
+            "symbol": layer.get("symbol"),
+            "mint": layer.get("mint"),
+            "chain": layer.get("chain"),
+            "delta_pct": item.get("delta_pct"),
+            "delta_balance": item.get("delta_balance"),
+            "relative_balance_change_pct": item.get("relative_balance_change"),
+            "price_usd": layer.get("price_usd"),
+        })
+    for item in reducing:
+        events.append({
+            "timestamp": event_ts,
+            "event": "reduction",
+            "wallet": item["wallet"],
+            "symbol": layer.get("symbol"),
+            "mint": layer.get("mint"),
+            "chain": layer.get("chain"),
+            "delta_pct": item.get("delta_pct"),
+            "delta_balance": item.get("delta_balance"),
+            "relative_balance_change_pct": item.get("relative_balance_change"),
+            "price_usd": layer.get("price_usd"),
+        })
+    _save_events(events)
+
     smart_overlap = 0
     wallet_stats = []
     for item in accumulating:
@@ -332,6 +375,16 @@ def enhanced_goldrush_with_history(coin):
         wallet_rows = history.get(wallet, [])
         symbols = {r.get("symbol") for r in wallet_rows if r.get("symbol")}
         accumulation_symbols = set()
+        wallet_event_rows = [
+            e for e in _events()
+            if e.get("wallet") == wallet and e.get("event") == "accumulation"
+        ]
+        for event in wallet_event_rows:
+            if event.get("symbol"):
+                accumulation_symbols.add(event.get("symbol"))
+
+        # Also reconstruct older events from raw history for pre-event-file
+        # snapshots, using both percentage and raw balance deltas.
         for sym in symbols:
             rows = sorted(
                 [r for r in wallet_rows if r.get("symbol") == sym],
@@ -339,10 +392,15 @@ def enhanced_goldrush_with_history(coin):
             )
             for j in range(1, len(rows)):
                 try:
-                    d = float(rows[j].get("percentage")) - float(rows[j-1].get("percentage"))
+                    old_pct = float(rows[j-1].get("percentage") or 0)
+                    new_pct = float(rows[j].get("percentage") or 0)
+                    old_balance = float(rows[j-1].get("balance") or 0)
+                    new_balance = float(rows[j].get("balance") or 0)
+                    pct_delta = new_pct - old_pct
+                    balance_delta = (new_balance-old_balance)/old_balance if old_balance > 0 else 0
                 except (TypeError, ValueError):
                     continue
-                if d >= 0.01:
+                if pct_delta >= 0.005 or (old_balance > 0 and balance_delta >= 0.01):
                     accumulation_symbols.add(sym)
                     break
 
@@ -366,6 +424,19 @@ def enhanced_goldrush_with_history(coin):
         round(total_wins / total_attempts * 100, 1) if total_attempts else None
     )
     layer["smart_wallet_overlap"] = smart_overlap
+
+    # Current event + historical event view: a recurring smart wallet is one
+    # that has accumulated in at least two distinct assets.
+    current_wallets = {x["wallet"] for x in accumulating}
+    recurring = []
+    for wallet in current_wallets:
+        syms = sorted({
+            e.get("symbol") for e in _events()
+            if e.get("wallet") == wallet and e.get("event") == "accumulation" and e.get("symbol")
+        })
+        if len(syms) >= 2:
+            recurring.append({"wallet": wallet, "symbols": syms})
+    layer["recurring_wallets"] = recurring
     return layer
 
 
