@@ -994,7 +994,10 @@ def update_wallet_history(layer_results):
                 "mint": result["mint"],
                 "rank": holder.get("rank"),
                 "percentage": holder.get("percentage"),
+                "balance": holder.get("balance"),
+                "total_supply": holder.get("total_supply"),
                 "value": holder.get("value"),
+                "chain": holder.get("chain") or result.get("chain"),
                 "price_usd": result.get("price_usd"),
             })
             history[wallet] = history[wallet][-200:]
