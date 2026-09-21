@@ -104,17 +104,32 @@ def enhanced_goldrush_wallet_layer(coin):
                 continue
 
             # GoldRush V2 holder responses expose raw balance + total_supply.
+            label = str(h.get("label") or h.get("name") or h.get("contract_name") or h.get("contractName") or "").lower()
+            holder_type = str(h.get("type") or h.get("entity_type") or "").lower()
+            infra_words = ("exchange", "binance", "coinbase", "kraken", "okx", "bybit", "gate.io", "gateio", "bitget", "mexc", "kucoin", "bitfinex", "uniswap", "pancake", "router", "liquidity", "lp", "pool", "bridge", "burn", "dead", "null", "staking", "treasury", "contract")
+            if any(w in label for w in infra_words) or holder_type in {"contract", "exchange", "lp", "liquidity_pool", "burn"}:
+                continue
+
             try:
-                balance = float(h.get("balance") or 0)
-                supply = float(h.get("total_supply") or 0)
+                balance = float(h.get("balance") or h.get("balance_raw") or 0)
+                supply = float(h.get("total_supply") or h.get("totalSupply") or 0)
             except (TypeError, ValueError):
                 balance = 0.0
                 supply = 0.0
-            if supply > 0:
-                total_supply = supply
+
+            raw_pct = h.get("percentage_relative_to_total_supply") or h.get("percentage") or h.get("percentage_of_total_supply")
+            try:
+                percentage = float(raw_pct) if raw_pct is not None else None
+            except (TypeError, ValueError):
+                percentage = None
+
+            if supply > 0 and balance >= 0:
                 percentage = balance / supply * 100.0
-            else:
-                percentage = h.get("percentage")
+            elif percentage is not None and 0 < percentage <= 1:
+                percentage *= 100.0
+
+            if percentage is None:
+                continue
 
             holders.append({
                 "wallet": wallet,
@@ -125,6 +140,8 @@ def enhanced_goldrush_wallet_layer(coin):
                 "percentage": percentage,
                 "value": h.get("balance_quote") or h.get("value_quote") or h.get("quote"),
                 "timestamp": int(datetime.now(timezone.utc).timestamp()),
+                "label": label,
+                "holder_type": holder_type,
             })
 
         if holders:
@@ -139,6 +156,7 @@ def enhanced_goldrush_wallet_layer(coin):
                 "buyers_7d": 0,
                 "sellers_7d": 0,
                 "provider": "GoldRush",
+                "price_usd": float(((coin.get("quote") or {}).get("USD") or {}).get("price") or 0),
             }
             break
 
@@ -227,7 +245,7 @@ def enhanced_format(result):
     extra = (
         f"Smart-wallet accumulation: {result.get('wallet_accumulation', 0)}"
         f" | recurring accumulating wallets: {result.get('smart_wallet_overlap', 0)}"
-        f" | reducing: {result.get('wallet_reductions', 0)}\n"
+        f" | reducing: {result.get('wallet_reductions', 0)}" + (f" | est. wallet win-rate: {result.get('wallet_win_rate')}%" if result.get('wallet_win_rate') is not None else "") + "\n"
     )
     return base + extra
 
@@ -256,13 +274,13 @@ def enhanced_goldrush_with_history(coin):
         except (TypeError, ValueError):
             continue
 
-        if delta >= 0.05:
+        if delta >= 0.01:
             accumulating.append({
                 "wallet": wallet,
                 "delta_pct": round(delta, 4),
                 "new_pct": holder.get("percentage"),
             })
-        elif delta <= -0.05:
+        elif delta <= -0.01:
             reducing.append({
                 "wallet": wallet,
                 "delta_pct": round(delta, 4),
