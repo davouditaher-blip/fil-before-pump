@@ -118,7 +118,7 @@ def historical_cmc_volume_batch(coins, history, now_ts):
             missing.append((symbol, cmc_id))
 
     # Keep historical requests bounded. CMC supports multiple comma-separated IDs.
-    missing = missing[:160]
+    missing = missing[:500]
     for i in range(0, len(missing), 40):
         batch = missing[i:i + 40]
         ids = ",".join(str(cmc_id) for _, cmc_id in batch)
@@ -722,10 +722,10 @@ def main():
             continue
 
         vol_info = volume_signals(symbol, volume, price, history, now_ts)
-        if not vol_info[1]:
-            continue
-
-        score, reasons, stage = score_coin(coin, vol_info, {})
+        if not vol_info[1] and not any(v is not None for v in vol_info[0].values()):
+            score, reasons, stage = 0.0, ["futures contract", "volume history pending"], "WATCH"
+        else:
+            score, reasons, stage = score_coin(coin, vol_info, {})
         results.append({
             "name": coin.get("name", symbol),
             "symbol": symbol,
@@ -741,9 +741,9 @@ def main():
         })
 
     results.sort(key=lambda x: (
+        x["score"],
         x["vol_changes"].get("1d") or -999999,
         x["vol_changes"].get("3d") or -999999,
-        x["score"],
     ), reverse=True)
 
     for result in results[:200]:
