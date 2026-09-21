@@ -60,7 +60,7 @@ def wallet_win_stats(history, wallet, lookahead=336):
                 entry = float(row.get("price_usd") or 0)
             except (TypeError, ValueError):
                 continue
-            if entry <= 0 or new_pct - old_pct < 0.05:
+            if entry <= 0 or new_pct - old_pct < 0.01:
                 continue
             attempts += 1
             t0 = int(row.get("timestamp", 0))
@@ -296,9 +296,25 @@ def enhanced_goldrush_with_history(coin):
     wallet_stats = []
     for item in accumulating:
         wallet = item["wallet"]
-        symbols = {r.get("symbol") for r in history.get(wallet, []) if r.get("symbol")}
+        wallet_rows = history.get(wallet, [])
+        symbols = {r.get("symbol") for r in wallet_rows if r.get("symbol")}
+        accumulation_symbols = set()
+        for sym in symbols:
+            rows = sorted(
+                [r for r in wallet_rows if r.get("symbol") == sym],
+                key=lambda r: int(r.get("timestamp", 0)),
+            )
+            for j in range(1, len(rows)):
+                try:
+                    d = float(rows[j].get("percentage")) - float(rows[j-1].get("percentage"))
+                except (TypeError, ValueError):
+                    continue
+                if d >= 0.01:
+                    accumulation_symbols.add(sym)
+                    break
+
         attempts, wins, successful_symbols = wallet_win_stats(history, wallet)
-        if len(symbols) >= 2:
+        if len(accumulation_symbols) >= 2:
             smart_overlap += 1
         if attempts:
             wallet_stats.append({
@@ -307,6 +323,7 @@ def enhanced_goldrush_with_history(coin):
                 "wins": wins,
                 "win_rate": round(wins / attempts * 100, 1),
                 "successful_symbols": sorted(successful_symbols),
+                "accumulation_symbols": sorted(accumulation_symbols),
             })
 
     layer["wallet_win_stats"] = wallet_stats
