@@ -262,6 +262,178 @@ def score_coin(coin, volume_info, tech):
     return round(score, 1), reasons
 
 
+
+SOLSCAN_API_KEY = os.environ.get("SOLSCAN_API_KEY", "")
+SOLSCAN_BASE = "https://pro-api.solscan.io/v2.0"
+WALLET_HISTORY_FILE = Path("wallet_history.json")
+
+
+def solscan_get(endpoint, params=None):
+    if not SOLSCAN_API_KEY:
+        return None
+    try:
+        r = session.get(
+            SOLSCAN_BASE + endpoint,
+            params=params or {},
+            headers={"token": SOLSCAN_API_KEY, "accept": "application/json"},
+            timeout=30,
+        )
+        r.raise_for_status()
+        data = r.json()
+        return data.get("data")
+    except requests.RequestException as e:
+        print(f"Solscan warning: {e}")
+        return None
+
+
+def solana_token_for_symbol(symbol):
+    data = solscan_get(
+        "/token/search",
+        {
+            "keyword": symbol,
+            "search_mode": "exact",
+            "search_by": "symbol",
+            "exclude_unverified_token": "true",
+            "sort_by": "market_cap",
+            "sort_order": "desc",
+            "page": 1,
+            "page_size": 10,
+        },
+    )
+    if isinstance(data, dict):
+        items = data.get("items", [])
+    else:
+        items = data or []
+    return items[0] if items else None
+
+
+def solscan_wallet_layer(symbol):
+    """
+    Solana-only wallet layer.
+
+    This intentionally distinguishes:
+      - holder concentration,
+      - common top-holder wallets,
+      - incoming transfer activity,
+      - token-level buy/sell statistics.
+
+    It does NOT call a transfer a 'buy' unless the provider explicitly labels it.
+    """
+    token = solana_token_for_symbol(symbol)
+    if not token:
+        return {}
+
+    mint = token.get("address")
+    if not mint:
+        return {}
+
+    meta = solscan_get("/token/meta", {"address": mint}) or {}
+    holders_data = solscan_get(
+        "/token/holders",
+        {"address": mint, "page": 1, "page_size": 20},
+    ) or {}
+    items = holders_data.get("items", []) if isinstance(holders_data, dict) else []
+
+    hist = solscan_get("/token/historical-data", {"address": mint, "range": 30}) or []
+    hist_rows = hist.get("data", []) if isinstance(hist, dict) else hist
+    hist_rows = hist_rows or []
+    recent = hist_rows[-7:] if len(hist_rows) >= 7 else hist_rows
+
+    buy7 = sum(float(x.get("total_volume_buying") or 0) for x in recent)
+    sell7 = sum(float(x.get("total_volume_selling") or 0) for x in recent)
+    buyers7 = sum(int(x.get("num_buyers") or 0) for x in recent)
+    sellers7 = sum(int(x.get("num_sellers") or 0) for x in recent)
+
+    top20_pct = sum(float(x.get("percentage") or 0) for x in items[:20])
+    top5_pct = sum(float(x.get("percentage") or 0) for x in items[:5])
+
+    # Save only wallet identity + holder stats, not private credentials.
+    wallet_rows = []
+    for h in items:
+        owner = h.get("owner")
+        if owner:
+            wallet_rows.append({
+                "wallet": owner,
+                "symbol": symbol,
+                "mint": mint,
+                "rank": h.get("rank"),
+                "percentage": h.get("percentage"),
+                "value": h.get("value"),
+                "timestamp": int(datetime.now(timezone.utc).timestamp()),
+            })
+
+    return {
+        "chain": "solana",
+        "mint": mint,
+        "symbol": symbol,
+        "top5_holder_pct": top5_pct,
+        "top20_holder_pct": top20_pct,
+        "holders": wallet_rows,
+        "buy_volume_7d": buy7,
+        "sell_volume_7d": sell7,
+        "buyers_7d": buyers7,
+        "sellers_7d": sellers7,
+        "buy_sell_ratio_7d": (buy7 / sell7) if sell7 > 0 else None,
+    }
+
+
+def update_wallet_history(layer_results):
+    try:
+        history = json.loads(WALLET_HISTORY_FILE.read_text()) if WALLET_HISTORY_FILE.exists() else {}
+    except Exception:
+        history = {}
+
+    now = int(datetime.now(timezone.utc).timestamp())
+    for result in layer_results:
+        for holder in result.get("holders", []):
+            wallet = holder["wallet"]
+            history.setdefault(wallet, [])
+            history[wallet].append({
+                "timestamp": now,
+                "symbol": result["symbol"],
+                "mint": result["mint"],
+                "rank": holder.get("rank"),
+                "percentage": holder.get("percentage"),
+                "value": holder.get("value"),
+            })
+            history[wallet] = history[wallet][-200:]
+
+    WALLET_HISTORY_FILE.write_text(json.dumps(history, indent=2))
+    return history
+
+
+def wallet_overlap(history, symbol):
+    matches = []
+    for wallet, rows in history.items():
+        symbols = {r.get("symbol") for r in rows if r.get("symbol")}
+        if symbol in symbols and len(symbols) >= 2:
+            matches.append(wallet)
+    return len(matches)
+
+
+def apply_wallet_signals(result, layer):
+    if not layer:
+        return result
+
+    result["wallet"] = layer
+    score = result["score"]
+    reasons = result["reasons"]
+
+    ratio = layer.get("buy_sell_ratio_7d")
+    if ratio is not None and ratio > 1.10:
+        score += 12
+        reasons.append("Solana buy>sell 7d")
+    if layer.get("buyers_7d", 0) > layer.get("sellers_7d", 0):
+        score += 6
+        reasons.append("buyers > sellers 7d")
+    if layer.get("top20_holder_pct", 0) > 0:
+        score += 2
+        reasons.append("holder map available")
+
+    result["score"] = round(score, 1)
+    return result
+
+
 def format_coin(x):
     v = x["vol_changes"]
     def f(k):
@@ -327,6 +499,28 @@ def main():
         })
 
     save_history(history)
+
+    # Wallet/whale layer: only run on the strongest early candidates to
+    # control API usage. Solscan currently covers Solana tokens.
+    wallet_layers = []
+    if SOLSCAN_API_KEY and results:
+        results.sort(key=lambda x: x["score"], reverse=True)
+        for result in results[:12]:
+            layer = solscan_wallet_layer(result["symbol"])
+            if layer:
+                wallet_layers.append(layer)
+                apply_wallet_signals(result, layer)
+            time.sleep(0.10)
+
+        wallet_history = update_wallet_history(wallet_layers)
+        for result in results:
+            result["wallet_overlap"] = wallet_overlap(wallet_history, result["symbol"])
+            if result["wallet_overlap"] >= 1:
+                result["score"] = round(result["score"] + min(10, 4 * result["wallet_overlap"]), 1)
+                result["reasons"].append(f"wallet overlap {result['wallet_overlap']}")
+    else:
+        wallet_history = {}
+
     results.sort(key=lambda x: x["score"], reverse=True)
 
     # Top candidates are alerts, not trade signals. Wallet/whale confirmation is
@@ -338,7 +532,8 @@ def main():
         "Volume history: 1D / 3D / 7D / 14D\n"
         "Technical: 5m / 15m / 1h / 4h / 1d\n"
         "Price pump is NOT required.\n"
-        "⚠️ Wallet/whale layer is not fabricated; it will activate when a real provider/key is connected.\n\n"
+        "🐋 Solana wallet layer: holder map + buy/sell flow + overlap when API is connected.\n"
+        "⚠️ Transfers are not labeled as buys unless the provider says so.\n\n"
     )
     message = header + ("\n".join(format_coin(x) for x in results[:20]) if results else "No early-volume candidates with available history.")
     print(message)
