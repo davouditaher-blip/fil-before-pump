@@ -1165,7 +1165,10 @@ def main():
     if (SOLSCAN_API_KEY or GOLDRUSH_API_KEY) and results:
         results.sort(key=lambda x: x["score"], reverse=True)
         coin_by_symbol = {str(c.get("symbol") or "").upper(): c for c in coins}
-        for result in results[:100]:
+        # Wallet history covers the full CMC top-300 Futures-eligible scan,
+        # not only the top-100 scored results. This keeps early/smaller
+        # pre-pump assets from being invisible to cross-asset wallet history.
+        for result in results[:300]:
             coin = coin_by_symbol.get(str(result["symbol"]).upper())
             layers = []
             if SOLSCAN_API_KEY:
