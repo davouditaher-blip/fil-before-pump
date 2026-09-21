@@ -523,10 +523,12 @@ def futures_daily_backfill(symbols, history):
 def futures_volume_signals(pair, current_volume, history):
     rows = sorted(history.get(pair, []), key=lambda x: x.get("timestamp", 0))
     if not rows:
-        return {"1d": None, "3d": None, "7d": None, "14d": None}
+        return {"1d": None, "2d": None, "3d": None, "7d": None, "14d": None}
     now = int(datetime.now(timezone.utc).timestamp())
     out = {}
-    for name, days in (("1d", 1), ("3d", 3), ("7d", 7), ("14d", 14)):
+    # 1d/2d/3d are the short-term display signals.
+    # 7d/14d remain part of the internal pre-pump analysis/scoring.
+    for name, days in (("1d", 1), ("2d", 2), ("3d", 3), ("7d", 7), ("14d", 14)):
         old = nearest(rows, now - days * 86400, 36 * 3600 if days <= 3 else 72 * 3600)
         out[name] = pct(current_volume, old.get("volume")) if old else None
     return out
@@ -1053,7 +1055,7 @@ def format_coin(x):
     return (
         f"🔹 {x['name']} ({x['symbol']})  #{x['rank']}\n"
         f"Score: {x['score']:.1f} | 1h {x['ch1']:+.2f}% | 24h {x['ch24']:+.2f}% | 7d {x['ch7']:+.2f}%\n"
-        f"Vol 1d {f('1d')} | 3d {f('3d')} | 7d {f('7d')} | 14d {f('14d')}\n"
+        f"Vol 1d {f('1d')} | 2d {f('2d')} | 3d {f('3d')}\n"
         f"RSI 5m {r5} | RSI 15m {r15} | RSI 1h {r1}\n"
         f"Technical: 5m/15m/1h/4h/1d loaded={sum(bool(x.get('tech',{}).get(tf)) for tf in ('5m','15m','1h','4h','1d'))}/5\n"
         f"Wallet: {'available' if x.get('wallet') else 'pending/no provider data'} | provider {x.get('wallet_provider','N/A')} | overlap {x.get('wallet_overlap', 0)}\n"
@@ -1203,6 +1205,7 @@ def main():
         "Futures/Perpetual universe: Binance + Bybit + Gate fallback\n"
         "Priority: volume → wallet/whale → technical\n"
         "Volume source: live Futures + daily Futures history\n"
+        "Volume display: 1d / 2d / 3d (7d / 14d retained internally)\n"
         "Fallback: Gate Futures when Binance/Bybit are blocked\n"
         "Technical: Futures 5m / 15m / 1h / 4h / 1d (5m/15m/1h priority)\n"
         "Price pump is NOT required.\n"
