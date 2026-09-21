@@ -36,25 +36,38 @@ _original_apply = scanner.apply_wallet_signals
 _original_format = scanner.format_coin
 
 
-def wallet_win_stats(history, wallet, symbol, lookahead=336):
-    rows = [r for r in history.get(wallet, []) if r.get("symbol") == symbol]
-    rows = sorted(rows, key=lambda r: int(r.get("timestamp", 0)))
+def wallet_win_stats(history, wallet, lookahead=336):
+    """Estimate wallet success from accumulation events across all tracked assets."""
+    by_symbol = {}
+    for row in history.get(wallet, []):
+        symbol = row.get("symbol")
+        if symbol:
+            by_symbol.setdefault(symbol, []).append(row)
+
     attempts = wins = 0
-    for i, row in enumerate(rows):
-        entry = float(row.get("price_usd") or 0)
-        if entry <= 0:
-            continue
-        t0 = int(row.get("timestamp", 0))
-        attempts += 1
-        for nxt in rows[i + 1:]:
-            dt = int(nxt.get("timestamp", 0)) - t0
-            if dt > lookahead * 60:
-                break
-            px = float(nxt.get("price_usd") or 0)
-            if px >= entry * 1.10:
-                wins += 1
-                break
-    return attempts, wins
+    successful_symbols = set()
+    for symbol, rows in by_symbol.items():
+        rows = sorted(rows, key=lambda r: int(r.get("timestamp", 0)))
+        for i in range(1, len(rows)):
+            prev, row = rows[i - 1], rows[i]
+            try:
+                old_pct = float(prev.get("percentage"))
+                new_pct = float(row.get("percentage"))
+                entry = float(row.get("price_usd") or 0)
+            except (TypeError, ValueError):
+                continue
+            if entry <= 0 or new_pct - old_pct < 0.05:
+                continue
+            attempts += 1
+            t0 = int(row.get("timestamp", 0))
+            for nxt in rows[i + 1:]:
+                if int(nxt.get("timestamp", 0)) - t0 > lookahead * 60:
+                    break
+                if float(nxt.get("price_usd") or 0) >= entry * 1.10:
+                    wins += 1
+                    successful_symbols.add(symbol)
+                    break
+    return attempts, wins, successful_symbols
 
 
 def enhanced_goldrush_wallet_layer(coin):
@@ -100,14 +113,29 @@ def enhanced_goldrush_wallet_layer(coin):
     layer["reducing_wallets"] = reducing
     layer["accumulation_count"] = len(accumulating)
     layer["reduction_count"] = len(reducing)
-    layer["wallet_win_stats"] = win_stats\n    layer["smart_wallet_win_rate"] = (sum(x["wins"] for x in win_stats) / sum(x["attempts"] for x in win_stats) * 100) if win_stats and sum(x["attempts"] for x in win_stats) else None\n    layer["smart_wallet_overlap"] = sum(
-        1 for wallet in accumulating
-        if len({
-            r.get("symbol")
-            for r in history.get(wallet["wallet"], [])
-            if r.get("symbol")
-        }) >= 2
-    )
+
+    smart_overlap = 0
+    wallet_stats = []
+    for item in accumulating:
+        wallet = item["wallet"]
+        symbols = {r.get("symbol") for r in history.get(wallet, []) if r.get("symbol")}
+        attempts, wins, successful_symbols = wallet_win_stats(history, wallet)
+        if len(symbols) >= 2:
+            smart_overlap += 1
+        if attempts:
+            wallet_stats.append({
+                "wallet": wallet,
+                "attempts": attempts,
+                "wins": wins,
+                "win_rate": round(wins / attempts * 100, 1),
+                "successful_symbols": sorted(successful_symbols),
+            })
+
+    layer["wallet_win_stats"] = wallet_stats
+    total_attempts = sum(x["attempts"] for x in wallet_stats)
+    total_wins = sum(x["wins"] for x in wallet_stats)
+    layer["smart_wallet_win_rate"] = round(total_wins / total_attempts * 100, 1) if total_attempts else None
+    layer["smart_wallet_overlap"] = smart_overlap
     return layer
 
 
@@ -120,7 +148,8 @@ def enhanced_apply(result, layer):
     reasons = result["reasons"]
 
     acc = int(layer.get("accumulation_count", 0))
-    overlap = int(layer.get("smart_wallet_overlap", 0))\n    win_rate = layer.get("smart_wallet_win_rate")
+    overlap = int(layer.get("smart_wallet_overlap", 0))
+    win_rate = layer.get("smart_wallet_win_rate")
 
     # Wallet-first: reward early holder accumulation, but do not require it.
     if acc >= 1:
@@ -133,7 +162,8 @@ def enhanced_apply(result, layer):
     result["score"] = round(score, 1)
     result["wallet_accumulation"] = acc
     result["smart_wallet_overlap"] = overlap
-    result["wallet_reductions"] = int(layer.get("reduction_count", 0))\n    result["wallet_win_rate"] = win_rate
+    result["wallet_reductions"] = int(layer.get("reduction_count", 0))
+    result["wallet_win_rate"] = win_rate
     return result
 
 
