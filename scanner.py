@@ -31,8 +31,9 @@ NON_CRYPTO_MARKER_NAMES = (
 )
 
 NON_CRYPTO_SYMBOLS = {
-    "USDG", "U", "EUSX", "USDsui", "FIDD", "EURCV", "PAXG", "XAUT",
+    "USDG", "U", "EUSX", "USDSUI", "FIDD", "EURCV", "PAXG", "XAUT",
 }
+
 
 def is_primary_crypto_asset(coin):
     symbol = str(coin.get("symbol") or "").upper()
@@ -45,13 +46,14 @@ def is_primary_crypto_asset(coin):
         return False
     return True
 
+
 CMC_HEADERS = {
     "X-CMC_PRO_API_KEY": CMC_API_KEY,
     "Accepts": "application/json",
 }
 
 session = requests.Session()
-session.headers.update({"User-Agent": "fil-before-pump/1.0"})
+session.headers.update({"User-Agent": "fil-before-pump/2.0"})
 
 
 def get_json(url, params=None, headers=None, timeout=30):
@@ -101,18 +103,67 @@ def nearest(history, target, tolerance):
     return best
 
 
+def historical_cmc_volume(symbol, cmc_id):
+    """Backfill daily volume/price so a fresh bot does not need 14 days of snapshots."""
+    try:
+        data = cmc(
+            "/v3/cryptocurrency/quotes/historical",
+            {
+                "id": str(cmc_id),
+                "count": 15,
+                "interval": "daily",
+                "convert": "USD",
+                "skip_invalid": "true",
+            },
+        )
+        item = (data.get("data") or {}).get(str(cmc_id)) or {}
+        return item.get("quotes") or []
+    except requests.RequestException as e:
+        print(f"CMC history warning {symbol}: {e}")
+        return []
+
+
+def backfill_history_for_coin(symbol, cmc_id, history, now_ts):
+    quotes = historical_cmc_volume(symbol, cmc_id)
+    if not quotes:
+        return
+
+    rows = history.setdefault(symbol, [])
+    existing = {int(x.get("timestamp", 0)): x for x in rows}
+
+    for q in quotes:
+        usd = q.get("quote", {}).get("USD", {})
+        volume = usd.get("volume_24h")
+        price = usd.get("price")
+        ts_text = q.get("timestamp")
+        if volume is None or price is None or not ts_text:
+            continue
+        try:
+            ts = int(datetime.fromisoformat(ts_text.replace("Z", "+00:00")).timestamp())
+        except ValueError:
+            continue
+        existing[ts] = {
+            "timestamp": ts,
+            "volume": float(volume),
+            "price": float(price),
+            "source": "cmc_historical",
+        }
+
+    history[symbol] = sorted(existing.values(), key=lambda x: x.get("timestamp", 0))[-120:]
+
+
 def volume_signals(symbol, volume, price, history, now_ts):
     rows = history.setdefault(symbol, [])
-    rows.append({"timestamp": now_ts, "volume": volume, "price": price})
+    rows.append({"timestamp": now_ts, "volume": volume, "price": price, "source": "snapshot"})
     cutoff = now_ts - 30 * 86400
     history[symbol] = [x for x in rows if x.get("timestamp", 0) >= cutoff]
     rows = history[symbol]
 
     targets = {
         "1d": (1 * 86400, 18 * 3600),
-        "3d": (3 * 86400, 24 * 3600),
-        "7d": (7 * 86400, 36 * 3600),
-        "14d": (14 * 86400, 36 * 3600),
+        "3d": (3 * 86400, 36 * 3600),
+        "7d": (7 * 86400, 60 * 3600),
+        "14d": (14 * 86400, 72 * 3600),
     }
     changes = {}
     for name, (age, tol) in targets.items():
@@ -123,7 +174,6 @@ def volume_signals(symbol, volume, price, history, now_ts):
     positive = [v for v in available if v > 0]
     max_positive = max(positive) if positive else 0.0
 
-    # Early-volume principle: even a small first increase is a signal.
     early = any(v > 0 for v in available)
     strong = any(v >= 3 for v in available)
     acceleration = any(v >= 10 for v in available)
@@ -131,16 +181,41 @@ def volume_signals(symbol, volume, price, history, now_ts):
     return changes, early, strong, acceleration, max_positive
 
 
+BINANCE_SYMBOLS = None
+
+
+def load_binance_symbols():
+    global BINANCE_SYMBOLS
+    if BINANCE_SYMBOLS is not None:
+        return BINANCE_SYMBOLS
+    try:
+        data = get_json(BASE_BINANCE + "/api/v3/exchangeInfo", timeout=30)
+        BINANCE_SYMBOLS = {
+            x["symbol"]
+            for x in data.get("symbols", [])
+            if x.get("status") == "TRADING"
+            and x.get("quoteAsset") == "USDT"
+            and x.get("isSpotTradingAllowed", True)
+        }
+    except requests.RequestException as e:
+        print(f"Binance exchangeInfo warning: {e}")
+        BINANCE_SYMBOLS = set()
+    return BINANCE_SYMBOLS
+
+
 def binance_symbol(symbol):
-    # Binance symbols are not a perfect universe match. Failed lookups are simply skipped.
-    return f"{symbol}USDT"
+    candidate = f"{str(symbol).upper()}USDT"
+    return candidate if candidate in load_binance_symbols() else None
 
 
 def candles(symbol, interval, limit=220):
+    pair = binance_symbol(symbol)
+    if not pair:
+        return []
     try:
         data = get_json(
             BASE_BINANCE + "/api/v3/klines",
-            {"symbol": binance_symbol(symbol), "interval": interval, "limit": limit},
+            {"symbol": pair, "interval": interval, "limit": limit},
             timeout=15,
         )
         if not isinstance(data, list) or len(data) < 60:
@@ -175,8 +250,7 @@ def rsi(closes, period=14):
         avg_loss = (avg_loss * (period - 1) + losses[i]) / period
     if avg_loss == 0:
         return 100.0
-    rs = avg_gain / avg_loss
-    return 100 - (100 / (1 + rs))
+    return 100 - (100 / (1 + avg_gain / avg_loss))
 
 
 def technical_for_interval(symbol, interval):
@@ -225,7 +299,6 @@ def technical_for_interval(symbol, interval):
 
 
 def technical_signals(symbol):
-    # Extra attention to 5m and 1h, while retaining 15m/4h/1d context.
     result = {}
     for interval in ("5m", "15m", "1h", "4h", "1d"):
         result[interval] = technical_for_interval(symbol, interval)
@@ -249,9 +322,6 @@ def score_coin(coin, volume_info, tech):
     if early:
         score += 8
         reasons.append("early volume")
-    # Use the strongest observed horizon, but avoid stacking every threshold.
-    # This keeps the score differentiated instead of giving every volume spike
-    # the same five labels.
     if max_vol >= 25:
         score += 16
         reasons.append("strong volume expansion")
@@ -372,17 +442,6 @@ def solana_token_for_symbol(symbol):
 
 
 def solscan_wallet_layer(symbol):
-    """
-    Solana-only wallet layer.
-
-    This intentionally distinguishes:
-      - holder concentration,
-      - common top-holder wallets,
-      - incoming transfer activity,
-      - token-level buy/sell statistics.
-
-    It does NOT call a transfer a 'buy' unless the provider explicitly labels it.
-    """
     token = solana_token_for_symbol(symbol)
     if not token:
         return {}
@@ -391,7 +450,6 @@ def solscan_wallet_layer(symbol):
     if not mint:
         return {}
 
-    meta = solscan_get("/token/meta", {"address": mint}) or {}
     holders_data = solscan_get(
         "/token/holders",
         {"address": mint, "page": 1, "page_size": 20},
@@ -411,7 +469,6 @@ def solscan_wallet_layer(symbol):
     top20_pct = sum(float(x.get("percentage") or 0) for x in items[:20])
     top5_pct = sum(float(x.get("percentage") or 0) for x in items[:5])
 
-    # Save only wallet identity + holder stats, not private credentials.
     wallet_rows = []
     for h in items:
         owner = h.get("owner")
@@ -500,6 +557,7 @@ def apply_wallet_signals(result, layer):
 
 def format_coin(x):
     v = x["vol_changes"]
+
     def f(k):
         return "N/A" if v.get(k) is None else f"{v[k]:+.1f}%"
 
@@ -512,7 +570,7 @@ def format_coin(x):
         f"Score: {x['score']:.1f} | 1h {x['ch1']:+.2f}% | 24h {x['ch24']:+.2f}% | 7d {x['ch7']:+.2f}%\n"
         f"Vol 1d {f('1d')} | 3d {f('3d')} | 7d {f('7d')} | 14d {f('14d')}\n"
         f"RSI 5m {r5} | RSI 1h {r1}\n"
-        f"Signals: {', '.join(x['reasons'][:6])}\n"
+        f"Signals: {', '.join(x['reasons'][:8])}\n"
     )
 
 
@@ -531,8 +589,26 @@ def main():
     coins = get_market()
     history = load_history()
     now_ts = int(datetime.now(timezone.utc).timestamp())
-    results = []
 
+    # One-time/periodic backfill for all Top-400 assets. Historical CMC quotes
+    # are daily, so they fill the 3d/7d/14d volume context immediately.
+    # Existing rows are reused; the endpoint is only queried when a horizon
+    # is missing.
+    for coin in coins:
+        if not is_primary_crypto_asset(coin):
+            continue
+        symbol = coin.get("symbol", "")
+        cmc_id = coin.get("id")
+        if not symbol or not cmc_id:
+            continue
+        rows = history.get(symbol, [])
+        cutoff14 = now_ts - 14 * 86400
+        has_14d = any(abs(x.get("timestamp", 0) - (now_ts - 14 * 86400)) <= 4 * 86400 for x in rows)
+        if not has_14d:
+            backfill_history_for_coin(symbol, cmc_id, history, now_ts)
+        time.sleep(0.02)
+
+    results = []
     for coin in coins:
         q = coin.get("quote", {}).get("USD", {})
         symbol = coin.get("symbol", "")
@@ -543,10 +619,9 @@ def main():
         if not is_primary_crypto_asset(coin):
             continue
 
+        # Save a current snapshot after historical backfill.
         vol_info = volume_signals(symbol, volume, price, history, now_ts)
         if not vol_info[1]:
-            # No observed positive volume change yet; keep scanning, but don't spend
-            # Binance requests on it.
             continue
 
         tech = technical_signals(symbol)
@@ -567,8 +642,6 @@ def main():
 
     save_history(history)
 
-    # Wallet/whale layer: only run on the strongest early candidates to
-    # control API usage. Solscan currently covers Solana tokens.
     wallet_layers = []
     if SOLSCAN_API_KEY and results:
         results.sort(key=lambda x: x["score"], reverse=True)
@@ -585,25 +658,23 @@ def main():
             if result["wallet_overlap"] >= 1:
                 result["score"] = round(result["score"] + min(10, 4 * result["wallet_overlap"]), 1)
                 result["reasons"].append(f"wallet overlap {result['wallet_overlap']}")
-    else:
-        wallet_history = {}
-
     results.sort(key=lambda x: x["score"], reverse=True)
 
-    # Top candidates are alerts, not trade signals. Wallet/whale confirmation is
-    # intentionally a separate layer until a real wallet-data provider is connected.
     header = (
         "🐋 FIL BEFORE PUMP\n\n"
         "Top-400 early candidates\n"
         "Priority: volume → wallet/whale → technical\n"
-        "Volume history: 1D / 3D / 7D / 14D\n"
-        "Technical: 5m / 15m / 1h / 4h / 1d\n"
+        "Volume history: CMC daily backfill + live snapshots\n"
+        "Technical: Binance spot 5m / 15m / 1h / 4h / 1d\n"
         "Price pump is NOT required.\n"
         "🐋 Wallet priority: holder map → buy/sell flow → wallet overlap.\n"
-        "⚠️ Transfers are not labeled as buys unless the provider says so.\n" 
-        "⚠️ Stablecoins/tokenized stocks are excluded from the primary candidate list.\n\n"
+        "⚠️ Transfers are not labeled as buys unless the provider says so.\n"
+        "⚠️ Stablecoins/tokenized stocks/gold-backed assets are excluded.\n\n"
     )
-    message = header + ("\n".join(format_coin(x) for x in results[:20]) if results else "No early-volume candidates with available history.")
+    message = header + (
+        "\n".join(format_coin(x) for x in results[:20])
+        if results else "No early-volume candidates with available history."
+    )
     print(message)
     send_telegram(message)
 
