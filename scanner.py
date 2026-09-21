@@ -784,6 +784,8 @@ def score_coin(coin, volume_info, tech):
 
 
 SOLSCAN_API_KEY = os.environ.get("SOLSCAN_API_KEY", "")
+GOLDRUSH_API_KEY = os.environ.get("GOLDRUSH_API_KEY", "")
+GOLDRUSH_BASE = "https://api.covalenthq.com/v1"
 SOLSCAN_BASE = "https://pro-api.solscan.io/v2.0"
 WALLET_HISTORY_FILE = Path("wallet_history.json")
 
@@ -884,6 +886,97 @@ def solscan_wallet_layer(symbol):
     }
 
 
+def goldrush_get(path, params=None):
+    """Read-only multichain wallet/token data. GoldRush never labels a transfer as a buy/sell here."""
+    if not GOLDRUSH_API_KEY:
+        return None
+    try:
+        r = session.get(
+            GOLDRUSH_BASE + path,
+            params=params or {},
+            headers={"Authorization": f"Bearer {GOLDRUSH_API_KEY}", "accept": "application/json"},
+            timeout=30,
+        )
+        r.raise_for_status()
+        payload = r.json()
+        return (payload.get("data") or {}).get("items", [])
+    except requests.RequestException as e:
+        print(f"GoldRush warning: {e}")
+        return None
+
+
+def coin_contracts(coin):
+    """Return CMC platform contract mappings when present in the listing payload."""
+    out = []
+    platform = coin.get("platform") or {}
+    if isinstance(platform, dict):
+        name = str(platform.get("name") or "").lower()
+        address = platform.get("token_address") or platform.get("tokenAddress")
+        if address:
+            chain = {
+                "ethereum": "eth-mainnet",
+                "bnb smart chain (bep20)": "bsc-mainnet",
+                "bnb smart chain": "bsc-mainnet",
+                "polygon": "matic-mainnet",
+                "arbitrum one": "arbitrum-mainnet",
+                "optimism": "optimism-mainnet",
+                "base": "base-mainnet",
+                "avalanche c-chain": "avalanche-mainnet",
+            }.get(name)
+            if chain:
+                out.append((chain, address))
+    return out
+
+
+def goldrush_wallet_layer(coin):
+    """Holder-map layer for EVM assets.
+
+    We deliberately do NOT infer buys/sells from raw transfers. Those require
+    provider-level trade classification and are handled separately by Solscan
+    where available.
+    """
+    if not GOLDRUSH_API_KEY:
+        return {}
+    contracts = coin_contracts(coin)
+    if not contracts:
+        return {}
+
+    best = {}
+    for chain, address in contracts:
+        items = goldrush_get(f"/{chain}/tokens/{address}/token_holders_v2/", {"page-size": 20, "page-number": 0})
+        if not items:
+            continue
+        holders = []
+        for h in items[:20]:
+            wallet = h.get("address") or h.get("wallet_address") or h.get("walletAddress")
+            if wallet:
+                holders.append({
+                    "wallet": wallet,
+                    "symbol": coin.get("symbol"),
+                    "mint": address,
+                    "chain": chain,
+                    "rank": h.get("rank"),
+                    "percentage": h.get("percentage_relative_to_total_supply") or h.get("percentage"),
+                    "value": h.get("balance_quote") or h.get("value_quote"),
+                    "timestamp": int(datetime.now(timezone.utc).timestamp()),
+                })
+        if holders:
+            best = {
+                "chain": chain,
+                "mint": address,
+                "symbol": coin.get("symbol"),
+                "holders": holders,
+                "top5_holder_pct": sum(float(x.get("percentage") or 0) for x in holders[:5]),
+                "top20_holder_pct": sum(float(x.get("percentage") or 0) for x in holders),
+                "buy_sell_ratio_7d": None,
+                "buyers_7d": 0,
+                "sellers_7d": 0,
+                "provider": "GoldRush",
+            }
+            break
+    return best
+
+
 def update_wallet_history(layer_results):
     try:
         history = json.loads(WALLET_HISTORY_FILE.read_text()) if WALLET_HISTORY_FILE.exists() else {}
@@ -959,7 +1052,7 @@ def format_coin(x):
         f"Vol 1d {f('1d')} | 3d {f('3d')} | 7d {f('7d')} | 14d {f('14d')}\n"
         f"RSI 5m {r5} | RSI 15m {r15} | RSI 1h {r1}\n"
         f"Technical: 5m/15m/1h/4h/1d loaded={sum(bool(x.get('tech',{}).get(tf)) for tf in ('5m','15m','1h','4h','1d'))}/5\n"
-        f"Wallet: {'available' if x.get('wallet') else 'pending/no provider data'} | overlap {x.get('wallet_overlap', 0)}\n"
+        f"Wallet: {'available' if x.get('wallet') else 'pending/no provider data'} | provider {x.get('wallet_provider','N/A')} | overlap {x.get('wallet_overlap', 0)}\n"
         f"Signals: {', '.join(x['reasons'][:10])}\n"
     )
 
@@ -1067,13 +1160,25 @@ def main():
     save_history(history)
 
     wallet_layers = []
-    if SOLSCAN_API_KEY and results:
+    if (SOLSCAN_API_KEY or GOLDRUSH_API_KEY) and results:
         results.sort(key=lambda x: x["score"], reverse=True)
+        coin_by_symbol = {str(c.get("symbol") or "").upper(): c for c in coins}
         for result in results[:100]:
-            layer = solscan_wallet_layer(result["symbol"])
-            if layer:
+            coin = coin_by_symbol.get(str(result["symbol"]).upper())
+            layers = []
+            if SOLSCAN_API_KEY:
+                layer = solscan_wallet_layer(result["symbol"])
+                if layer:
+                    layers.append(layer)
+            if GOLDRUSH_API_KEY and coin:
+                layer = goldrush_wallet_layer(coin)
+                if layer:
+                    layers.append(layer)
+            for layer in layers:
                 wallet_layers.append(layer)
                 apply_wallet_signals(result, layer)
+            if layers:
+                result["wallet_provider"] = ",".join(sorted({l.get("provider", l.get("chain", "onchain")) for l in layers}))
             time.sleep(0.10)
 
         wallet_history = update_wallet_history(wallet_layers)
@@ -1093,7 +1198,8 @@ def main():
         "Technical: Futures 5m / 15m / 1h / 4h / 1d (5m/15m/1h priority)\n"
         "Price pump is NOT required.\n"
         "🐋 Wallet priority: holder map → buy/sell flow → wallet overlap → whale history.\n"
-        "⚠️ Wallet layer requires SOLSCAN_API_KEY; cross-chain whale history requires a supported whale/on-chain provider.\n"
+        "🐋 On-chain providers: Solscan (Solana) + GoldRush (multichain holder/activity data).\n"
+"⚠️ Raw transfers are never treated as buys/sells; provider-labeled trade flow is required for that signal.\n"
         "⚠️ Transfers are not labeled as buys unless the provider says so.\n"
         "⚠️ Stablecoins/tokenized stocks/gold-backed assets are excluded.\n\n"
     )
