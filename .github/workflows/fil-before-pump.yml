@@ -5,6 +5,11 @@ on:
   schedule:
     - cron: "*/30 * * * *"
 
+# جلوگیری از اجرای همزمان Workflow
+concurrency:
+  group: fil-before-pump-scanner
+  cancel-in-progress: false
+
 permissions:
   contents: write
 
@@ -15,6 +20,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -159,7 +166,7 @@ jobs:
               ]
 
               # ---------------------------------------------
-              # FIND HISTORICAL SNAPSHOTS
+              # TARGET TIMES
               # ---------------------------------------------
 
               target_1d = (
@@ -188,17 +195,28 @@ jobs:
               previous_14d = None
 
               # ---------------------------------------------
-              # FIND CLOSEST AVAILABLE SNAPSHOTS
+              # FIND CLOSEST HISTORICAL SNAPSHOTS
               # ---------------------------------------------
 
               for snapshot in history[symbol]:
 
                   ts = snapshot.get("timestamp", 0)
 
-                  diff1 = abs(ts - target_1d)
-                  diff3 = abs(ts - target_3d)
-                  diff7 = abs(ts - target_7d)
-                  diff14 = abs(ts - target_14d)
+                  diff1 = abs(
+                      ts - target_1d
+                  )
+
+                  diff3 = abs(
+                      ts - target_3d
+                  )
+
+                  diff7 = abs(
+                      ts - target_7d
+                  )
+
+                  diff14 = abs(
+                      ts - target_14d
+                  )
 
                   if diff1 <= (18 * 60 * 60):
 
@@ -249,7 +267,7 @@ jobs:
                           previous_14d = snapshot
 
               # ---------------------------------------------
-              # CALCULATE VOLUME CHANGES
+              # VOLUME CHANGE
               # ---------------------------------------------
 
               volume_change_1d = None
@@ -302,15 +320,12 @@ jobs:
                   ) * 100
 
               # ---------------------------------------------
-              # EARLY HISTORY FALLBACK
+              # EARLY VOLUME FILTER
               #
-              # No minimum % requirement.
-              #
-              # If 7D/14D data is not available yet,
-              # use 1D/3D history.
+              # ANY POSITIVE INCREASE COUNTS.
+              # NO 2% / 3% MINIMUM.
+              # NO PRICE FILTER.
               # ---------------------------------------------
-
-              volume_is_increasing = False
 
               available_changes = [
                   x for x in [
@@ -322,30 +337,18 @@ jobs:
                   if x is not None
               ]
 
-              if any(
+              if not available_changes:
+                  continue
+
+              if not any(
                   change > 0
                   for change in available_changes
               ):
-                  volume_is_increasing = True
-
-              if not volume_is_increasing:
                   continue
 
-              # ---------------------------------------------
-              # SCORE
-              # ---------------------------------------------
-
-              score_values = [
-                  x for x in [
-                      volume_change_1d,
-                      volume_change_3d,
-                      volume_change_7d,
-                      volume_change_14d
-                  ]
-                  if x is not None
-              ]
-
-              volume_score = max(score_values)
+              volume_score = max(
+                  available_changes
+              )
 
               candidates.append({
                   "name": name,
@@ -375,7 +378,7 @@ jobs:
           )
 
           # ---------------------------------------------
-          # SORT
+          # SORT CANDIDATES
           # ---------------------------------------------
 
           candidates.sort(
@@ -384,7 +387,7 @@ jobs:
           )
 
           # ---------------------------------------------
-          # TELEGRAM
+          # TELEGRAM MESSAGE
           # ---------------------------------------------
 
           if candidates:
@@ -397,8 +400,9 @@ jobs:
                   "🔎 History: 1D / 3D / 7D / 14D\n"
                   "❌ No price % filter\n"
                   "❌ No minimum volume %\n\n"
-                  "⚠️ Volume signal only — "
-                  "technical/wallet confirmation required.\n\n"
+                  "⚠️ Volume layer only.\n"
+                  "Wallet / Whale / Technical "
+                  "confirmation comes next.\n\n"
               )
 
               for candidate in candidates[:30]:
@@ -438,8 +442,7 @@ jobs:
                   "🐋 FIL BEFORE PUMP\n\n"
                   "No increasing-volume candidates "
                   "found in Top 400.\n\n"
-                  "📊 History checked: "
-                  "1D / 3D / 7D / 14D\n"
+                  "📊 History: 1D / 3D / 7D / 14D\n"
                   "❌ No price filter\n"
                   "❌ No minimum volume threshold"
               )
@@ -471,6 +474,10 @@ jobs:
 
           PY
 
+      # ---------------------------------------------
+      # SAVE HISTORY SAFELY
+      # ---------------------------------------------
+
       - name: Save volume history
         run: |
           git config user.name "github-actions[bot]"
@@ -478,9 +485,11 @@ jobs:
 
           git add volume_history.json
 
-          git diff --cached --quiet || \
-            git commit -m "Update volume history"
+          if git diff --cached --quiet; then
+            echo "No history changes to commit."
+            exit 0
+          fi
 
-          git pull --rebase origin main
+          git commit -m "Update volume history"
 
-          git push origin main
+          git push origin HEAD:main
