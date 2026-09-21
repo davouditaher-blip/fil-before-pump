@@ -14,6 +14,23 @@ BASE_CMC = "https://pro-api.coinmarketcap.com"
 BASE_BINANCE = "https://api.binance.com"
 HISTORY_FILE = Path("volume_history.json")
 
+STABLE_SYMBOLS = {
+    "USDT", "USDC", "DAI", "FDUSD", "USDE", "USD1", "TUSD", "USDD",
+    "PYUSD", "FRAX", "LUSD", "USDP", "GUSD", "EURC", "EURT", "RLUSD",
+}
+
+TOKENIZED_MARKER_NAMES = (
+    "tokenized", "tokenised", "bstock", "bstocks", "xstock",
+    "etf token", "wrapped stock", "stock token",
+)
+
+def is_primary_crypto_asset(coin):
+    symbol = str(coin.get("symbol") or "").upper()
+    name = str(coin.get("name") or "").lower()
+    return symbol not in STABLE_SYMBOLS and not any(
+        marker in name for marker in TOKENIZED_MARKER_NAMES
+    )
+
 CMC_HEADERS = {
     "X-CMC_PRO_API_KEY": CMC_API_KEY,
     "Accepts": "application/json",
@@ -212,55 +229,85 @@ def score_coin(coin, volume_info, tech):
     volume = float(quote.get("volume_24h") or 0)
 
     changes, early, strong, acceleration, max_vol = volume_info
-    score = 0
+    score = 0.0
     reasons = []
 
     if early:
-        score += 20
+        score += 8
         reasons.append("early volume")
-    if strong:
-        score += 10
+    if max_vol >= 2:
+        score += 5
+        reasons.append("volume +2%")
+    if max_vol >= 3:
+        score += 5
         reasons.append("volume +3%")
-    if acceleration:
-        score += 10
+    if max_vol >= 5:
+        score += 4
+        reasons.append("volume +5%")
+    if max_vol >= 10:
+        score += 4
         reasons.append("volume acceleration")
-    if volume > 0 and market_cap > 0 and volume / market_cap >= 0.10:
-        score += 8
-        reasons.append("high vol/mcap")
+    if max_vol >= 25:
+        score += 3
+        reasons.append("strong volume expansion")
 
-    # Do not require a price move. Penalize only obvious late-stage moves.
-    if 0 <= ch24 <= 6:
-        score += 8
+    vol_mcap = (volume / market_cap) if volume > 0 and market_cap > 0 else 0
+    if vol_mcap >= 0.10:
+        score += 5
+        reasons.append("high vol/mcap")
+    elif vol_mcap >= 0.05:
+        score += 3
+        reasons.append("elevated vol/mcap")
+
+    if -2 <= ch24 <= 3:
+        score += 10
+        reasons.append("price very early")
+    elif 3 < ch24 <= 6:
+        score += 6
         reasons.append("price still early")
     elif ch24 > 15:
-        score -= 12
+        score -= 10
         reasons.append("late 24h move")
-    if ch7 <= 15:
-        score += 4
-    if ch30 <= 35:
-        score += 3
-    if ch1 > 0:
-        score += 3
+    elif ch24 > 8:
+        score -= 4
+        reasons.append("price already moving")
 
-    for tf, weight in (("5m", 8), ("1h", 10), ("15m", 6), ("4h", 5), ("1d", 4)):
+    if ch7 <= 12:
+        score += 3
+    if ch30 <= 30:
+        score += 2
+    if ch1 > 0:
+        score += 2
+
+    for tf, weight in (("5m", 10), ("1h", 12), ("15m", 7), ("4h", 5), ("1d", 4)):
         t = tech.get(tf, {})
         if not t:
             continue
         r = t.get("rsi")
         if r is not None and 45 <= r <= 65:
-            score += weight * 0.35
+            score += weight * 0.30
             reasons.append(f"{tf} RSI developing")
         if t.get("ema5") and t.get("ema13") and t["ema5"] > t["ema13"]:
-            score += weight * 0.20
+            score += weight * 0.18
         if t.get("ema20") and t.get("ema50") and t["ema20"] > t["ema50"]:
             score += weight * 0.15
+        if t.get("ema50") and t.get("ema200") and t["ema50"] > t["ema200"]:
+            score += weight * 0.10
         if t.get("vwap") and t.get("close") and t["close"] >= t["vwap"]:
-            score += weight * 0.20
+            score += weight * 0.17
         if t.get("volume_ratio") and t["volume_ratio"] >= 1.20:
             score += weight * 0.25
 
-    return round(score, 1), reasons
+    if max_vol >= 10 and ch24 <= 6:
+        stage = "ACCUMULATION"
+    elif max_vol >= 2 and ch24 <= 3:
+        stage = "EARLY"
+    elif ch24 > 15:
+        stage = "LATE"
+    else:
+        stage = "WATCH"
 
+    return round(score, 1), reasons, stage
 
 
 SOLSCAN_API_KEY = os.environ.get("SOLSCAN_API_KEY", "")
@@ -476,6 +523,8 @@ def main():
         price = float(q.get("price") or 0)
         if not symbol or volume <= 0 or price <= 0:
             continue
+        if not is_primary_crypto_asset(coin):
+            continue
 
         vol_info = volume_signals(symbol, volume, price, history, now_ts)
         if not vol_info[1]:
@@ -484,13 +533,14 @@ def main():
             continue
 
         tech = technical_signals(symbol)
-        score, reasons = score_coin(coin, vol_info, tech)
+        score, reasons, stage = score_coin(coin, vol_info, tech)
         results.append({
             "name": coin.get("name", symbol),
             "symbol": symbol,
             "rank": coin.get("cmc_rank"),
             "score": score,
             "reasons": reasons,
+            "stage": stage,
             "vol_changes": vol_info[0],
             "tech": tech,
             "ch1": float(q.get("percent_change_1h") or 0),
@@ -505,7 +555,7 @@ def main():
     wallet_layers = []
     if SOLSCAN_API_KEY and results:
         results.sort(key=lambda x: x["score"], reverse=True)
-        for result in results[:12]:
+        for result in results[:20]:
             layer = solscan_wallet_layer(result["symbol"])
             if layer:
                 wallet_layers.append(layer)
@@ -532,8 +582,9 @@ def main():
         "Volume history: 1D / 3D / 7D / 14D\n"
         "Technical: 5m / 15m / 1h / 4h / 1d\n"
         "Price pump is NOT required.\n"
-        "🐋 Solana wallet layer: holder map + buy/sell flow + overlap when API is connected.\n"
-        "⚠️ Transfers are not labeled as buys unless the provider says so.\n\n"
+        "🐋 Wallet priority: holder map → buy/sell flow → wallet overlap.\n"
+        "⚠️ Transfers are not labeled as buys unless the provider says so.\n" 
+        "⚠️ Stablecoins/tokenized stocks are excluded from the primary candidate list.\n\n"
     )
     message = header + ("\n".join(format_coin(x) for x in results[:20]) if results else "No early-volume candidates with available history.")
     print(message)
