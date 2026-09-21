@@ -995,6 +995,7 @@ def update_wallet_history(layer_results):
                 "rank": holder.get("rank"),
                 "percentage": holder.get("percentage"),
                 "value": holder.get("value"),
+                "price_usd": result.get("price_usd"),
             })
             history[wallet] = history[wallet][-200:]
 
@@ -1175,6 +1176,7 @@ def main():
                 if layer:
                     layers.append(layer)
             for layer in layers:
+                layer["price_usd"] = float(result.get("price_usd") or 0) if result.get("price_usd") is not None else None
                 wallet_layers.append(layer)
                 apply_wallet_signals(result, layer)
             if layers:
