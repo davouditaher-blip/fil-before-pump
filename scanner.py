@@ -12,6 +12,7 @@ TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 
 BASE_CMC = "https://pro-api.coinmarketcap.com"
 BASE_BINANCE = "https://api.binance.com"
+BASE_BINANCE_FUTURES = "https://fapi.binance.com"
 BASE_BYBIT = "https://api.bybit.com"
 HISTORY_FILE = Path("volume_history.json")
 
@@ -70,7 +71,7 @@ def cmc(endpoint, params=None):
 def get_market():
     return cmc(
         "/v1/cryptocurrency/listings/latest",
-        {"start": 1, "limit": 400, "convert": "USD"},
+        {"start": 1, "limit": 1000, "convert": "USD"},
     )["data"]
 
 
@@ -180,8 +181,28 @@ def volume_signals(symbol, volume, price, history, now_ts):
 
 
 BINANCE_SYMBOLS = None
+BINANCE_FUTURES_SYMBOLS = None
 BYBIT_SPOT_SYMBOLS = None
 BYBIT_LINEAR_SYMBOLS = None
+
+
+
+def load_binance_futures_symbols():
+    global BINANCE_FUTURES_SYMBOLS
+    if BINANCE_FUTURES_SYMBOLS is not None:
+        return BINANCE_FUTURES_SYMBOLS
+    try:
+        data = get_json(BASE_BINANCE_FUTURES + "/fapi/v1/exchangeInfo", timeout=30)
+        BINANCE_FUTURES_SYMBOLS = {
+            x["symbol"] for x in data.get("symbols", [])
+            if x.get("status") == "TRADING"
+            and x.get("quoteAsset") == "USDT"
+            and x.get("contractType") == "PERPETUAL"
+        }
+    except requests.RequestException as e:
+        print(f"Binance Futures exchangeInfo warning: {e}")
+        BINANCE_FUTURES_SYMBOLS = set()
+    return BINANCE_FUTURES_SYMBOLS
 
 
 def load_binance_symbols():
@@ -244,6 +265,18 @@ def binance_symbol(symbol):
     return candidate if candidate in load_binance_symbols() else None
 
 
+
+def futures_symbol_info(symbol):
+    candidate = f"{str(symbol).upper()}USDT"
+    exchanges = []
+    if candidate in load_binance_futures_symbols():
+        exchanges.append("Binance Futures")
+    _, linear = load_bybit_symbols()
+    if candidate in linear:
+        exchanges.append("Bybit Futures")
+    return candidate if exchanges else None, exchanges
+
+
 def bybit_symbol(symbol):
     candidate = f"{str(symbol).upper()}USDT"
     spot, linear = load_bybit_symbols()
@@ -255,11 +288,11 @@ def bybit_symbol(symbol):
 
 
 def candles(symbol, interval, limit=220):
-    pair = binance_symbol(symbol)
-    if pair:
+    pair = f"{str(symbol).upper()}USDT"
+    if pair in load_binance_futures_symbols():
         try:
             data = get_json(
-                BASE_BINANCE + "/api/v3/klines",
+                BASE_BINANCE_FUTURES + "/fapi/v1/klines",
                 {"symbol": pair, "interval": interval, "limit": limit},
                 timeout=15,
             )
@@ -269,7 +302,7 @@ def candles(symbol, interval, limit=220):
             pass
 
     pair, category = bybit_symbol(symbol)
-    if not pair:
+    if not pair or category != "linear":
         return []
     bybit_interval = {"5m": "5", "15m": "15", "1h": "60", "4h": "240", "1d": "D"}.get(interval)
     if not bybit_interval:
@@ -381,27 +414,41 @@ def score_coin(coin, volume_info, tech):
     volume = float(quote.get("volume_24h") or 0)
 
     changes, early, strong, acceleration, max_vol = volume_info
+    current_1d = changes.get("1d")
+    current_3d = changes.get("3d")
+    context_7d = changes.get("7d")
+    context_14d = changes.get("14d")
     score = 0.0
     reasons = []
 
-    if early:
+    current_positive = [v for v in (current_1d, current_3d) if v is not None and v > 0]
+    current_max = max(current_positive) if current_positive else 0.0
+
+    if current_positive:
         score += 8
         reasons.append("early volume")
-    if max_vol >= 25:
+    if current_max >= 25:
         score += 16
-        reasons.append("strong volume expansion")
-    elif max_vol >= 10:
+        reasons.append("strong current volume expansion")
+    elif current_max >= 10:
         score += 12
-        reasons.append("volume acceleration")
-    elif max_vol >= 5:
+        reasons.append("current volume acceleration")
+    elif current_max >= 5:
         score += 9
-        reasons.append("volume +5%")
-    elif max_vol >= 3:
+        reasons.append("current volume +5%")
+    elif current_max >= 3:
         score += 7
-        reasons.append("volume +3%")
-    elif max_vol >= 2:
+        reasons.append("current volume +3%")
+    elif current_max >= 2:
         score += 5
-        reasons.append("volume +2%")
+        reasons.append("current volume +2%")
+
+    if context_7d is not None and context_7d > 0:
+        score += 2
+        reasons.append("7d volume context")
+    if context_14d is not None and context_14d > 0:
+        score += 2
+        reasons.append("14d volume context")
 
     vol_mcap = (volume / market_cap) if volume > 0 and market_cap > 0 else 0
     if vol_mcap >= 0.10:
@@ -450,9 +497,9 @@ def score_coin(coin, volume_info, tech):
         if t.get("volume_ratio") and t["volume_ratio"] >= 1.20:
             score += weight * 0.25
 
-    if max_vol >= 10 and ch24 <= 6:
+    if current_max >= 10 and ch24 <= 6:
         stage = "ACCUMULATION"
-    elif max_vol >= 2 and ch24 <= 3:
+    elif current_max >= 2 and ch24 <= 3:
         stage = "EARLY"
     elif ch24 > 15:
         stage = "LATE"
@@ -657,6 +704,10 @@ def main():
 
     historical_cmc_volume_batch(coins, history, now_ts)
 
+    binance_futures = load_binance_futures_symbols()
+    _, bybit_linear = load_bybit_symbols()
+    futures_universe = binance_futures | bybit_linear
+
     results = []
     for coin in coins:
         q = coin.get("quote", {}).get("USD", {})
@@ -667,14 +718,14 @@ def main():
             continue
         if not is_primary_crypto_asset(coin):
             continue
+        if f"{str(symbol).upper()}USDT" not in futures_universe:
+            continue
 
-        # Save a current snapshot after historical backfill.
         vol_info = volume_signals(symbol, volume, price, history, now_ts)
         if not vol_info[1]:
             continue
 
-        tech = technical_signals(symbol)
-        score, reasons, stage = score_coin(coin, vol_info, tech)
+        score, reasons, stage = score_coin(coin, vol_info, {})
         results.append({
             "name": coin.get("name", symbol),
             "symbol": symbol,
@@ -683,11 +734,35 @@ def main():
             "reasons": reasons,
             "stage": stage,
             "vol_changes": vol_info[0],
-            "tech": tech,
+            "tech": {},
             "ch1": float(q.get("percent_change_1h") or 0),
             "ch24": float(q.get("percent_change_24h") or 0),
             "ch7": float(q.get("percent_change_7d") or 0),
         })
+
+    results.sort(key=lambda x: (
+        x["vol_changes"].get("1d") or -999999,
+        x["vol_changes"].get("3d") or -999999,
+        x["score"],
+    ), reverse=True)
+
+    for result in results[:200]:
+        tech = technical_signals(result["symbol"])
+        coin = next((c for c in coins if c.get("symbol") == result["symbol"]), None)
+        if coin:
+            score, reasons, stage = score_coin(
+                coin,
+                (result["vol_changes"], True, False, False,
+                 max([v for v in result["vol_changes"].values() if v is not None and v > 0], default=0.0)),
+                tech,
+            )
+            result["score"] = score
+            result["reasons"] = reasons
+            result["stage"] = stage
+            result["tech"] = tech
+
+    for result in results[200:]:
+        result["tech"] = {}
 
     save_history(history)
 
@@ -711,10 +786,10 @@ def main():
 
     header = (
         "🐋 FIL BEFORE PUMP\n\n"
-        "Top-400 early candidates\n"
+        "Futures/Perpetual universe: Binance + Bybit\n"
         "Priority: volume → wallet/whale → technical\n"
         "Volume history: CMC daily backfill + live snapshots\n"
-        "Technical: Binance + Bybit 5m / 15m / 1h / 4h / 1d\n"
+        "Technical: Futures 5m / 15m / 1h / 4h / 1d\n"
         "Price pump is NOT required.\n"
         "🐋 Wallet priority: holder map → buy/sell flow → wallet overlap.\n"
         "⚠️ Transfers are not labeled as buys unless the provider says so.\n"
