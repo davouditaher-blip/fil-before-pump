@@ -591,6 +591,43 @@ def technical_for_interval(symbol, interval):
         if len(vols) >= 22 and sum(vols[-21:-1]) > 0 else None
     )
 
+    # Ichimoku (standard 9/26/52 settings). We keep the raw levels so the
+    # scanner can distinguish developing bullish structure from late extension.
+    ichimoku_tenkan = None
+    ichimoku_kijun = None
+    ichimoku_span_a = None
+    ichimoku_span_b = None
+    if len(closes) >= 52:
+        tenkan_high = max(highs[-9:])
+        tenkan_low = min(lows[-9:])
+        kijun_high = max(highs[-26:])
+        kijun_low = min(lows[-26:])
+        ichimoku_tenkan = (tenkan_high + tenkan_low) / 2
+        ichimoku_kijun = (kijun_high + kijun_low) / 2
+        span_b_high = max(highs[-52:])
+        span_b_low = min(lows[-52:])
+        ichimoku_span_b = (span_b_high + span_b_low) / 2
+        ichimoku_span_a = (ichimoku_tenkan + ichimoku_kijun) / 2
+
+    # MACD line and signal line; a bullish cross is more useful than simply
+    # checking whether MACD is positive.
+    macd_signal = None
+    macd_prev = None
+    macd_signal_prev = None
+    if len(closes) >= 35:
+        macd_series = []
+        for i in range(26, len(closes) + 1):
+            fast = ema(closes[:i], 12)
+            slow = ema(closes[:i], 26)
+            if fast is not None and slow is not None:
+                macd_series.append(fast - slow)
+        if macd_series:
+            macd = macd_series[-1]
+            macd_signal = ema(macd_series, 9)
+            if len(macd_series) >= 2:
+                macd_prev = macd_series[-2]
+                macd_signal_prev = ema(macd_series[:-1], 9)
+
     return {
         "rsi": r,
         "ema5": e5,
@@ -599,8 +636,18 @@ def technical_for_interval(symbol, interval):
         "ema50": e50,
         "ema200": e200,
         "macd": macd,
+        "macd_signal": macd_signal,
+        "macd_bull_cross": (
+            macd is not None and macd_signal is not None and
+            macd_prev is not None and macd_signal_prev is not None and
+            macd > macd_signal and macd_prev <= macd_signal_prev
+        ),
         "vwap": vwap,
         "volume_ratio": volume_ratio,
+        "ichimoku_tenkan": ichimoku_tenkan,
+        "ichimoku_kijun": ichimoku_kijun,
+        "ichimoku_span_a": ichimoku_span_a,
+        "ichimoku_span_b": ichimoku_span_b,
         "close": closes[-1],
     }
 
@@ -705,6 +752,24 @@ def score_coin(coin, volume_info, tech):
             score += weight * 0.17
         if t.get("volume_ratio") and t["volume_ratio"] >= 1.20:
             score += weight * 0.25
+            reasons.append(f"{tf} volume confirmation")
+        if t.get("macd_bull_cross"):
+            score += weight * 0.35
+            reasons.append(f"{tf} MACD bullish cross")
+        elif t.get("macd") is not None and t.get("macd_signal") is not None and t["macd"] > t["macd_signal"]:
+            score += weight * 0.12
+        tenkan = t.get("ichimoku_tenkan")
+        kijun = t.get("ichimoku_kijun")
+        close = t.get("close")
+        span_a = t.get("ichimoku_span_a")
+        span_b = t.get("ichimoku_span_b")
+        if tenkan is not None and kijun is not None and tenkan > kijun:
+            score += weight * 0.18
+            reasons.append(f"{tf} Ichimoku TK bullish")
+        if close is not None and span_a is not None and span_b is not None:
+            cloud_top = max(span_a, span_b)
+            if close >= cloud_top:
+                score += weight * 0.12
 
     if current_max >= 10 and ch24 <= 6:
         stage = "ACCUMULATION"
@@ -893,7 +958,9 @@ def format_coin(x):
         f"Score: {x['score']:.1f} | 1h {x['ch1']:+.2f}% | 24h {x['ch24']:+.2f}% | 7d {x['ch7']:+.2f}%\n"
         f"Vol 1d {f('1d')} | 3d {f('3d')} | 7d {f('7d')} | 14d {f('14d')}\n"
         f"RSI 5m {r5} | RSI 15m {r15} | RSI 1h {r1}\n"
-        f"Signals: {', '.join(x['reasons'][:8])}\n"
+        f"Technical: 5m/15m/1h/4h/1d loaded={sum(bool(x.get('tech',{}).get(tf)) for tf in ('5m','15m','1h','4h','1d'))}/5\n"
+        f"Wallet: {'available' if x.get('wallet') else 'pending/no provider data'} | overlap {x.get('wallet_overlap', 0)}\n"
+        f"Signals: {', '.join(x['reasons'][:10])}\n"
     )
 
 
@@ -979,7 +1046,7 @@ def main():
         x["vol_changes"].get("3d") or -999999,
     ), reverse=True)
 
-    for result in results[:200]:
+    for result in results:
         tech = technical_signals(result["symbol"])
         coin = next((c for c in coins if c.get("symbol") == result["symbol"]), None)
         if coin:
@@ -1002,7 +1069,7 @@ def main():
     wallet_layers = []
     if SOLSCAN_API_KEY and results:
         results.sort(key=lambda x: x["score"], reverse=True)
-        for result in results[:30]:
+        for result in results[:100]:
             layer = solscan_wallet_layer(result["symbol"])
             if layer:
                 wallet_layers.append(layer)
@@ -1025,7 +1092,8 @@ def main():
         "Fallback: Gate Futures when Binance/Bybit are blocked\n"
         "Technical: Futures 5m / 15m / 1h / 4h / 1d (5m/15m/1h priority)\n"
         "Price pump is NOT required.\n"
-        "🐋 Wallet priority: holder map → buy/sell flow → wallet overlap.\n"
+        "🐋 Wallet priority: holder map → buy/sell flow → wallet overlap → whale history.\n"
+        "⚠️ Wallet layer requires SOLSCAN_API_KEY; cross-chain whale history requires a supported whale/on-chain provider.\n"
         "⚠️ Transfers are not labeled as buys unless the provider says so.\n"
         "⚠️ Stablecoins/tokenized stocks/gold-backed assets are excluded.\n\n"
     )
