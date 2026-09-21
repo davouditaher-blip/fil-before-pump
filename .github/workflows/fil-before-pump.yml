@@ -37,6 +37,7 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           SOLSCAN_API_KEY: ${{ secrets.SOLSCAN_API_KEY }}
           GOLDRUSH_API_KEY: ${{ secrets.GOLDRUSH_API_KEY }}
+          COINGLASS_API_KEY: ${{ secrets.COINGLASS_API_KEY }}
         run: python wallet_enhancement.py
 
       - name: Save volume history
