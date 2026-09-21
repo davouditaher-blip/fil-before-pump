@@ -370,7 +370,7 @@ def save_futures_history(history):
 
 def futures_daily_backfill(symbols, history):
     now = int(datetime.now(timezone.utc).timestamp())
-    stale_before = now - 6 * 3600
+    stale_before = now - 36 * 3600
     fetched = 0
     binance_futures = load_binance_futures_symbols()
     _, bybit_linear = load_bybit_symbols()
@@ -801,12 +801,15 @@ def main():
     ftickers = futures_tickers()
     fhistory = load_futures_history()
 
-    ranked_pairs = sorted(
-        ((pair, data) for pair, data in ftickers.items() if pair in futures_universe and data["volume"] > 0),
-        key=lambda x: x[1]["volume"],
-        reverse=True,
-    )
-    futures_daily_backfill([p for p, _ in ranked_pairs[:180]], fhistory)
+    eligible_pairs = []
+    for coin in coins:
+        symbol = str(coin.get("symbol") or "").upper()
+        pair = f"{symbol}USDT"
+        if symbol and is_primary_crypto_asset(coin) and pair in futures_universe and pair in ftickers and ftickers[pair]["volume"] > 0:
+            eligible_pairs.append(pair)
+
+    # Backfill history for the actual CMC top-300 Futures-eligible scan universe.
+    futures_daily_backfill(eligible_pairs, fhistory)
     save_futures_history(fhistory)
 
     results = []
