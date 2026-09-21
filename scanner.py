@@ -687,7 +687,7 @@ def score_coin(coin, volume_info, tech):
     if ch1 > 0:
         score += 2
 
-    for tf, weight in (("5m", 10), ("1h", 12), ("15m", 7), ("4h", 5), ("1d", 4)):
+    for tf, weight in (("5m", 10), ("15m", 9), ("1h", 12), ("4h", 5), ("1d", 4)):
         t = tech.get(tf, {})
         if not t:
             continue
@@ -885,12 +885,14 @@ def format_coin(x):
     t5, t1 = x["tech"].get("5m", {}), x["tech"].get("1h", {})
     r5 = "N/A" if t5.get("rsi") is None else f"{t5['rsi']:.0f}"
     r1 = "N/A" if t1.get("rsi") is None else f"{t1['rsi']:.0f}"
+    t15 = x["tech"].get("15m", {})
+    r15 = "N/A" if t15.get("rsi") is None else f"{t15['rsi']:.0f}"
 
     return (
         f"🔹 {x['name']} ({x['symbol']})  #{x['rank']}\n"
         f"Score: {x['score']:.1f} | 1h {x['ch1']:+.2f}% | 24h {x['ch24']:+.2f}% | 7d {x['ch7']:+.2f}%\n"
         f"Vol 1d {f('1d')} | 3d {f('3d')} | 7d {f('7d')} | 14d {f('14d')}\n"
-        f"RSI 5m {r5} | RSI 1h {r1}\n"
+        f"RSI 5m {r5} | RSI 15m {r15} | RSI 1h {r1}\n"
         f"Signals: {', '.join(x['reasons'][:8])}\n"
     )
 
@@ -1000,7 +1002,7 @@ def main():
     wallet_layers = []
     if SOLSCAN_API_KEY and results:
         results.sort(key=lambda x: x["score"], reverse=True)
-        for result in results[:20]:
+        for result in results[:30]:
             layer = solscan_wallet_layer(result["symbol"])
             if layer:
                 wallet_layers.append(layer)
@@ -1021,14 +1023,14 @@ def main():
         "Priority: volume → wallet/whale → technical\n"
         "Volume source: live Futures + daily Futures history\n"
         "Fallback: Gate Futures when Binance/Bybit are blocked\n"
-        "Technical: Futures 5m / 15m / 1h / 4h / 1d\n"
+        "Technical: Futures 5m / 15m / 1h / 4h / 1d (5m/15m/1h priority)\n"
         "Price pump is NOT required.\n"
         "🐋 Wallet priority: holder map → buy/sell flow → wallet overlap.\n"
         "⚠️ Transfers are not labeled as buys unless the provider says so.\n"
         "⚠️ Stablecoins/tokenized stocks/gold-backed assets are excluded.\n\n"
     )
     message = header + (
-        "\n".join(format_coin(x) for x in results[:20])
+        "\n".join(format_coin(x) for x in results[:30])
         if results else "No early-volume candidates with available history."
     )
     print(message)
