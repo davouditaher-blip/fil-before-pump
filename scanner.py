@@ -24,12 +24,26 @@ TOKENIZED_MARKER_NAMES = (
     "etf token", "wrapped stock", "stock token",
 )
 
+NON_CRYPTO_MARKER_NAMES = (
+    "global dollar", "digital dollar", "dollar", "stables",
+    "stablecoin", "stable coin", "euro coinvertible",
+    "gold", "pax gold", "tether gold", "tokenized gold",
+)
+
+NON_CRYPTO_SYMBOLS = {
+    "USDG", "U", "EUSX", "USDsui", "FIDD", "EURCV", "PAXG", "XAUT",
+}
+
 def is_primary_crypto_asset(coin):
     symbol = str(coin.get("symbol") or "").upper()
     name = str(coin.get("name") or "").lower()
-    return symbol not in STABLE_SYMBOLS and not any(
-        marker in name for marker in TOKENIZED_MARKER_NAMES
-    )
+    if symbol in STABLE_SYMBOLS or symbol in NON_CRYPTO_SYMBOLS:
+        return False
+    if any(marker in name for marker in TOKENIZED_MARKER_NAMES):
+        return False
+    if any(marker in name for marker in NON_CRYPTO_MARKER_NAMES):
+        return False
+    return True
 
 CMC_HEADERS = {
     "X-CMC_PRO_API_KEY": CMC_API_KEY,
@@ -235,21 +249,24 @@ def score_coin(coin, volume_info, tech):
     if early:
         score += 8
         reasons.append("early volume")
-    if max_vol >= 2:
+    # Use the strongest observed horizon, but avoid stacking every threshold.
+    # This keeps the score differentiated instead of giving every volume spike
+    # the same five labels.
+    if max_vol >= 25:
+        score += 16
+        reasons.append("strong volume expansion")
+    elif max_vol >= 10:
+        score += 12
+        reasons.append("volume acceleration")
+    elif max_vol >= 5:
+        score += 9
+        reasons.append("volume +5%")
+    elif max_vol >= 3:
+        score += 7
+        reasons.append("volume +3%")
+    elif max_vol >= 2:
         score += 5
         reasons.append("volume +2%")
-    if max_vol >= 3:
-        score += 5
-        reasons.append("volume +3%")
-    if max_vol >= 5:
-        score += 4
-        reasons.append("volume +5%")
-    if max_vol >= 10:
-        score += 4
-        reasons.append("volume acceleration")
-    if max_vol >= 25:
-        score += 3
-        reasons.append("strong volume expansion")
 
     vol_mcap = (volume / market_cap) if volume > 0 and market_cap > 0 else 0
     if vol_mcap >= 0.10:
