@@ -453,12 +453,12 @@ def format_coin(x):
 
 
 def send_telegram(text):
-    if not BOT_TOKEN or not CHAT_ID:
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         print("Telegram secrets not configured; skipping Telegram.")
         return
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     for i in range(0, len(text), 3900):
-        r = session.post(url, data={"chat_id": CHAT_ID, "text": text[i:i+3900]}, timeout=30)
+        r = session.post(url, data={"chat_id": TELEGRAM_CHAT_ID, "text": text[i:i+3900]}, timeout=30)
         r.raise_for_status()
 
 
