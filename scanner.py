@@ -323,6 +323,98 @@ def candles(symbol, interval, limit=220):
 
 
 
+
+
+FUTURES_HISTORY_FILE = Path("futures_volume_history.json")
+
+
+def futures_tickers():
+    out = {}
+    try:
+        data = get_json(BASE_BINANCE_FUTURES + "/fapi/v1/ticker/24hr", timeout=30)
+        for x in data if isinstance(data, list) else []:
+            symbol = x.get("symbol")
+            if symbol and symbol.endswith("USDT"):
+                out[symbol] = {"volume": float(x.get("quoteVolume") or 0), "price": float(x.get("lastPrice") or 0), "change24": float(x.get("priceChangePercent") or 0)}
+    except requests.RequestException as e:
+        print(f"Binance Futures ticker warning: {e}")
+    try:
+        data = get_json(BASE_BYBIT + "/v5/market/tickers", {"category": "linear"}, timeout=30)
+        for x in ((data.get("result") or {}).get("list") or []):
+            symbol = x.get("symbol")
+            if not symbol or not symbol.endswith("USDT"):
+                continue
+            volume = float(x.get("turnover24h") or 0)
+            price = float(x.get("lastPrice") or 0)
+            if volume <= 0 or price <= 0:
+                continue
+            if symbol not in out or volume > out[symbol]["volume"]:
+                out[symbol] = {"volume": volume, "price": price, "change24": float(x.get("price24hPcnt") or 0) * 100}
+    except requests.RequestException as e:
+        print(f"Bybit Futures ticker warning: {e}")
+    return out
+
+
+def load_futures_history():
+    if not FUTURES_HISTORY_FILE.exists():
+        return {}
+    try:
+        return json.loads(FUTURES_HISTORY_FILE.read_text())
+    except Exception:
+        return {}
+
+
+def save_futures_history(history):
+    FUTURES_HISTORY_FILE.write_text(json.dumps(history, indent=2))
+
+
+def futures_daily_backfill(symbols, history):
+    now = int(datetime.now(timezone.utc).timestamp())
+    stale_before = now - 6 * 3600
+    fetched = 0
+    binance_futures = load_binance_futures_symbols()
+    _, bybit_linear = load_bybit_symbols()
+    for pair in symbols:
+        rows = history.get(pair, [])
+        if rows and max(int(x.get("timestamp", 0)) for x in rows) >= stale_before:
+            continue
+        got = False
+        if pair in binance_futures:
+            try:
+                data = get_json(BASE_BINANCE_FUTURES + "/fapi/v1/klines", {"symbol": pair, "interval": "1d", "limit": 16}, timeout=15)
+                if isinstance(data, list) and data:
+                    history[pair] = [{"timestamp": int(x[0]) // 1000, "volume": float(x[7]), "source": "binance_futures"} for x in data if float(x[7] or 0) > 0]
+                    got = True
+            except requests.RequestException:
+                pass
+        if not got and pair in bybit_linear:
+            try:
+                data = get_json(BASE_BYBIT + "/v5/market/kline", {"category": "linear", "symbol": pair, "interval": "D", "limit": 16}, timeout=15)
+                rows2 = ((data.get("result") or {}).get("list") or [])
+                if rows2:
+                    history[pair] = [{"timestamp": int(x[0]) // 1000, "volume": float(x[6]), "source": "bybit_futures"} for x in rows2 if float(x[6] or 0) > 0]
+                    got = True
+            except requests.RequestException:
+                pass
+        if got:
+            fetched += 1
+        if fetched >= 180:
+            break
+        time.sleep(0.025)
+
+
+def futures_volume_signals(pair, current_volume, history):
+    rows = sorted(history.get(pair, []), key=lambda x: x.get("timestamp", 0))
+    if not rows:
+        return {"1d": None, "3d": None, "7d": None, "14d": None}
+    now = int(datetime.now(timezone.utc).timestamp())
+    out = {}
+    for name, days in (("1d", 1), ("3d", 3), ("7d", 7), ("14d", 14)):
+        old = nearest(rows, now - days * 86400, 36 * 3600 if days <= 3 else 72 * 3600)
+        out[name] = pct(current_volume, old.get("volume")) if old else None
+    return out
+
+
 def ema(values, period):
     if len(values) < period:
         return None
@@ -702,30 +794,48 @@ def main():
     history = load_history()
     now_ts = int(datetime.now(timezone.utc).timestamp())
 
-    historical_cmc_volume_batch(coins, history, now_ts)
-
+    # Futures are the primary volume source; CMC is metadata only.
     binance_futures = load_binance_futures_symbols()
     _, bybit_linear = load_bybit_symbols()
     futures_universe = binance_futures | bybit_linear
+    ftickers = futures_tickers()
+    fhistory = load_futures_history()
+
+    ranked_pairs = sorted(
+        ((pair, data) for pair, data in ftickers.items() if pair in futures_universe and data["volume"] > 0),
+        key=lambda x: x[1]["volume"],
+        reverse=True,
+    )
+    futures_daily_backfill([p for p, _ in ranked_pairs[:180]], fhistory)
+    save_futures_history(fhistory)
 
     results = []
     for coin in coins:
         q = coin.get("quote", {}).get("USD", {})
         symbol = coin.get("symbol", "")
-        volume = float(q.get("volume_24h") or 0)
-        price = float(q.get("price") or 0)
-        if not symbol or volume <= 0 or price <= 0:
+        pair = f"{str(symbol).upper()}USDT"
+        ticker = ftickers.get(pair)
+        if not symbol or not ticker or ticker["volume"] <= 0:
             continue
-        if not is_primary_crypto_asset(coin):
-            continue
-        if f"{str(symbol).upper()}USDT" not in futures_universe:
+        if not is_primary_crypto_asset(coin) or pair not in futures_universe:
             continue
 
-        vol_info = volume_signals(symbol, volume, price, history, now_ts)
-        if not vol_info[1] and not any(v is not None for v in vol_info[0].values()):
-            score, reasons, stage = 0.0, ["futures contract", "volume history pending"], "WATCH"
+        changes = futures_volume_signals(pair, ticker["volume"], fhistory)
+        available = [v for v in changes.values() if v is not None]
+        early = any(v > 0 for v in available)
+        strong = any(v >= 3 for v in available)
+        acceleration = any(v >= 10 for v in available)
+        vol_info = (changes, early, strong, acceleration, max([v for v in available if v > 0], default=0.0))
+
+        coin_for_score = dict(coin)
+        coin_for_score["quote"] = dict(coin["quote"])
+        coin_for_score["quote"]["USD"] = dict(q)
+        coin_for_score["quote"]["USD"]["volume_24h"] = ticker["volume"]
+        if not available:
+            score, reasons, stage = 1.0, ["futures contract", "futures volume history pending"], "WATCH"
         else:
-            score, reasons, stage = score_coin(coin, vol_info, {})
+            score, reasons, stage = score_coin(coin_for_score, vol_info, {})
+
         results.append({
             "name": coin.get("name", symbol),
             "symbol": symbol,
@@ -733,7 +843,7 @@ def main():
             "score": score,
             "reasons": reasons,
             "stage": stage,
-            "vol_changes": vol_info[0],
+            "vol_changes": changes,
             "tech": {},
             "ch1": float(q.get("percent_change_1h") or 0),
             "ch24": float(q.get("percent_change_24h") or 0),
@@ -788,7 +898,7 @@ def main():
         "🐋 FIL BEFORE PUMP\n\n"
         "Futures/Perpetual universe: Binance + Bybit\n"
         "Priority: volume → wallet/whale → technical\n"
-        "Volume history: CMC daily backfill + live snapshots\n"
+        "Volume source: live Binance/Bybit Futures + daily futures history\n"
         "Technical: Futures 5m / 15m / 1h / 4h / 1d\n"
         "Price pump is NOT required.\n"
         "🐋 Wallet priority: holder map → buy/sell flow → wallet overlap.\n"
