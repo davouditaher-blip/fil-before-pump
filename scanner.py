@@ -14,6 +14,7 @@ BASE_CMC = "https://pro-api.coinmarketcap.com"
 BASE_BINANCE = "https://api.binance.com"
 BASE_BINANCE_FUTURES = "https://fapi.binance.com"
 BASE_BYBIT = "https://api.bybit.com"
+BASE_GATE = "https://api.gateio.ws"
 HISTORY_FILE = Path("volume_history.json")
 
 STABLE_SYMBOLS = {
@@ -184,6 +185,7 @@ BINANCE_SYMBOLS = None
 BINANCE_FUTURES_SYMBOLS = None
 BYBIT_SPOT_SYMBOLS = None
 BYBIT_LINEAR_SYMBOLS = None
+GATE_FUTURES_SYMBOLS = None
 
 
 
@@ -266,6 +268,24 @@ def binance_symbol(symbol):
 
 
 
+def load_gate_futures_symbols():
+    global GATE_FUTURES_SYMBOLS
+    if GATE_FUTURES_SYMBOLS is not None:
+        return GATE_FUTURES_SYMBOLS
+    symbols = set()
+    try:
+        data = get_json(BASE_GATE + "/api/v4/futures/usdt/contracts", timeout=30)
+        for item in data if isinstance(data, list) else []:
+            name = item.get("name")
+            state = str(item.get("status") or item.get("state") or "normal").lower()
+            if name and state in ("normal", "trading"):
+                symbols.add(name)
+    except requests.RequestException as e:
+        print(f"Gate Futures contracts warning: {e}")
+    GATE_FUTURES_SYMBOLS = symbols
+    return GATE_FUTURES_SYMBOLS
+
+
 def futures_symbol_info(symbol):
     candidate = f"{str(symbol).upper()}USDT"
     exchanges = []
@@ -274,6 +294,8 @@ def futures_symbol_info(symbol):
     _, linear = load_bybit_symbols()
     if candidate in linear:
         exchanges.append("Bybit Futures")
+    if candidate in load_gate_futures_symbols():
+        exchanges.append("Gate Futures")
     return candidate if exchanges else None, exchanges
 
 
@@ -302,24 +324,42 @@ def candles(symbol, interval, limit=220):
             pass
 
     pair, category = bybit_symbol(symbol)
-    if not pair or category != "linear":
-        return []
-    bybit_interval = {"5m": "5", "15m": "15", "1h": "60", "4h": "240", "1d": "D"}.get(interval)
-    if not bybit_interval:
-        return []
-    try:
-        data = get_json(
-            BASE_BYBIT + "/v5/market/kline",
-            {"category": category, "symbol": pair, "interval": bybit_interval, "limit": min(limit, 1000)},
-            timeout=15,
-        )
-        rows = (data.get("result") or {}).get("list") or []
-        if len(rows) < 60:
-            return []
-        rows = list(reversed(rows))
-        return [[r[0], r[1], r[2], r[3], r[4], r[5]] for r in rows]
-    except requests.RequestException:
-        return []
+    if pair and category == "linear":
+        bybit_interval = {"5m": "5", "15m": "15", "1h": "60", "4h": "240", "1d": "D"}.get(interval)
+        if bybit_interval:
+            try:
+                data = get_json(
+                    BASE_BYBIT + "/v5/market/kline",
+                    {"category": category, "symbol": pair, "interval": bybit_interval, "limit": min(limit, 1000)},
+                    timeout=15,
+                )
+                rows = (data.get("result") or {}).get("list") or []
+                if len(rows) >= 60:
+                    rows = list(reversed(rows))
+                    return [[r[0], r[1], r[2], r[3], r[4], r[5]] for r in rows]
+            except requests.RequestException:
+                pass
+
+    gate_pair = pair
+    if gate_pair in load_gate_futures_symbols():
+        gate_interval = {"5m": "5m", "15m": "15m", "1h": "1h", "4h": "4h", "1d": "1d"}.get(interval)
+        if gate_interval:
+            try:
+                data = get_json(
+                    BASE_GATE + "/api/v4/futures/usdt/candlesticks",
+                    {"contract": gate_pair, "interval": gate_interval, "limit": min(limit, 2000)},
+                    timeout=15,
+                )
+                rows = data if isinstance(data, list) else []
+                if len(rows) >= 60:
+                    rows = sorted(rows, key=lambda r: r.get("t", 0))
+                    return [
+                        [int(r.get("t", 0)) * 1000, r.get("o"), r.get("h"), r.get("l"), r.get("c"), r.get("sum", 0)]
+                        for r in rows
+                    ]
+            except requests.RequestException:
+                pass
+    return []
 
 
 
@@ -330,14 +370,23 @@ FUTURES_HISTORY_FILE = Path("futures_volume_history.json")
 
 def futures_tickers():
     out = {}
+    sources = {}
+
     try:
         data = get_json(BASE_BINANCE_FUTURES + "/fapi/v1/ticker/24hr", timeout=30)
         for x in data if isinstance(data, list) else []:
             symbol = x.get("symbol")
             if symbol and symbol.endswith("USDT"):
-                out[symbol] = {"volume": float(x.get("quoteVolume") or 0), "price": float(x.get("lastPrice") or 0), "change24": float(x.get("priceChangePercent") or 0)}
+                out[symbol] = {
+                    "volume": float(x.get("quoteVolume") or 0),
+                    "price": float(x.get("lastPrice") or 0),
+                    "change24": float(x.get("priceChangePercent") or 0),
+                    "source": "Binance Futures",
+                }
+                sources[symbol] = "Binance Futures"
     except requests.RequestException as e:
         print(f"Binance Futures ticker warning: {e}")
+
     try:
         data = get_json(BASE_BYBIT + "/v5/market/tickers", {"category": "linear"}, timeout=30)
         for x in ((data.get("result") or {}).get("list") or []):
@@ -349,9 +398,41 @@ def futures_tickers():
             if volume <= 0 or price <= 0:
                 continue
             if symbol not in out or volume > out[symbol]["volume"]:
-                out[symbol] = {"volume": volume, "price": price, "change24": float(x.get("price24hPcnt") or 0) * 100}
+                out[symbol] = {
+                    "volume": volume,
+                    "price": price,
+                    "change24": float(x.get("price24hPcnt") or 0) * 100,
+                    "source": "Bybit Futures",
+                }
+                sources[symbol] = "Bybit Futures"
     except requests.RequestException as e:
         print(f"Bybit Futures ticker warning: {e}")
+
+    # Emergency public fallback for GitHub-hosted runners when Binance/Bybit
+    # are blocked by regional/IP restrictions. Gate's public Futures API is
+    # unauthenticated and provides USDT perpetual tickers.
+    try:
+        data = get_json(BASE_GATE + "/api/v4/futures/usdt/tickers", timeout=30)
+        for x in data if isinstance(data, list) else []:
+            symbol = x.get("contract")
+            if not symbol or not symbol.endswith("USDT"):
+                continue
+            volume = float(x.get("volume_24h_quote") or x.get("volume_24h_usd") or x.get("volume_24h") or 0)
+            price = float(x.get("last") or 0)
+            if volume <= 0 or price <= 0:
+                continue
+            if symbol not in out or volume > out[symbol]["volume"]:
+                out[symbol] = {
+                    "volume": volume,
+                    "price": price,
+                    "change24": float(x.get("change_percentage") or 0),
+                    "source": "Gate Futures",
+                }
+                sources[symbol] = "Gate Futures"
+    except requests.RequestException as e:
+        print(f"Gate Futures ticker warning: {e}")
+
+    print(f"Futures ticker coverage: {len(out)} contracts; sources={sorted(set(sources.values()))}")
     return out
 
 
@@ -374,33 +455,61 @@ def futures_daily_backfill(symbols, history):
     fetched = 0
     binance_futures = load_binance_futures_symbols()
     _, bybit_linear = load_bybit_symbols()
+    gate_futures = load_gate_futures_symbols()
+
     for pair in symbols:
         rows = history.get(pair, [])
         if rows and max(int(x.get("timestamp", 0)) for x in rows) >= stale_before:
             continue
         got = False
+
         if pair in binance_futures:
             try:
                 data = get_json(BASE_BINANCE_FUTURES + "/fapi/v1/klines", {"symbol": pair, "interval": "1d", "limit": 16}, timeout=15)
                 if isinstance(data, list) and data:
-                    history[pair] = [{"timestamp": int(x[0]) // 1000, "volume": float(x[7]), "source": "binance_futures"} for x in data if float(x[7] or 0) > 0]
+                    history[pair] = [
+                        {"timestamp": int(x[0]) // 1000, "volume": float(x[7]), "source": "binance_futures"}
+                        for x in data if float(x[7] or 0) > 0
+                    ]
                     got = True
             except requests.RequestException:
                 pass
+
         if not got and pair in bybit_linear:
             try:
                 data = get_json(BASE_BYBIT + "/v5/market/kline", {"category": "linear", "symbol": pair, "interval": "D", "limit": 16}, timeout=15)
                 rows2 = ((data.get("result") or {}).get("list") or [])
                 if rows2:
-                    history[pair] = [{"timestamp": int(x[0]) // 1000, "volume": float(x[6]), "source": "bybit_futures"} for x in rows2 if float(x[6] or 0) > 0]
+                    history[pair] = [
+                        {"timestamp": int(x[0]) // 1000, "volume": float(x[6]), "source": "bybit_futures"}
+                        for x in rows2 if float(x[6] or 0) > 0
+                    ]
                     got = True
             except requests.RequestException:
                 pass
+
+        if not got and pair in gate_futures:
+            try:
+                data = get_json(
+                    BASE_GATE + "/api/v4/futures/usdt/candlesticks",
+                    {"contract": pair, "interval": "1d", "limit": 16},
+                    timeout=15,
+                )
+                rows3 = data if isinstance(data, list) else []
+                if rows3:
+                    history[pair] = [
+                        {"timestamp": int(x.get("t", 0)), "volume": float(x.get("sum") or 0), "source": "gate_futures"}
+                        for x in rows3 if float(x.get("sum") or 0) > 0
+                    ]
+                    got = True
+            except requests.RequestException:
+                pass
+
         if got:
             fetched += 1
-        if fetched >= 180:
-            break
         time.sleep(0.025)
+
+    print(f"Futures daily history refreshed: {fetched}/{len(symbols)}")
 
 
 def futures_volume_signals(pair, current_volume, history):
@@ -797,7 +906,8 @@ def main():
     # Futures are the primary volume source; CMC is metadata only.
     binance_futures = load_binance_futures_symbols()
     _, bybit_linear = load_bybit_symbols()
-    futures_universe = binance_futures | bybit_linear
+    gate_futures = load_gate_futures_symbols()
+    futures_universe = binance_futures | bybit_linear | gate_futures
     ftickers = futures_tickers()
     fhistory = load_futures_history()
 
@@ -899,9 +1009,10 @@ def main():
 
     header = (
         "🐋 FIL BEFORE PUMP\n\n"
-        "Futures/Perpetual universe: Binance + Bybit\n"
+        "Futures/Perpetual universe: Binance + Bybit + Gate fallback\n"
         "Priority: volume → wallet/whale → technical\n"
-        "Volume source: live Binance/Bybit Futures + daily futures history\n"
+        "Volume source: live Futures + daily Futures history\n"
+        "Fallback: Gate Futures when Binance/Bybit are blocked\n"
         "Technical: Futures 5m / 15m / 1h / 4h / 1d\n"
         "Price pump is NOT required.\n"
         "🐋 Wallet priority: holder map → buy/sell flow → wallet overlap.\n"
