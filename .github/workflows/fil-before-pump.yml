@@ -5,19 +5,19 @@ on:
   schedule:
     - cron: "*/30 * * * *"
 
-# جلوگیری از اجرای همزمان Workflow
-concurrency:
-  group: fil-before-pump-scanner
-  cancel-in-progress: false
-
 permissions:
   contents: write
+
+concurrency:
+  group: fil-before-pump-scanner
+  cancel-in-progress: true
 
 jobs:
   scan:
     runs-on: ubuntu-latest
 
     steps:
+
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
@@ -141,7 +141,7 @@ jobs:
                   history[symbol] = []
 
               # ---------------------------------------------
-              # SAVE CURRENT SNAPSHOT
+              # CURRENT SNAPSHOT
               # ---------------------------------------------
 
               history[symbol].append({
@@ -195,7 +195,7 @@ jobs:
               previous_14d = None
 
               # ---------------------------------------------
-              # FIND CLOSEST HISTORICAL SNAPSHOTS
+              # FIND HISTORICAL SNAPSHOTS
               # ---------------------------------------------
 
               for snapshot in history[symbol]:
@@ -267,7 +267,7 @@ jobs:
                           previous_14d = snapshot
 
               # ---------------------------------------------
-              # VOLUME CHANGE
+              # CALCULATE VOLUME CHANGES
               # ---------------------------------------------
 
               volume_change_1d = None
@@ -323,7 +323,9 @@ jobs:
               # EARLY VOLUME FILTER
               #
               # ANY POSITIVE INCREASE COUNTS.
-              # NO 2% / 3% MINIMUM.
+              #
+              # NO 2% MINIMUM.
+              # NO 3% MINIMUM.
               # NO PRICE FILTER.
               # ---------------------------------------------
 
@@ -378,7 +380,7 @@ jobs:
           )
 
           # ---------------------------------------------
-          # SORT CANDIDATES
+          # SORT
           # ---------------------------------------------
 
           candidates.sort(
@@ -387,7 +389,7 @@ jobs:
           )
 
           # ---------------------------------------------
-          # TELEGRAM MESSAGE
+          # TELEGRAM
           # ---------------------------------------------
 
           if candidates:
@@ -475,7 +477,7 @@ jobs:
           PY
 
       # ---------------------------------------------
-      # SAVE HISTORY SAFELY
+      # SAVE HISTORY
       # ---------------------------------------------
 
       - name: Save volume history
