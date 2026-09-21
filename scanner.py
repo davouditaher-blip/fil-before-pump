@@ -1127,6 +1127,7 @@ def main():
             "score": score,
             "reasons": reasons,
             "stage": stage,
+            "price_usd": float(q.get("price") or 0),
             "vol_changes": changes,
             "tech": {},
             "ch1": float(q.get("percent_change_1h") or 0),
