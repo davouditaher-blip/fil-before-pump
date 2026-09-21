@@ -12,6 +12,7 @@ TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 
 BASE_CMC = "https://pro-api.coinmarketcap.com"
 BASE_BINANCE = "https://api.binance.com"
+BASE_BYBIT = "https://api.bybit.com"
 HISTORY_FILE = Path("volume_history.json")
 
 STABLE_SYMBOLS = {
@@ -103,53 +104,50 @@ def nearest(history, target, tolerance):
     return best
 
 
-def historical_cmc_volume(symbol, cmc_id):
-    """Backfill daily volume/price so a fresh bot does not need 14 days of snapshots."""
-    try:
-        data = cmc(
-            "/v3/cryptocurrency/quotes/historical",
-            {
-                "id": str(cmc_id),
-                "count": 15,
-                "interval": "daily",
-                "convert": "USD",
-                "skip_invalid": "true",
-            },
-        )
-        item = (data.get("data") or {}).get(str(cmc_id)) or {}
-        return item.get("quotes") or []
-    except requests.RequestException as e:
-        print(f"CMC history warning {symbol}: {e}")
-        return []
-
-
-def backfill_history_for_coin(symbol, cmc_id, history, now_ts):
-    quotes = historical_cmc_volume(symbol, cmc_id)
-    if not quotes:
-        return
-
-    rows = history.setdefault(symbol, [])
-    existing = {int(x.get("timestamp", 0)): x for x in rows}
-
-    for q in quotes:
-        usd = q.get("quote", {}).get("USD", {})
-        volume = usd.get("volume_24h")
-        price = usd.get("price")
-        ts_text = q.get("timestamp")
-        if volume is None or price is None or not ts_text:
+def historical_cmc_volume_batch(coins, history, now_ts):
+    missing = []
+    for coin in coins:
+        if not is_primary_crypto_asset(coin):
             continue
+        symbol = coin.get("symbol", "")
+        cmc_id = coin.get("id")
+        rows = history.get(symbol, [])
+        has_14d = any(abs(x.get("timestamp", 0) - (now_ts - 14 * 86400)) <= 4 * 86400 for x in rows)
+        if symbol and cmc_id and not has_14d:
+            missing.append((symbol, cmc_id))
+
+    # Keep historical requests bounded. CMC supports multiple comma-separated IDs.
+    missing = missing[:160]
+    for i in range(0, len(missing), 40):
+        batch = missing[i:i + 40]
+        ids = ",".join(str(cmc_id) for _, cmc_id in batch)
         try:
-            ts = int(datetime.fromisoformat(ts_text.replace("Z", "+00:00")).timestamp())
-        except ValueError:
-            continue
-        existing[ts] = {
-            "timestamp": ts,
-            "volume": float(volume),
-            "price": float(price),
-            "source": "cmc_historical",
-        }
+            data = cmc(
+                "/v3/cryptocurrency/quotes/historical",
+                {"id": ids, "count": 15, "interval": "daily", "convert": "USD", "skip_invalid": "true"},
+            )
+            returned = data.get("data") or {}
+            for symbol, cmc_id in batch:
+                item = returned.get(str(cmc_id)) or {}
+                rows = history.setdefault(symbol, [])
+                existing = {int(x.get("timestamp", 0)): x for x in rows}
+                for q in item.get("quotes", []) or []:
+                    usd = q.get("quote", {}).get("USD", {})
+                    volume = usd.get("volume_24h")
+                    price = usd.get("price")
+                    ts_text = q.get("timestamp")
+                    if volume is None or price is None or not ts_text:
+                        continue
+                    try:
+                        ts = int(datetime.fromisoformat(ts_text.replace("Z", "+00:00")).timestamp())
+                    except ValueError:
+                        continue
+                    existing[ts] = {"timestamp": ts, "volume": float(volume), "price": float(price), "source": "cmc_historical"}
+                history[symbol] = sorted(existing.values(), key=lambda x: x.get("timestamp", 0))[-120:]
+        except requests.RequestException as e:
+            print(f"CMC batch history warning: {e}")
+        time.sleep(0.5)
 
-    history[symbol] = sorted(existing.values(), key=lambda x: x.get("timestamp", 0))[-120:]
 
 
 def volume_signals(symbol, volume, price, history, now_ts):
@@ -182,6 +180,8 @@ def volume_signals(symbol, volume, price, history, now_ts):
 
 
 BINANCE_SYMBOLS = None
+BYBIT_SPOT_SYMBOLS = None
+BYBIT_LINEAR_SYMBOLS = None
 
 
 def load_binance_symbols():
@@ -208,21 +208,86 @@ def binance_symbol(symbol):
     return candidate if candidate in load_binance_symbols() else None
 
 
+def load_bybit_symbols():
+    global BYBIT_SPOT_SYMBOLS, BYBIT_LINEAR_SYMBOLS
+    if BYBIT_SPOT_SYMBOLS is not None and BYBIT_LINEAR_SYMBOLS is not None:
+        return BYBIT_SPOT_SYMBOLS, BYBIT_LINEAR_SYMBOLS
+
+    def fetch(category):
+        symbols = set()
+        cursor = None
+        for _ in range(5):
+            params = {"category": category, "limit": 1000}
+            if cursor:
+                params["cursor"] = cursor
+            try:
+                data = get_json(BASE_BYBIT + "/v5/market/instruments-info", params, timeout=30)
+                result = data.get("result", {})
+                for item in result.get("list", []):
+                    if item.get("status") == "Trading" and item.get("quoteCoin") == "USDT":
+                        symbols.add(item.get("symbol"))
+                cursor = result.get("nextPageCursor")
+                if not cursor:
+                    break
+            except requests.RequestException as e:
+                print(f"Bybit {category} instruments warning: {e}")
+                break
+        return symbols
+
+    BYBIT_SPOT_SYMBOLS = fetch("spot")
+    BYBIT_LINEAR_SYMBOLS = fetch("linear")
+    return BYBIT_SPOT_SYMBOLS, BYBIT_LINEAR_SYMBOLS
+
+
+def binance_symbol(symbol):
+    candidate = f"{str(symbol).upper()}USDT"
+    return candidate if candidate in load_binance_symbols() else None
+
+
+def bybit_symbol(symbol):
+    candidate = f"{str(symbol).upper()}USDT"
+    spot, linear = load_bybit_symbols()
+    if candidate in spot:
+        return candidate, "spot"
+    if candidate in linear:
+        return candidate, "linear"
+    return None, None
+
+
 def candles(symbol, interval, limit=220):
     pair = binance_symbol(symbol)
+    if pair:
+        try:
+            data = get_json(
+                BASE_BINANCE + "/api/v3/klines",
+                {"symbol": pair, "interval": interval, "limit": limit},
+                timeout=15,
+            )
+            if isinstance(data, list) and len(data) >= 60:
+                return data
+        except requests.RequestException:
+            pass
+
+    pair, category = bybit_symbol(symbol)
     if not pair:
+        return []
+    bybit_interval = {"5m": "5", "15m": "15", "1h": "60", "4h": "240", "1d": "D"}.get(interval)
+    if not bybit_interval:
         return []
     try:
         data = get_json(
-            BASE_BINANCE + "/api/v3/klines",
-            {"symbol": pair, "interval": interval, "limit": limit},
+            BASE_BYBIT + "/v5/market/kline",
+            {"category": category, "symbol": pair, "interval": bybit_interval, "limit": min(limit, 1000)},
             timeout=15,
         )
-        if not isinstance(data, list) or len(data) < 60:
+        rows = (data.get("result") or {}).get("list") or []
+        if len(rows) < 60:
             return []
-        return data
+        rows = list(reversed(rows))
+        return [[r[0], r[1], r[2], r[3], r[4], r[5]] for r in rows]
     except requests.RequestException:
         return []
+
 
 
 def ema(values, period):
@@ -590,23 +655,7 @@ def main():
     history = load_history()
     now_ts = int(datetime.now(timezone.utc).timestamp())
 
-    # One-time/periodic backfill for all Top-400 assets. Historical CMC quotes
-    # are daily, so they fill the 3d/7d/14d volume context immediately.
-    # Existing rows are reused; the endpoint is only queried when a horizon
-    # is missing.
-    for coin in coins:
-        if not is_primary_crypto_asset(coin):
-            continue
-        symbol = coin.get("symbol", "")
-        cmc_id = coin.get("id")
-        if not symbol or not cmc_id:
-            continue
-        rows = history.get(symbol, [])
-        cutoff14 = now_ts - 14 * 86400
-        has_14d = any(abs(x.get("timestamp", 0) - (now_ts - 14 * 86400)) <= 4 * 86400 for x in rows)
-        if not has_14d:
-            backfill_history_for_coin(symbol, cmc_id, history, now_ts)
-        time.sleep(0.02)
+    historical_cmc_volume_batch(coins, history, now_ts)
 
     results = []
     for coin in coins:
@@ -665,7 +714,7 @@ def main():
         "Top-400 early candidates\n"
         "Priority: volume → wallet/whale → technical\n"
         "Volume history: CMC daily backfill + live snapshots\n"
-        "Technical: Binance spot 5m / 15m / 1h / 4h / 1d\n"
+        "Technical: Binance + Bybit 5m / 15m / 1h / 4h / 1d\n"
         "Price pump is NOT required.\n"
         "🐋 Wallet priority: holder map → buy/sell flow → wallet overlap.\n"
         "⚠️ Transfers are not labeled as buys unless the provider says so.\n"
