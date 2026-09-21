@@ -71,7 +71,7 @@ def cmc(endpoint, params=None):
 def get_market():
     return cmc(
         "/v1/cryptocurrency/listings/latest",
-        {"start": 1, "limit": 1000, "convert": "USD"},
+        {"start": 1, "limit": 300, "convert": "USD"},
     )["data"]
 
 
