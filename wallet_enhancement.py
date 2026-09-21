@@ -1,16 +1,25 @@
 """Wallet-first enhancement layer for Fil Before Pump.
 
-Uses GoldRush holder snapshots as an accumulation/overlap signal.
-Important: holder-balance changes are NOT labeled as buys/sells.
-No trade direction is inferred from raw transfers.
+Fixes:
+- GoldRush token-holder requests use the currently supported page-size.
+- GoldRush holder balances are normalized into percentage/value fields.
+- Gate Futures candles are used as the technical fallback when Binance/Bybit
+  are blocked on GitHub-hosted runners.
+- Raw transfers are never treated as buys/sells.
 """
 import json
 from datetime import datetime, timezone
 from pathlib import Path
 
+import requests
 import scanner
 
 HISTORY = Path("wallet_history.json")
+
+_original_goldrush = scanner.goldrush_wallet_layer
+_original_apply = scanner.apply_wallet_signals
+_original_format = scanner.format_coin
+_original_candles = scanner.candles
 
 
 def _history():
@@ -31,13 +40,8 @@ def _prior_wallet_row(history, wallet, symbol, mint):
     return max(matches, key=lambda r: int(r.get("timestamp", 0)))
 
 
-_original_goldrush = scanner.goldrush_wallet_layer
-_original_apply = scanner.apply_wallet_signals
-_original_format = scanner.format_coin
-
-
 def wallet_win_stats(history, wallet, lookahead=336):
-    """Estimate wallet success from accumulation events across all tracked assets."""
+    """Estimate success from holder-accumulation events, not provider trade labels."""
     by_symbol = {}
     for row in history.get(wallet, []):
         symbol = row.get("symbol")
@@ -63,7 +67,11 @@ def wallet_win_stats(history, wallet, lookahead=336):
             for nxt in rows[i + 1:]:
                 if int(nxt.get("timestamp", 0)) - t0 > lookahead * 60:
                     break
-                if float(nxt.get("price_usd") or 0) >= entry * 1.10:
+                try:
+                    next_price = float(nxt.get("price_usd") or 0)
+                except (TypeError, ValueError):
+                    continue
+                if next_price >= entry * 1.10:
                     wins += 1
                     successful_symbols.add(symbol)
                     break
@@ -71,72 +79,117 @@ def wallet_win_stats(history, wallet, lookahead=336):
 
 
 def enhanced_goldrush_wallet_layer(coin):
-    layer = _original_goldrush(coin)
-    if not layer:
-        return layer
+    """Fetch current top holders from GoldRush with the supported 100-item page size."""
+    if not scanner.GOLDRUSH_API_KEY:
+        return {}
 
-    history = _history()
-    accumulating = []
-    reducing = []
+    contracts = scanner.coin_contracts(coin)
+    if not contracts:
+        return {}
 
-    for holder in layer.get("holders", []):
-        wallet = holder.get("wallet")
-        if not wallet:
-            continue
-        previous = _prior_wallet_row(
-            history, wallet, layer.get("symbol"), layer.get("mint")
+    best = {}
+    for chain, address in contracts:
+        items = scanner.goldrush_get(
+            f"/{chain}/tokens/{address}/token_holders_v2/",
+            {"page-size": 100, "page-number": 0},
         )
-        if not previous:
+        if not items:
             continue
 
-        old_pct = previous.get("percentage")
-        new_pct = holder.get("percentage")
-        try:
-            delta = float(new_pct) - float(old_pct)
-        except (TypeError, ValueError):
-            continue
+        holders = []
+        total_supply = None
+        for h in items[:100]:
+            wallet = h.get("address") or h.get("wallet_address") or h.get("walletAddress")
+            if not wallet:
+                continue
 
-        if delta >= 0.05:
-            accumulating.append({
-                "wallet": wallet,
-                "delta_pct": round(delta, 4),
-                "new_pct": new_pct,
-            })
-        elif delta <= -0.05:
-            reducing.append({
-                "wallet": wallet,
-                "delta_pct": round(delta, 4),
-                "new_pct": new_pct,
-            })
+            # GoldRush V2 holder responses expose raw balance + total_supply.
+            try:
+                balance = float(h.get("balance") or 0)
+                supply = float(h.get("total_supply") or 0)
+            except (TypeError, ValueError):
+                balance = 0.0
+                supply = 0.0
+            if supply > 0:
+                total_supply = supply
+                percentage = balance / supply * 100.0
+            else:
+                percentage = h.get("percentage")
 
-    layer["accumulating_wallets"] = accumulating
-    layer["reducing_wallets"] = reducing
-    layer["accumulation_count"] = len(accumulating)
-    layer["reduction_count"] = len(reducing)
-
-    smart_overlap = 0
-    wallet_stats = []
-    for item in accumulating:
-        wallet = item["wallet"]
-        symbols = {r.get("symbol") for r in history.get(wallet, []) if r.get("symbol")}
-        attempts, wins, successful_symbols = wallet_win_stats(history, wallet)
-        if len(symbols) >= 2:
-            smart_overlap += 1
-        if attempts:
-            wallet_stats.append({
+            holders.append({
                 "wallet": wallet,
-                "attempts": attempts,
-                "wins": wins,
-                "win_rate": round(wins / attempts * 100, 1),
-                "successful_symbols": sorted(successful_symbols),
+                "symbol": coin.get("symbol"),
+                "mint": address,
+                "chain": chain,
+                "rank": h.get("rank"),
+                "percentage": percentage,
+                "value": h.get("balance_quote") or h.get("value_quote") or h.get("quote"),
+                "timestamp": int(datetime.now(timezone.utc).timestamp()),
             })
 
-    layer["wallet_win_stats"] = wallet_stats
-    total_attempts = sum(x["attempts"] for x in wallet_stats)
-    total_wins = sum(x["wins"] for x in wallet_stats)
-    layer["smart_wallet_win_rate"] = round(total_wins / total_attempts * 100, 1) if total_attempts else None
-    layer["smart_wallet_overlap"] = smart_overlap
-    return layer
+        if holders:
+            best = {
+                "chain": chain,
+                "mint": address,
+                "symbol": coin.get("symbol"),
+                "holders": holders,
+                "top5_holder_pct": sum(float(x.get("percentage") or 0) for x in holders[:5]),
+                "top20_holder_pct": sum(float(x.get("percentage") or 0) for x in holders[:20]),
+                "buy_sell_ratio_7d": None,
+                "buyers_7d": 0,
+                "sellers_7d": 0,
+                "provider": "GoldRush",
+            }
+            break
+
+    return best
+
+
+def enhanced_candles(symbol, interval, limit=220):
+    """Keep Binance/Bybit first, then correctly fall back to Gate Futures."""
+    data = _original_candles(symbol, interval, limit)
+    if data:
+        return data
+
+    gate_pair = scanner.gate_contract(symbol)
+    gate_interval = {
+        "5m": "5m",
+        "15m": "15m",
+        "1h": "1h",
+        "4h": "4h",
+        "1d": "1d",
+    }.get(interval)
+    if not gate_interval:
+        return []
+
+    try:
+        data = scanner.get_json(
+            scanner.BASE_GATE + "/api/v4/futures/usdt/candlesticks",
+            {
+                "contract": gate_pair,
+                "interval": gate_interval,
+                "limit": min(limit, 2000),
+            },
+            timeout=20,
+        )
+        rows = data if isinstance(data, list) else []
+        if len(rows) < 60:
+            return []
+        rows = sorted(rows, key=lambda r: int(r.get("t", 0)))
+        return [
+            [
+                int(r.get("t", 0)) * 1000,
+                r.get("o"),
+                r.get("h"),
+                r.get("l"),
+                r.get("c"),
+                r.get("sum", 0),
+            ]
+            for r in rows
+        ]
+    except requests.RequestException as e:
+        print(f"Gate technical candles warning ({symbol} {interval}): {e}")
+        return []
 
 
 def enhanced_apply(result, layer):
@@ -151,7 +204,6 @@ def enhanced_apply(result, layer):
     overlap = int(layer.get("smart_wallet_overlap", 0))
     win_rate = layer.get("smart_wallet_win_rate")
 
-    # Wallet-first: reward early holder accumulation, but do not require it.
     if acc >= 1:
         score += min(12, 4 + 2 * acc)
         reasons.append(f"{acc} wallet accumulation")
@@ -180,13 +232,84 @@ def enhanced_format(result):
     return base + extra
 
 
-scanner.goldrush_wallet_layer = enhanced_goldrush_wallet_layer
+def enhanced_goldrush_with_history(coin):
+    layer = enhanced_goldrush_wallet_layer(coin)
+    if not layer:
+        return layer
+
+    history = _history()
+    accumulating = []
+    reducing = []
+
+    for holder in layer.get("holders", []):
+        wallet = holder.get("wallet")
+        if not wallet:
+            continue
+        previous = _prior_wallet_row(
+            history, wallet, layer.get("symbol"), layer.get("mint")
+        )
+        if not previous:
+            continue
+
+        try:
+            delta = float(holder.get("percentage")) - float(previous.get("percentage"))
+        except (TypeError, ValueError):
+            continue
+
+        if delta >= 0.05:
+            accumulating.append({
+                "wallet": wallet,
+                "delta_pct": round(delta, 4),
+                "new_pct": holder.get("percentage"),
+            })
+        elif delta <= -0.05:
+            reducing.append({
+                "wallet": wallet,
+                "delta_pct": round(delta, 4),
+                "new_pct": holder.get("percentage"),
+            })
+
+    layer["accumulating_wallets"] = accumulating
+    layer["reducing_wallets"] = reducing
+    layer["accumulation_count"] = len(accumulating)
+    layer["reduction_count"] = len(reducing)
+
+    smart_overlap = 0
+    wallet_stats = []
+    for item in accumulating:
+        wallet = item["wallet"]
+        symbols = {r.get("symbol") for r in history.get(wallet, []) if r.get("symbol")}
+        attempts, wins, successful_symbols = wallet_win_stats(history, wallet)
+        if len(symbols) >= 2:
+            smart_overlap += 1
+        if attempts:
+            wallet_stats.append({
+                "wallet": wallet,
+                "attempts": attempts,
+                "wins": wins,
+                "win_rate": round(wins / attempts * 100, 1),
+                "successful_symbols": sorted(successful_symbols),
+            })
+
+    layer["wallet_win_stats"] = wallet_stats
+    total_attempts = sum(x["attempts"] for x in wallet_stats)
+    total_wins = sum(x["wins"] for x in wallet_stats)
+    layer["smart_wallet_win_rate"] = (
+        round(total_wins / total_attempts * 100, 1) if total_attempts else None
+    )
+    layer["smart_wallet_overlap"] = smart_overlap
+    return layer
+
+
+scanner.goldrush_wallet_layer = enhanced_goldrush_with_history
 scanner.apply_wallet_signals = enhanced_apply
 scanner.format_coin = enhanced_format
+scanner.candles = enhanced_candles
 
 if __name__ == "__main__":
     print(
         "🐋 Wallet enhancement active — GoldRush holder accumulation + "
-        "cross-asset overlap; no raw-transfer buy/sell inference."
+        "cross-asset overlap + Gate technical fallback; "
+        "no raw-transfer buy/sell inference."
     )
     scanner.main()
