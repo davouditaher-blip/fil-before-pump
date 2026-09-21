@@ -29,11 +29,14 @@ def _history():
         return {}
 
 
-def _prior_wallet_row(history, wallet, symbol, mint):
+def _prior_wallet_row(history, wallet, symbol, mint, before_timestamp=None):
+    """Return the latest strictly older snapshot for the same asset/contract."""
     rows = history.get(wallet, [])
     matches = [
         r for r in rows
-        if r.get("symbol") == symbol or (mint and r.get("mint") == mint)
+        if r.get("symbol") == symbol
+        and (not mint or r.get("mint") == mint)
+        and (before_timestamp is None or int(r.get("timestamp", 0)) < int(before_timestamp))
     ]
     if not matches:
         return None
@@ -138,6 +141,8 @@ def enhanced_goldrush_wallet_layer(coin):
                 "chain": chain,
                 "rank": h.get("rank"),
                 "percentage": percentage,
+                "balance": balance,
+                "total_supply": supply,
                 "value": h.get("balance_quote") or h.get("value_quote") or h.get("quote"),
                 "timestamp": int(datetime.now(timezone.utc).timestamp()),
                 "label": label,
@@ -264,27 +269,55 @@ def enhanced_goldrush_with_history(coin):
         if not wallet:
             continue
         previous = _prior_wallet_row(
-            history, wallet, layer.get("symbol"), layer.get("mint")
+            history,
+            wallet,
+            layer.get("symbol"),
+            layer.get("mint"),
+            before_timestamp=holder.get("timestamp"),
         )
         if not previous:
             continue
 
         try:
-            delta = float(holder.get("percentage")) - float(previous.get("percentage"))
+            new_pct = float(holder.get("percentage") or 0)
+            old_pct = float(previous.get("percentage") or 0)
+            new_balance = float(holder.get("balance") or 0)
+            old_balance = float(previous.get("balance") or 0)
+            delta_pct = new_pct - old_pct
+            delta_balance = new_balance - old_balance
+            relative_balance_change = (
+                (delta_balance / old_balance) if old_balance > 0 else 0.0
+            )
         except (TypeError, ValueError):
             continue
 
-        if delta >= 0.01:
+        # GoldRush percentages can be rounded/stable even when the holder
+        # actually adds tokens. Treat a meaningful raw-balance increase as
+        # accumulation too, while keeping a small percentage-change signal.
+        is_accumulation = (
+            delta_pct >= 0.005
+            or (old_balance > 0 and relative_balance_change >= 0.01)
+        )
+        is_reduction = (
+            delta_pct <= -0.005
+            or (old_balance > 0 and relative_balance_change <= -0.01)
+        )
+
+        if is_accumulation:
             accumulating.append({
                 "wallet": wallet,
-                "delta_pct": round(delta, 4),
-                "new_pct": holder.get("percentage"),
+                "delta_pct": round(delta_pct, 6),
+                "delta_balance": delta_balance,
+                "relative_balance_change": round(relative_balance_change * 100, 3),
+                "new_pct": new_pct,
             })
-        elif delta <= -0.01:
+        elif is_reduction:
             reducing.append({
                 "wallet": wallet,
-                "delta_pct": round(delta, 4),
-                "new_pct": holder.get("percentage"),
+                "delta_pct": round(delta_pct, 6),
+                "delta_balance": delta_balance,
+                "relative_balance_change": round(relative_balance_change * 100, 3),
+                "new_pct": new_pct,
             })
 
     layer["accumulating_wallets"] = accumulating
