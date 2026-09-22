@@ -1049,38 +1049,111 @@ def apply_wallet_signals(result, layer):
 GMGN_API_KEY = os.environ.get("GMGN_API_KEY", "")
 
 def gmgn_enrichment():
-    if not GMGN_API_KEY: return {}
+    """Build the Smart Money layer and persist cross-asset wallet history.
+
+    Current-scan overlap is useful, but the Fil strategy also needs wallets
+    that bought other assets in previous scans. We therefore retain a bounded
+    180-day GMGN trade history and calculate overlap/status from both the
+    current feed and that history. This is additive: a strong Smart Money
+    candidate is never removed just because historical wallet data is absent.
+    """
+    if not GMGN_API_KEY:
+        return {}
     try:
         from gmgn_layer import run_gmgn, build_signals
+
+        history_path = Path("gmgn_wallet_history.json")
+        try:
+            gmgn_history = json.loads(history_path.read_text()) if history_path.exists() else {}
+        except Exception:
+            gmgn_history = {}
+
+        now_ts = int(datetime.now(timezone.utc).timestamp())
+        cutoff = now_ts - 180 * 86400
+
         trades = []
         for chain in ('sol', 'bsc', 'base', 'eth'):
             trades.extend(run_gmgn(chain))
-        signals = build_signals(trades)
 
-        # ولت‌هایی که در همین اسکن حداقل روی دو دارایی خرید داشته‌اند.
-        wallet_assets = {}
-        wallet_asset_trades = {}
+        # Persist the raw, read-only GMGN trade observations by wallet.
+        # Keep a bounded history so the repository does not grow forever.
         for trade in trades:
             wallet = trade.get('maker')
             symbol = ((trade.get('base_token') or {}).get('symbol') or '').upper()
-            side = str(trade.get('side') or '').lower()
-            if wallet and symbol:
-                wallet_asset_trades.setdefault((wallet, symbol), []).append(trade)
-                if side == 'buy':
-                    wallet_assets.setdefault(wallet, set()).add(symbol)
+            if not wallet or not symbol:
+                continue
+            trade_ts = int(trade.get('timestamp') or now_ts)
+            if trade_ts < cutoff:
+                continue
+            gmgn_history.setdefault(wallet, []).append({
+                'timestamp': trade_ts,
+                'chain': trade.get('chain') or '',
+                'address': trade.get('base_address') or '',
+                'symbol': symbol,
+                'side': str(trade.get('side') or '').lower(),
+                'amount_usd': float(trade.get('amount_usd') or 0),
+                'is_open_or_close': trade.get('is_open_or_close'),
+                'maker_info': trade.get('maker_info') or {},
+            })
+
+        # Deduplicate and cap each wallet's history.
+        for wallet, rows in list(gmgn_history.items()):
+            dedup = {}
+            for row in rows:
+                key = (
+                    int(row.get('timestamp') or 0),
+                    row.get('chain') or '',
+                    row.get('address') or '',
+                    row.get('symbol') or '',
+                    row.get('side') or '',
+                    round(float(row.get('amount_usd') or 0), 8),
+                )
+                dedup[key] = row
+            rows = sorted(dedup.values(), key=lambda x: int(x.get('timestamp') or 0))
+            rows = [x for x in rows if int(x.get('timestamp') or 0) >= cutoff]
+            gmgn_history[wallet] = rows[-500:]
+        gmgn_history = {w: rows for w, rows in gmgn_history.items() if rows}
+
+        try:
+            history_path.write_text(json.dumps(gmgn_history, indent=2))
+        except Exception as e:
+            print(f"GMGN history save warning: {e}")
+
+        signals = build_signals(trades)
+
+        # Build the cross-asset wallet map from current trades + the last
+        # 180 days of persisted GMGN observations.
+        wallet_asset_rows = {}
+        for wallet, rows in gmgn_history.items():
+            for row in rows:
+                symbol = str(row.get('symbol') or '').upper()
+                if symbol:
+                    wallet_asset_rows.setdefault((wallet, symbol), []).append(row)
 
         common_by_symbol = {}
         common_rows = []
-        for wallet, assets in wallet_assets.items():
-            if len(assets) < 2:
+        for wallet, rows in gmgn_history.items():
+            buy_assets = sorted({
+                str(r.get('symbol') or '').upper()
+                for r in rows
+                if str(r.get('side') or '').lower() == 'buy' and r.get('symbol')
+            })
+            if len(buy_assets) < 2:
                 continue
-            common_rows.append({'wallet': wallet, 'assets': sorted(assets), 'asset_count': len(assets)})
-            for symbol in assets:
-                rows = wallet_asset_trades.get((wallet, symbol), [])
-                buys = [r for r in rows if str(r.get('side') or '').lower() == 'buy']
-                sells = [r for r in rows if str(r.get('side') or '').lower() == 'sell']
-                latest = max(rows, key=lambda r: int(r.get('timestamp') or 0)) if rows else {}
+
+            common_rows.append({
+                'wallet': wallet,
+                'assets': buy_assets,
+                'asset_count': len(buy_assets),
+            })
+
+            for symbol in buy_assets:
+                asset_rows = wallet_asset_rows.get((wallet, symbol), [])
+                buys = [r for r in asset_rows if str(r.get('side') or '').lower() == 'buy']
+                sells = [r for r in asset_rows if str(r.get('side') or '').lower() == 'sell']
+                latest = max(asset_rows, key=lambda r: int(r.get('timestamp') or 0)) if asset_rows else {}
                 latest_side = str(latest.get('side') or '').lower()
+
                 if latest_side == 'buy':
                     status = '🟢 خرید و نگهداری محتمل'
                 elif sells and len(sells) < len(buys):
@@ -1089,24 +1162,46 @@ def gmgn_enrichment():
                     status = '🔴 خروج/توزیع'
                 else:
                     status = '⚪ نامشخص'
+
                 common_by_symbol.setdefault(symbol, []).append({
                     'wallet': wallet,
-                    'assets': sorted(assets),
-                    'asset_count': len(assets),
+                    'assets': buy_assets,
+                    'asset_count': len(buy_assets),
                     'status': status,
                     'buy_count': len(buys),
                     'sell_count': len(sells),
+                    'last_trade_ts': int(latest.get('timestamp') or 0),
+                    'latest_side': latest_side,
                 })
+
+        # Prefer wallets that are active on multiple assets and keep the
+        # strongest status information available for each symbol.
+        common_rows.sort(key=lambda x: (x.get('asset_count', 0), x.get('wallet', '')), reverse=True)
 
         best = {}
         for row in signals:
             symbol = str(row.get('symbol') or '').upper()
             if not symbol:
                 continue
+
+            rows = common_by_symbol.get(symbol, [])
+            row['common_wallets'] = rows
+            row['common_wallet_count'] = len(rows)
+            row['common_assets'] = sorted({
+                asset
+                for item in rows
+                for asset in item.get('assets', [])
+                if asset != symbol
+            })
+
+            # Historical overlap is deliberately additive. It is not a hard
+            # filter and does not replace GMGN's current Smart Money signal.
+            if len(rows) >= 2:
+                row['reasons'] = list(row.get('reasons') or [])
+                row['reasons'].append(f'wallet convergence {len(rows)}')
+                row['score'] = float(row.get('score') or 0) + min(12, 3 * len(rows))
+
             if row.get('score', 0) > best.get(symbol, {}).get('score', -1):
-                row['common_wallets'] = common_by_symbol.get(symbol, [])
-                row['common_wallet_count'] = len(row['common_wallets'])
-                row['common_assets'] = sorted({a for item in row['common_wallets'] for a in item['assets'] if a != symbol})
                 best[symbol] = row
 
         best['__COMMON_WALLETS__'] = common_rows
