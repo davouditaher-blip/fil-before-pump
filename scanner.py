@@ -1574,15 +1574,15 @@ def main():
         "🐋 فیل کامل قبل از پامپ — کاندیداهای اولیه\n\n"
         + market_regime_text
         + "بازار فیوچرز/پرپچوال: Binance + Bybit + Gate\n"
-        "لایه‌ها: GMGN Smart Money → حجم ۱/۳/۷/۱۴روز → ولت/نهنگ → RSI ۵m/۱۵m/۱h → MACD/EMA/Ichimoku/VWAP → Structure/Compression → OI/Funding/Liquidation → BTC/ETH → Pre-Pump Check\n"
-        "GMGN لایه اول و اولویت‌دار است؛ کاندید قوی به‌دلیل ضعف یک فیلتر تکنیکال حذف نمی‌شود.\n"
+        "اولویت: 🐋 Smart Money → 👛 ولت مشترک → سابقه ولت → وضعیت خروج → 🐳 نهنگ → 💰 حجم\n"
+        "لایه‌های پشتیبان: GMGN + Solscan + GoldRush + CoinGlass + حجم فیوچرز + BTC/ETH\n"
+        "تکنیکال از این نسخه حذف شده تا سیگنال‌ها شلوغ نشوند.\n"
         "منبع حجم: فیوچرز زنده + تاریخچه روزانه فیوچرز\n"
         "نمایش حجم: ۱روز / ۲روز / ۳روز / ۷روز / ۱۴روز\n"
         "فیلتر حجم: ۱روز/۲روز معیار اصلی؛ ۳روز فقط زمینه است و حذف قطعی نمی‌کند.\n"
         "Fallback: Gate Futures در صورت محدودیت Binance/Bybit\n"
-        "تکنیکال: ۵دقیقه / ۱۵دقیقه / ۱ساعت / ۴ساعت / ۱روز (اولویت با ۵دقیقه/۱۵دقیقه/۱ساعت)\n"
         "پامپ قبلی قیمت شرط نیست.\n"
-        "🐋 اولویت ولت: نقشه هولدرها ← جریان خرید/فروش ← همپوشانی ولت ← سابقه نهنگ\n"
+        "🐋 وضعیت ولت: 🟢 نگهداری محتمل | 🟡 فروش جزئی | 🔴 خروج/توزیع | ⚪ نامشخص\n"
         "🐋 منابع آن‌چین: Solscan + GoldRush\n"
         "⚠️ انتقال خام هیچ‌وقت خرید/فروش محسوب نمی‌شود؛ برای این سیگنال باید جریان معامله توسط ارائه‌دهنده برچسب‌گذاری شده باشد.\n"
         "⚠️ استیبل‌کوین‌ها، سهام توکنیزه و دارایی‌های طلاپشتوانه حذف می‌شوند.\n\n"
@@ -1592,20 +1592,32 @@ def main():
         if results else 'No early-volume candidates with available history.'
     )
 
-    # Common-wallet summary appended to every scheduled 30-minute Telegram report.
+    # گزارش ولت‌های مشترک در انتهای هر گزارش ۳۰ دقیقه‌ای.
     common_rows = (gmgn.get('__COMMON_WALLETS__') or []) if gmgn else []
+    common_states = (gmgn.get('__COMMON_WALLET_STATES__') or {}) if gmgn else {}
     candidate_symbols = {str(x.get('symbol') or '').upper() for x in results}
     common_rows = [x for x in common_rows if any(a in candidate_symbols for a in x.get('assets', []))]
     common_rows.sort(key=lambda x: (len([a for a in x.get('assets', []) if a in candidate_symbols]), x.get('asset_count', 0)), reverse=True)
-    common_lines = ['', '🔗 COMMON WALLET SIGNAL — هر ۳۰ دقیقه', 'ولت‌هایی که در این اسکن روی حداقل ۲ ارز خرید داشته‌اند:']
+    common_lines = ['', '🔗 ولت‌های مشترک — گزارش هر ۳۰ دقیقه', 'فقط ولت‌هایی که روی حداقل ۲ ارز خرید داشته‌اند:']
     if common_rows:
         for item in common_rows[:15]:
             wallet = item.get('wallet', '')
             short = wallet[:8] + '…' + wallet[-6:] if len(wallet) > 18 else wallet
             assets = item.get('assets') or []
             candidate_assets = [a for a in assets if a in candidate_symbols]
-            common_lines.append(f"👛 {short} | {len(assets)} ارز مشترک | خرید: {', '.join(assets[:12])}" + (f" | کاندید: {', '.join(candidate_assets)}" if candidate_assets else ''))
-    else: common_lines.append('اطلاعات کافی برای ولت مشترک در این اسکن وجود ندارد.')
+            states = []
+            for asset in candidate_assets:
+                for row in common_states.get(asset, []):
+                    if row.get('wallet') == wallet:
+                        states.append(row.get('status'))
+            common_lines.append(
+                f"👛 {short} | ارزها: {', '.join(assets[:10])} | "
+                f"🟢 {states.count('🟢 خرید و نگهداری محتمل')} | "
+                f"🟡 {states.count('🟡 فروش جزئی')} | "
+                f"🔴 {states.count('🔴 خروج/توزیع')}"
+            )
+    else:
+        common_lines.append('اطلاعات کافی برای ولت مشترک در این اسکن وجود ندارد.')
     message += '\n' + '\n'.join(common_lines)
     print(message)
     send_telegram(message)
