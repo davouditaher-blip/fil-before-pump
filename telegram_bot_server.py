@@ -14,17 +14,15 @@ RANKS = {
     "top100": "🥇 رتبه 1–100",
     "101_200": "🥈 رتبه 101–200",
     "201_300": "🥉 رتبه 201–300",
-    "301_400": "🏅 رتبه 301–400",
-    "401_500": "🎖️ رتبه 401–500",
-    "501_1000": "📌 رتبه 501–1000",
-    "all": "🌐 همه ارزها",
+    "all": "🌐 همه ارزها (1–300)",
 }
 FILTERS = {
-    "volume": "📊 حجم",
     "smart": "🐋 Smart Money",
+    "common": "🔁 ولت‌های مشترک",
+    "history": "🧠 سابقه ولت",
+    "status": "📍 وضعیت ولت",
     "whale": "🐳 نهنگ",
-    "wallet": "👛 ولت‌ها",
-    "technical": "📈 تکنیکال",
+    "volume": "📊 حجم",
 }
 
 def tg(method, **kwargs):
@@ -35,44 +33,28 @@ def tg(method, **kwargs):
 def menu(rank="all", filters=None):
     filters = filters or []
     selected = ",".join(filters) or "all"
-
     def cb(action, r=rank, f=selected):
         return f"{action}|{r}|{f}"[:64]
 
     rows = [
+        [{"text": "🔥 فیل کامل (1–300)", "callback_data": cb("run", "all", "all")}],
         [
-            {"text": "⚡ اسکن لحظه‌ای", "callback_data": cb("run")},
-            {"text": "🔥 فیل کامل", "callback_data": cb("run", "all", "all")},
+            {"text": ("✅ " if rank == "top100" else "") + RANKS["top100"], "callback_data": cb("rank", "top100", selected)},
+            {"text": ("✅ " if rank == "101_200" else "") + RANKS["101_200"], "callback_data": cb("rank", "101_200", selected)},
         ],
         [
-            {"text": ("✅ " if rank == "top100" else "") + RANKS["top100"], "callback_data": cb("rank", "top100")},
-            {"text": ("✅ " if rank == "101_200" else "") + RANKS["101_200"], "callback_data": cb("rank", "101_200")},
-        ],
-        [
-            {"text": ("✅ " if rank == "201_300" else "") + RANKS["201_300"], "callback_data": cb("rank", "201_300")},
-            {"text": ("✅ " if rank == "301_400" else "") + RANKS["301_400"], "callback_data": cb("rank", "301_400")},
-        ],
-        [
-            {"text": ("✅ " if rank == "401_500" else "") + RANKS["401_500"], "callback_data": cb("rank", "401_500")},
-            {"text": ("✅ " if rank == "501_1000" else "") + RANKS["501_1000"], "callback_data": cb("rank", "501_1000")},
-        ],
-        [
-            {"text": ("✅ " if rank == "all" else "") + RANKS["all"], "callback_data": cb("rank", "all")},
-            {"text": "⚙️ تنظیمات", "callback_data": cb("settings")},
+            {"text": ("✅ " if rank == "201_300" else "") + RANKS["201_300"], "callback_data": cb("rank", "201_300", selected)},
+            {"text": ("✅ " if rank == "all" else "") + RANKS["all"], "callback_data": cb("rank", "all", selected)},
         ],
     ]
-
-    for key, label in FILTERS.items():
+    for key in ("smart", "common", "history", "status", "whale", "volume"):
         new_filters = [x for x in filters if x != key] if key in filters else filters + [key]
-        rows.append([
-            {
-                "text": ("✅ " if key in filters else "") + label,
-                "callback_data": cb("toggle", rank, ",".join(new_filters) or "all"),
-            }
-        ])
-
+        rows.append([{
+            "text": ("✅ " if key in filters else "") + FILTERS[key],
+            "callback_data": cb("toggle", rank, ",".join(new_filters) or "all"),
+        }])
     rows.append([{"text": "🧹 پاک کردن فیلترها", "callback_data": "clear|all|all"}])
-    rows.append([{"text": "🔥 اجرای بررسی", "callback_data": cb("run")}])
+    rows.append([{"text": "🚀 اجرای بررسی", "callback_data": cb("run")}])
     return {"inline_keyboard": rows}
 
 def send_menu(chat_id, rank="all", filters=None, message_id=None):
@@ -81,6 +63,7 @@ def send_menu(chat_id, rank="all", filters=None, message_id=None):
     body = (
         "🐋 فیل قبل از پامپ\n\n"
         f"رتبه: {RANKS.get(rank, RANKS['all'])}\n"
+        "اولویت: Smart Money → ولت مشترک → سابقه ولت → وضعیت خروج → نهنگ → حجم\n"
         f"فیلترها: {' + '.join(active) if active else 'همه سیگنال‌ها'}"
     )
     data = {
@@ -100,10 +83,7 @@ def dispatch(rank, filters):
         "Authorization": f"Bearer {GITHUB_TOKEN}",
         "X-GitHub-Api-Version": "2022-11-28",
     }
-    payload = {
-        "ref": "main",
-        "inputs": {"rank_range": rank, "filter": filters or "all"},
-    }
+    payload = {"ref": "main", "inputs": {"rank_range": rank, "filter": filters or "all"}}
     r = requests.post(GH_API, headers=headers, json=payload, timeout=30)
     if r.status_code not in (200, 201, 204):
         raise RuntimeError(f"GitHub workflow dispatch failed: HTTP {r.status_code} {r.text[:500]}")
@@ -120,7 +100,6 @@ def process(update):
     q = update.get("callback_query")
     if not q:
         return
-
     parts = q.get("data", "").split("|", 2)
     if len(parts) != 3:
         return
@@ -129,7 +108,6 @@ def process(update):
     filters = [] if filt in ("", "all") else [x for x in filt.split(",") if x in FILTERS]
     chat_id = str(q["message"]["chat"]["id"])
     message_id = q["message"]["message_id"]
-
     tg("answerCallbackQuery", data={"callback_query_id": q["id"]})
 
     if action in ("rank", "toggle", "settings"):
@@ -142,15 +120,12 @@ def process(update):
             text = "⏳ بررسی انتخابی ارسال شد. نتیجه بعد از اجرای اسکن در همین چت می‌آید."
         except Exception as exc:
             text = f"❌ خطا در اجرای اسکن: {exc}"
-        tg(
-            "editMessageText",
-            data={
-                "chat_id": chat_id,
-                "message_id": message_id,
-                "text": text,
-                "reply_markup": json.dumps(menu(rank, filters), ensure_ascii=False),
-            },
-        )
+        tg("editMessageText", data={
+            "chat_id": chat_id,
+            "message_id": message_id,
+            "text": text,
+            "reply_markup": json.dumps(menu(rank, filters), ensure_ascii=False),
+        })
 
 def set_webhook():
     external = os.environ.get("WEBHOOK_URL") or os.environ.get("RENDER_EXTERNAL_URL")
