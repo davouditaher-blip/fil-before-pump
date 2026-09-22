@@ -1136,15 +1136,24 @@ def apply_gmgn_signals(result, signal):
     result["score"] = round(score, 1)
 
 def format_gmgn(x):
-    g = x.get('gmgn') or {}
-    if not g: return 'GMGN: داده اسمارت‌مانی منطبق در دسترس نیست'
-    common_count = int(g.get('common_wallet_count', 0) or 0)
-    common_assets = ', '.join(g.get('common_assets') or [])
-    common_text = f' | common wallets {common_count}' if common_count else ''
-    if common_assets: common_text += f' | مشترک با: {common_assets}'
-    return (f"GMGN Smart Money: {int(g.get('buy_count', 0) or 0)} buys | "
-            f"{len(g.get('wallets') or [])} wallets | Buy ${float(g.get('buy_usd', 0) or 0):,.0f} | "
-            f"overlap {int(g.get('overlap', 0) or 0)}{common_text}")
+    g = x.get("gmgn") or {}
+    if not g:
+        return "GMGN: داده اسمارت‌مانی منطبق در دسترس نیست"
+    common_rows = g.get("common_wallets") or []
+    common_count = int(g.get("common_wallet_count", 0) or 0)
+    common_assets = ", ".join(g.get("common_assets") or [])
+    common_text = f" | 🔁 ولت مشترک: {common_count}" if common_count else ""
+    if common_assets:
+        common_text += f" | مشترک با: {common_assets}"
+    lines = [
+        f"🐋 GMGN: {int(g.get('buy_count', 0) or 0)} خرید | {len(g.get('wallets') or [])} ولت | "
+        f"Buy ${float(g.get('buy_usd', 0) or 0):,.0f} | overlap {int(g.get('overlap', 0) or 0)}{common_text}"
+    ]
+    for row in common_rows[:4]:
+        wallet = row.get("wallet", "")
+        short = wallet[:8] + "…" + wallet[-4:] if len(wallet) > 14 else wallet
+        lines.append(f"{row.get('status', '⚪ نامشخص')}: {short}")
+    return "\n".join(lines)
 
 def candidate_status(x):
     g = x.get("gmgn") or {}
@@ -1176,8 +1185,9 @@ def format_coin(x):
         f"🔹 {x['name']} ({x['symbol']})  #{x['rank']}\n"
         f"وضعیت: {candidate_status(x)}\n"
         f"امتیاز داخلی: {x['score']:.1f} | ۱ساعت {x['ch1']:+.2f}% | ۲۴ساعت {x['ch24']:+.2f}% | ۷روز {x['ch7']:+.2f}%\n"
-        f"حجم ۱روز {f('1d')} | ۲روز {f('2d')} | ۳روز {f('3d')} | ۷روز {f('7d')} | ۱۴روز {f('14d')}\n"
-        f"🐋 تکنیکال حذف شده؛ تمرکز گزارش روی ولت و اسمارت‌مانی است.\n"        f"ولت: {wallet_status} | ارائه‌دهنده: {x.get('wallet_provider','N/A')} | همپوشانی: {x.get('wallet_overlap', 0)}\n"
+        f"💰 حجم ۲۴ساعت: ${float((x.get('current_volume') or 0)):,.0f} | "
+        f"حجم ۱روز قبل: {f('1d')} | ۲روز قبل: {f('2d')}\n"
+        f"🐋 حجم ۷روز و ۱۴روز در تحلیل داخلی حفظ شده و فقط نمایش داده نمی‌شود.\n"        f"ولت: {wallet_status} | ارائه‌دهنده: {x.get('wallet_provider','N/A')} | همپوشانی: {x.get('wallet_overlap', 0)}\n"
         f"{format_gmgn(x)}\n"
         f"{format_coinglass(x)}\n"
         f"دلایل: {', '.join(x['reasons'][:10])}\n"
@@ -1412,6 +1422,7 @@ def main():
             "stage": stage,
             "price_usd": float(q.get("price") or 0),
             "vol_changes": changes,
+            "current_volume": ticker["volume"],
             "tech": {},
             "ch1": float(q.get("percent_change_1h") or 0),
             "ch24": float(q.get("percent_change_24h") or 0),
@@ -1567,7 +1578,7 @@ def main():
         "لایه‌های پشتیبان: GMGN + Solscan + GoldRush + CoinGlass + حجم فیوچرز + BTC/ETH\n"
         "تکنیکال از این نسخه حذف شده تا سیگنال‌ها شلوغ نشوند.\n"
         "منبع حجم: فیوچرز زنده + تاریخچه روزانه فیوچرز\n"
-        "نمایش حجم: ۱روز / ۲روز / ۳روز / ۷روز / ۱۴روز\n"
+        "نمایش حجم: ۲۴ساعت / ۱روز قبل / ۲روز قبل\n"
         "فیلتر حجم: ۱روز/۲روز معیار اصلی؛ ۳روز فقط زمینه است و حذف قطعی نمی‌کند.\n"
         "Fallback: Gate Futures در صورت محدودیت Binance/Bybit\n"
         "پامپ قبلی قیمت شرط نیست.\n"
