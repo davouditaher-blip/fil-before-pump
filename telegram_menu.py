@@ -52,7 +52,8 @@ def dispatch(rank, filters):
     headers={"Accept":"application/vnd.github+json","Authorization":f"Bearer {GITHUB_TOKEN}","X-GitHub-Api-Version":"2022-11-28"}
     data={"ref":"main","inputs":{"rank_range":rank,"filter":filters or "all"}}
     r=requests.post(GH_API,headers=headers,json=data,timeout=30)
-    r.raise_for_status()
+    if r.status_code not in (200, 201, 204):
+        raise RuntimeError(f"GitHub workflow dispatch failed: HTTP {r.status_code} {r.text[:500]}")
 
 def process_update(update):
     if "message" in update:
@@ -60,6 +61,8 @@ def process_update(update):
         chat_id=str(msg["chat"]["id"])
         text=(msg.get("text") or "").strip().lower()
         if text in ("/start","start","menu","منو"):
+            send_menu(chat_id)
+        elif text:
             send_menu(chat_id)
         return
     q=update.get("callback_query")
@@ -83,8 +86,20 @@ def process_update(update):
             "text":"⏳ بررسی انتخابی ارسال شد. نتیجه بعد از اجرای اسکن در همین چت می‌آید.",
             "reply_markup":json.dumps(menu(rank,filters),ensure_ascii=False)})
 
+OFFSET_FILE = "telegram_update_offset.txt"
+
+def load_offset():
+    try:
+        return int(open(OFFSET_FILE, "r", encoding="utf-8").read().strip())
+    except Exception:
+        return 0
+
+def save_offset(offset):
+    with open(OFFSET_FILE, "w", encoding="utf-8") as f:
+        f.write(str(offset))
+
 def main():
-    offset=0
+    offset=load_offset()
     while True:
         r=requests.get(f"{API}/getUpdates",
                        params={"timeout":20,"offset":offset,
@@ -95,11 +110,13 @@ def main():
         if not updates:
             break
         for update in updates:
-            offset=max(offset,int(update["update_id"])+1)
+            next_offset=int(update["update_id"])+1
             try:
                 process_update(update)
             except Exception as e:
                 print(f"Update handling warning: {e}")
+            offset=max(offset,next_offset)
+            save_offset(offset)
 
 if __name__=="__main__":
     main()
