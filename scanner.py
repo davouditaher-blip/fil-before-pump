@@ -1308,6 +1308,115 @@ def send_telegram(text):
         r.raise_for_status()
 
 
+
+# Telegram interactive control panel
+RANK_RANGES = {
+    "top100": (1, 100),
+    "101_200": (101, 200),
+    "201_300": (201, 300),
+    "all": (1, 300),
+}
+
+def telegram_menu_keyboard():
+    return {
+        "inline_keyboard": [
+            [
+                {"text": "⚡ اسکن لحظه‌ای", "callback_data": "run|all|all"},
+                {"text": "🔥 فیل کامل", "callback_data": "run|all|all"},
+            ],
+            [
+                {"text": "🥇 رتبه 1–100", "callback_data": "rank|top100|all"},
+                {"text": "🥈 رتبه 101–200", "callback_data": "rank|101_200|all"},
+            ],
+            [
+                {"text": "🥉 رتبه 201–300", "callback_data": "rank|201_300|all"},
+                {"text": "🌐 همه ارزها", "callback_data": "rank|all|all"},
+            ],
+            [
+                {"text": "📊 حجم", "callback_data": "filter|all|volume"},
+                {"text": "🐋 Smart Money", "callback_data": "filter|all|smart"},
+            ],
+            [
+                {"text": "🐳 نهنگ", "callback_data": "filter|all|whale"},
+                {"text": "👛 ولت‌ها", "callback_data": "filter|all|wallet"},
+            ],
+            [
+                {"text": "📈 تکنیکال", "callback_data": "filter|all|technical"},
+            ],
+        ]
+    }
+
+
+def send_telegram_menu(chat_id=None):
+    if not TELEGRAM_BOT_TOKEN:
+        return
+    target = chat_id or TELEGRAM_CHAT_ID
+    if not target:
+        return
+    try:
+        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+        r = session.post(
+            url,
+            data={
+                "chat_id": target,
+                "text": "🐋 فیل قبل از پامپ\n\nنوع بررسی را انتخاب کن:",
+                "reply_markup": json.dumps(telegram_menu_keyboard(), ensure_ascii=False),
+            },
+            timeout=30,
+        )
+        r.raise_for_status()
+    except requests.RequestException as e:
+        print(f"Telegram menu warning: {e}")
+
+
+def apply_bot_filters(results):
+    """Apply selections sent by the Telegram control panel."""
+    rank_key = os.environ.get("BOT_RANK_RANGE", "all")
+    filter_key = os.environ.get("BOT_FILTER", "all")
+    lo, hi = RANK_RANGES.get(rank_key, RANK_RANGES["all"])
+
+    selected = [
+        x for x in results
+        if x.get("rank") is not None and lo <= int(x["rank"]) <= hi
+    ]
+    if filter_key in ("all", ""):
+        return selected
+
+    def smart(x):
+        g = x.get("gmgn") or {}
+        return (
+            float(g.get("buy_usd", 0) or 0) >= 2500
+            or int(g.get("buy_count", 0) or 0) >= 2
+            or len(g.get("wallets") or []) >= 2
+        )
+
+    def whale(x):
+        g = x.get("gmgn") or {}
+        return float(g.get("buy_usd", 0) or 0) >= 10000
+
+    def wallet(x):
+        return bool(x.get("wallet")) or int(x.get("wallet_overlap", 0) or 0) >= 1
+
+    def volume(x):
+        v = x.get("vol_changes") or {}
+        v1, v2 = v.get("1d"), v.get("2d")
+        return (v1 is not None and v1 > 0) or (v2 is not None and v2 > 0)
+
+    def technical(x):
+        tech = x.get("tech") or {}
+        return any(bool(tech.get(tf)) for tf in ("5m", "15m", "1h", "4h", "1d"))
+
+    checks = {
+        "smart": smart,
+        "whale": whale,
+        "wallet": wallet,
+        "volume": volume,
+        "technical": technical,
+    }
+    check = checks.get(filter_key)
+    return [x for x in selected if check and check(x)]
+
+
 def main():
     print("🐋 FIL BEFORE PUMP — EARLY SCANNER")
     coins = get_market()
@@ -1506,6 +1615,9 @@ def main():
         save_coinglass_cache(cg_cache)
     results.sort(key=lambda x: x["score"], reverse=True)
 
+    # Apply the selection made from the Telegram control panel.
+    results = apply_bot_filters(results)
+
     header = (
         "🐋 فیل قبل از پامپ — کاندیداهای اولیه\n\n"
         "بازار فیوچرز/پرپچوال: Binance + Bybit + Gate\n"
@@ -1526,6 +1638,8 @@ def main():
     )
     print(message)
     send_telegram(message)
+    # Keep the interactive control panel visible in the same Telegram chat.
+    send_telegram_menu()
 
 
 if __name__ == "__main__":
