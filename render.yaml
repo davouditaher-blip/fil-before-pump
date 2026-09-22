@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: fil-before-pump-telegram
+    runtime: python
+    plan: free
+    buildCommand: pip install requests
+    startCommand: python telegram_bot_server.py
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: GITHUB_TOKEN
+        sync: false
+      - key: GITHUB_REPOSITORY
+        value: davouditaher-blip/fil-before-pump
