@@ -1080,10 +1080,14 @@ def apply_gmgn_signals(result, signal):
 
 def format_gmgn(x):
     g = x.get("gmgn") or {}
-    if not g: return "GMGN: no matching Smart Money data"
-    return (f"GMGN Smart Money: {int(g.get("buy_count", 0) or 0)} buys | "
-            f"{len(g.get("wallets") or [])} wallets | Buy ${float(g.get("buy_usd", 0) or 0):,.0f} | "
-            f"overlap {int(g.get("overlap", 0) or 0)}")
+    if not g:
+        return "GMGN: no matching Smart Money data"
+    return (
+        f"GMGN Smart Money: {int(g.get('buy_count', 0) or 0)} buys | "
+        f"{len(g.get('wallets') or [])} wallets | "
+        f"Buy ${float(g.get('buy_usd', 0) or 0):,.0f} | "
+        f"overlap {int(g.get('overlap', 0) or 0)}"
+    )
 
 COINGLASS_API_KEY = os.environ.get("COINGLASS_API_KEY", "")
 COINGLASS_BASE = "https://open-api-v4.coinglass.com"
