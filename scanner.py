@@ -1728,7 +1728,7 @@ def main():
     header = (
         "🐋 فیل کامل قبل از پامپ — کاندیداهای اولیه\n\n"
         + market_regime_text
-        "بازار فیوچرز/پرپچوال: Binance + Bybit + Gate\n"
+        + "بازار فیوچرز/پرپچوال: Binance + Bybit + Gate\n"
         "لایه‌ها: GMGN Smart Money → حجم ۱/۳/۷/۱۴روز → ولت/نهنگ → RSI ۵m/۱۵m/۱h → MACD/EMA/Ichimoku/VWAP → Structure/Compression → OI/Funding/Liquidation → BTC/ETH → Pre-Pump Check\n"
         "GMGN لایه اول و اولویت‌دار است؛ کاندید قوی به‌دلیل ضعف یک فیلتر تکنیکال حذف نمی‌شود.\n"
         "منبع حجم: فیوچرز زنده + تاریخچه روزانه فیوچرز\n"
