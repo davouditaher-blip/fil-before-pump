@@ -1171,21 +1171,13 @@ def format_coin(x):
     def f(k):
         return "N/A" if v.get(k) is None else f"{v[k]:+.1f}%"
 
-    t5, t1 = x["tech"].get("5m", {}), x["tech"].get("1h", {})
-    r5 = "N/A" if t5.get("rsi") is None else f"{t5['rsi']:.0f}"
-    r1 = "N/A" if t1.get("rsi") is None else f"{t1['rsi']:.0f}"
-    t15 = x["tech"].get("15m", {})
-    r15 = "N/A" if t15.get("rsi") is None else f"{t15['rsi']:.0f}"
-
     wallet_status = "موجود" if x.get("wallet") else "در انتظار داده"
     return (
         f"🔹 {x['name']} ({x['symbol']})  #{x['rank']}\n"
         f"وضعیت: {candidate_status(x)}\n"
         f"امتیاز داخلی: {x['score']:.1f} | ۱ساعت {x['ch1']:+.2f}% | ۲۴ساعت {x['ch24']:+.2f}% | ۷روز {x['ch7']:+.2f}%\n"
         f"حجم ۱روز {f('1d')} | ۲روز {f('2d')} | ۳روز {f('3d')}\n"
-        f"RSI ۵دقیقه {r5} | RSI ۱۵دقیقه {r15} | RSI ۱ساعت {r1}\n"
-        f"تکنیکال: ۵دقیقه/۱۵دقیقه/۱ساعت/۴ساعت/۱روز = {sum(bool(x.get('tech',{}).get(tf)) for tf in ('5m','15m','1h','4h','1d'))}/5\n"
-        f"ولت: {wallet_status} | ارائه‌دهنده: {x.get('wallet_provider','N/A')} | همپوشانی: {x.get('wallet_overlap', 0)}\n"
+        f"🐋 تکنیکال حذف شده؛ تمرکز گزارش روی ولت و اسمارت‌مانی است.\n"        f"ولت: {wallet_status} | ارائه‌دهنده: {x.get('wallet_provider','N/A')} | همپوشانی: {x.get('wallet_overlap', 0)}\n"
         f"{format_gmgn(x)}\n"
         f"{format_coinglass(x)}\n"
         f"دلایل: {', '.join(x['reasons'][:10])}\n"
@@ -1246,9 +1238,6 @@ def telegram_menu_keyboard():
             [
                 {"text": "🐳 نهنگ", "callback_data": "filter|all|whale"},
                 {"text": "👛 ولت‌ها", "callback_data": "filter|all|wallet"},
-            ],
-            [
-                {"text": "📈 تکنیکال", "callback_data": "filter|all|technical"},
             ],
         ]
     }
