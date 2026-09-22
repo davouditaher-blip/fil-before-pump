@@ -1428,6 +1428,54 @@ def main():
             apply_gmgn_signals(result, gmgn.get(str(result["symbol"]).upper()))
         results.sort(key=lambda x: x["score"], reverse=True)
 
+    # Fresh-volume guard: 2d is the main 48h inflow check. A strong 1d
+    # rebound cannot by itself rescue a severe 2d contraction. Meaningful
+    # Smart Money/Whale evidence may override this guard; wallet-overlap
+    # history alone does not.
+    MAX_RECOVERY_2D_DROP = -15.0
+
+    def meaningful_smart_money(result):
+        g = result.get("gmgn") or {}
+        buy_usd = float(g.get("buy_usd", 0) or 0)
+        buys = int(g.get("buy_count", 0) or 0)
+        wallets = len(g.get("wallets") or [])
+        if buy_usd >= 2500:
+            return True
+        if buys >= 2 and wallets >= 2:
+            return True
+
+        w = result.get("wallet") or {}
+        ratio = w.get("buy_sell_ratio_7d")
+        buyers = int(w.get("buyers_7d", 0) or 0)
+        sellers = int(w.get("sellers_7d", 0) or 0)
+        return ratio is not None and ratio > 1.10 and buyers > sellers
+
+    before_guard = len(results)
+    filtered_results = []
+    for result in results:
+        v = result.get("vol_changes") or {}
+        v1 = v.get("1d")
+        v2 = v.get("2d")
+        override = meaningful_smart_money(result)
+
+        # Keep assets with fresh 24-48h inflow. Keep a mild 2d recovery
+        # (down to -15%) when 1d is strongly positive. Severe 2d weakness
+        # is removed unless there is meaningful Smart Money/Whale evidence.
+        if v2 is not None and v2 <= MAX_RECOVERY_2D_DROP and not override:
+            result["reasons"].append("removed: 2d volume contraction >15%")
+            continue
+        if (
+            v2 is not None and v2 < 0 and v2 > MAX_RECOVERY_2D_DROP
+            and (v1 is None or v1 <= 5)
+        ):
+            result["reasons"].append("recovery watch: weak 1d rebound")
+        filtered_results.append(result)
+
+    results = filtered_results
+    removed = before_guard - len(results)
+    if removed:
+        print(f"Fresh-volume guard removed {removed} severe 2d-volume contraction candidates.")
+
     # CoinGlass is a confirmation layer, not a hard filter. To keep the
     # free API quota under control, refresh only the top 5 candidates every
     # two hours; cached values are reused between refreshes.
