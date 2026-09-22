@@ -13,12 +13,16 @@ RANKS = {
     "top100":"🥇 رتبه 1–100",
     "101_200":"🥈 رتبه 101–200",
     "201_300":"🥉 رتبه 201–300",
-    "301_400":"🏅 رتبه 301–400",
-    "401_500":"🎖️ رتبه 401–500",
-    "501_1000":"📌 رتبه 501–1000",
-    "all":"🌐 همه ارزها"
+    "all":"🌐 همه ارزها (1–300)"
 }
-FILTERS = {"volume":"📊 حجم","smart":"🐋 Smart Money","whale":"🐳 نهنگ","wallet":"👛 ولت‌ها","technical":"📈 تکنیکال"}
+FILTERS = {
+    "smart":"🐋 Smart Money",
+    "common":"🔁 ولت‌های مشترک",
+    "history":"🧠 سابقه ولت",
+    "status":"📍 وضعیت ولت",
+    "whale":"🐳 نهنگ",
+    "volume":"📊 حجم"
+}
 
 def api(method, **kwargs):
     r = requests.post(f"{API}/{method}", timeout=30, **kwargs)
@@ -30,28 +34,29 @@ def menu(rank="all", filters=None):
     filt = ",".join(filters) or "all"
     def cb(action, r=rank, f=filt):
         return f"{action}|{r}|{f}"[:64]
+
     rows = [
-        [{"text":"⚡ اسکن لحظه‌ای","callback_data":cb("run")},
-         {"text":"🔥 فیل کامل","callback_data":cb("run","all","all")}],
-        [{"text":("✅ " if rank=="top100" else "")+RANKS["top100"],"callback_data":cb("rank","top100",filt)},
-         {"text":("✅ " if rank=="101_200" else "")+RANKS["101_200"],"callback_data":cb("rank","101_200",filt)}],
-        [{"text":("✅ " if rank=="201_300" else "")+RANKS["201_300"],"callback_data":cb("rank","201_300",filt)},
-         {"text":("✅ " if rank=="301_400" else "")+RANKS["301_400"],"callback_data":cb("rank","301_400",filt)}],
-        [{"text":("✅ " if rank=="401_500" else "")+RANKS["401_500"],"callback_data":cb("rank","401_500",filt)},
-         {"text":("✅ " if rank=="501_1000" else "")+RANKS["501_1000"],"callback_data":cb("rank","501_1000",filt)}],
-        [{"text":("✅ " if rank=="all" else "")+RANKS["all"],"callback_data":cb("rank","all",filt)}, {"text":"⚙️ تنظیمات","callback_data":cb("settings",rank,filt)}],
+        [{"text":"🔥 فیل کامل (1–300)","callback_data":cb("run","all","all")}],
+        [
+            {"text":("✅ " if rank=="top100" else "")+RANKS["top100"],"callback_data":cb("rank","top100",filt)},
+            {"text":("✅ " if rank=="101_200" else "")+RANKS["101_200"],"callback_data":cb("rank","101_200",filt)}
+        ],
+        [
+            {"text":("✅ " if rank=="201_300" else "")+RANKS["201_300"],"callback_data":cb("rank","201_300",filt)},
+            {"text":("✅ " if rank=="all" else "")+RANKS["all"],"callback_data":cb("rank","all",filt)}
+        ]
     ]
-    for key in ("volume","smart","whale","wallet","technical"):
+    for key in ("smart","common","history","status","whale","volume"):
         newfilters = [x for x in filters if x != key] if key in filters else filters+[key]
         rows.append([{"text":("✅ " if key in filters else "")+FILTERS[key],
                       "callback_data":cb("toggle",rank,",".join(newfilters) or "all")}])
     rows.append([{"text":"🧹 پاک کردن فیلترها","callback_data":"clear|all|all"}])
-    rows.append([{"text":"🔥 اجرای بررسی","callback_data":cb("run")}])
+    rows.append([{"text":"🚀 اجرای بررسی","callback_data":cb("run")}])
     return {"inline_keyboard":rows}
 
 def send_menu(chat_id, rank="all", filters=None, edit_message_id=None):
     active=[FILTERS[x] for x in (filters or []) if x in FILTERS]
-    text="🐋 فیل قبل از پامپ\n\nرتبه: "+RANKS.get(rank,RANKS["all"])+"\nفیلترها: "+(" + ".join(active) if active else "همه سیگنال‌ها")
+    text="🐋 فیل قبل از پامپ\n\nرتبه: "+RANKS.get(rank,RANKS["all"])+"\nاولویت: Smart Money → ولت مشترک → سابقه ولت → وضعیت خروج → نهنگ → حجم\nفیلترها: "+(" + ".join(active) if active else "همه سیگنال‌ها")
     payload={"chat_id":chat_id,"text":text,"reply_markup":json.dumps(menu(rank,filters),ensure_ascii=False)}
     if edit_message_id:
         payload["message_id"]=edit_message_id
@@ -63,7 +68,7 @@ def dispatch(rank, filters):
     headers={"Accept":"application/vnd.github+json","Authorization":f"Bearer {GITHUB_TOKEN}","X-GitHub-Api-Version":"2022-11-28"}
     data={"ref":"main","inputs":{"rank_range":rank,"filter":filters or "all"}}
     r=requests.post(GH_API,headers=headers,json=data,timeout=30)
-    if r.status_code not in (200, 201, 204):
+    if r.status_code not in (200,201,204):
         raise RuntimeError(f"GitHub workflow dispatch failed: HTTP {r.status_code} {r.text[:500]}")
 
 def process_update(update):
@@ -71,9 +76,7 @@ def process_update(update):
         msg=update["message"]
         chat_id=str(msg["chat"]["id"])
         text=(msg.get("text") or "").strip().lower()
-        if text in ("/start","start","menu","منو"):
-            send_menu(chat_id)
-        elif text:
+        if text in ("/start","start","menu","منو") or text:
             send_menu(chat_id)
         return
     q=update.get("callback_query")
