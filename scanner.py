@@ -1057,35 +1057,60 @@ def gmgn_enrichment():
             trades.extend(run_gmgn(chain))
         signals = build_signals(trades)
 
-        # Common wallets: wallets that bought at least two different assets in this scan.
+        # ولت‌هایی که در همین اسکن حداقل روی دو دارایی خرید داشته‌اند.
         wallet_assets = {}
+        wallet_asset_trades = {}
         for trade in trades:
             wallet = trade.get('maker')
             symbol = ((trade.get('base_token') or {}).get('symbol') or '').upper()
             side = str(trade.get('side') or '').lower()
-            if wallet and symbol and side == 'buy':
-                wallet_assets.setdefault(wallet, set()).add(symbol)
+            if wallet and symbol:
+                wallet_asset_trades.setdefault((wallet, symbol), []).append(trade)
+                if side == 'buy':
+                    wallet_assets.setdefault(wallet, set()).add(symbol)
 
         common_by_symbol = {}
+        common_rows = []
         for wallet, assets in wallet_assets.items():
-            if len(assets) < 2: continue
+            if len(assets) < 2:
+                continue
+            common_rows.append({'wallet': wallet, 'assets': sorted(assets), 'asset_count': len(assets)})
             for symbol in assets:
-                common_by_symbol.setdefault(symbol, []).append({'wallet': wallet, 'assets': sorted(assets)})
+                rows = wallet_asset_trades.get((wallet, symbol), [])
+                buys = [r for r in rows if str(r.get('side') or '').lower() == 'buy']
+                sells = [r for r in rows if str(r.get('side') or '').lower() == 'sell']
+                latest = max(rows, key=lambda r: int(r.get('timestamp') or 0)) if rows else {}
+                latest_side = str(latest.get('side') or '').lower()
+                if latest_side == 'buy':
+                    status = '🟢 خرید و نگهداری محتمل'
+                elif sells and len(sells) < len(buys):
+                    status = '🟡 فروش جزئی'
+                elif sells:
+                    status = '🔴 خروج/توزیع'
+                else:
+                    status = '⚪ نامشخص'
+                common_by_symbol.setdefault(symbol, []).append({
+                    'wallet': wallet,
+                    'assets': sorted(assets),
+                    'asset_count': len(assets),
+                    'status': status,
+                    'buy_count': len(buys),
+                    'sell_count': len(sells),
+                })
 
         best = {}
         for row in signals:
             symbol = str(row.get('symbol') or '').upper()
-            if not symbol: continue
+            if not symbol:
+                continue
             if row.get('score', 0) > best.get(symbol, {}).get('score', -1):
                 row['common_wallets'] = common_by_symbol.get(symbol, [])
                 row['common_wallet_count'] = len(row['common_wallets'])
                 row['common_assets'] = sorted({a for item in row['common_wallets'] for a in item['assets'] if a != symbol})
                 best[symbol] = row
 
-        best['__COMMON_WALLETS__'] = [
-            {'wallet': wallet, 'assets': sorted(assets), 'asset_count': len(assets)}
-            for wallet, assets in wallet_assets.items() if len(assets) >= 2
-        ]
+        best['__COMMON_WALLETS__'] = common_rows
+        best['__COMMON_WALLET_STATES__'] = common_by_symbol
         return best
     except Exception as e:
         print(f'GMGN enrichment warning: {e}')
