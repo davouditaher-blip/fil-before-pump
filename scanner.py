@@ -1176,7 +1176,7 @@ def format_coin(x):
         f"🔹 {x['name']} ({x['symbol']})  #{x['rank']}\n"
         f"وضعیت: {candidate_status(x)}\n"
         f"امتیاز داخلی: {x['score']:.1f} | ۱ساعت {x['ch1']:+.2f}% | ۲۴ساعت {x['ch24']:+.2f}% | ۷روز {x['ch7']:+.2f}%\n"
-        f"حجم ۱روز {f('1d')} | ۲روز {f('2d')} | ۳روز {f('3d')}\n"
+        f"حجم ۱روز {f('1d')} | ۲روز {f('2d')} | ۳روز {f('3d')} | ۷روز {f('7d')} | ۱۴روز {f('14d')}\n"
         f"🐋 تکنیکال حذف شده؛ تمرکز گزارش روی ولت و اسمارت‌مانی است.\n"        f"ولت: {wallet_status} | ارائه‌دهنده: {x.get('wallet_provider','N/A')} | همپوشانی: {x.get('wallet_overlap', 0)}\n"
         f"{format_gmgn(x)}\n"
         f"{format_coinglass(x)}\n"
