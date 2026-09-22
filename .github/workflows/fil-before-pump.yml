@@ -2,11 +2,21 @@ name: Fil Before Pump Scanner
 
 on:
   workflow_dispatch:
+    inputs:
+      rank_range:
+        description: "Telegram rank range"
+        required: false
+        default: "all"
+      filter:
+        description: "Telegram filter"
+        required: false
+        default: "all"
   schedule:
     - cron: "*/30 * * * *"
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
   group: fil-before-pump-scanner
@@ -41,6 +51,8 @@ jobs:
           GOLDRUSH_API_KEY: ${{ secrets.GOLDRUSH_API_KEY }}
           COINGLASS_API_KEY: ${{ secrets.COINGLASS_API_KEY }}
           GMGN_API_KEY: ${{ secrets.GMGN_API_KEY }}
+          BOT_RANK_RANGE: ${{ github.event.inputs.rank_range || 'all' }}
+          BOT_FILTER: ${{ github.event.inputs.filter || 'all' }}
         run: python wallet_enhancement.py
 
       - name: Save volume history
