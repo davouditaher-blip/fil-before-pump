@@ -9,7 +9,15 @@ WORKFLOW_FILE = "fil-before-pump.yml"
 API = f"https://api.telegram.org/bot{BOT_TOKEN}"
 GH_API = f"https://api.github.com/repos/{REPO}/actions/workflows/{WORKFLOW_FILE}/dispatches"
 
-RANKS = {"top100":"🥇 رتبه 1–100","101_200":"🥈 رتبه 101–200","201_300":"🥉 رتبه 201–300","all":"🌐 همه ارزها"}
+RANKS = {
+    "top100":"🥇 رتبه 1–100",
+    "101_200":"🥈 رتبه 101–200",
+    "201_300":"🥉 رتبه 201–300",
+    "301_400":"🏅 رتبه 301–400",
+    "401_500":"🎖️ رتبه 401–500",
+    "501_1000":"📌 رتبه 501–1000",
+    "all":"🌐 همه ارزها"
+}
 FILTERS = {"volume":"📊 حجم","smart":"🐋 Smart Money","whale":"🐳 نهنگ","wallet":"👛 ولت‌ها","technical":"📈 تکنیکال"}
 
 def api(method, **kwargs):
@@ -28,7 +36,10 @@ def menu(rank="all", filters=None):
         [{"text":("✅ " if rank=="top100" else "")+RANKS["top100"],"callback_data":cb("rank","top100",filt)},
          {"text":("✅ " if rank=="101_200" else "")+RANKS["101_200"],"callback_data":cb("rank","101_200",filt)}],
         [{"text":("✅ " if rank=="201_300" else "")+RANKS["201_300"],"callback_data":cb("rank","201_300",filt)},
-         {"text":("✅ " if rank=="all" else "")+RANKS["all"],"callback_data":cb("rank","all",filt)}],
+         {"text":("✅ " if rank=="301_400" else "")+RANKS["301_400"],"callback_data":cb("rank","301_400",filt)}],
+        [{"text":("✅ " if rank=="401_500" else "")+RANKS["401_500"],"callback_data":cb("rank","401_500",filt)},
+         {"text":("✅ " if rank=="501_1000" else "")+RANKS["501_1000"],"callback_data":cb("rank","501_1000",filt)}],
+        [{"text":("✅ " if rank=="all" else "")+RANKS["all"],"callback_data":cb("rank","all",filt)}, {"text":"⚙️ تنظیمات","callback_data":cb("settings",rank,filt)}],
     ]
     for key in ("volume","smart","whale","wallet","technical"):
         newfilters = [x for x in filters if x != key] if key in filters else filters+[key]
@@ -76,7 +87,7 @@ def process_update(update):
     chat_id=str(q["message"]["chat"]["id"])
     message_id=q["message"]["message_id"]
     api("answerCallbackQuery",data={"callback_query_id":q["id"]})
-    if action in ("rank","toggle"):
+    if action in ("rank","toggle","settings"):
         send_menu(chat_id,rank,filters,message_id)
     elif action=="clear":
         send_menu(chat_id,"all",[],message_id)
