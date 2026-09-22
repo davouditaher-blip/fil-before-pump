@@ -1289,6 +1289,19 @@ def send_telegram(text):
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         print("Telegram secrets not configured; skipping Telegram.")
         return
+
+    # Quiet hours: do not send Telegram messages from 03:00 through 09:59.
+    # The GitHub runner uses UTC, so use the scanner's configured local
+    # timezone when available; default is Asia/Tehran.
+    try:
+        from zoneinfo import ZoneInfo
+        local_now = datetime.now(ZoneInfo(os.environ.get("BOT_TIMEZONE", "Asia/Tehran")))
+        if 3 <= local_now.hour < 10:
+            print(f"Telegram quiet hours active ({local_now:%H:%M}); skipping Telegram.")
+            return
+    except Exception as e:
+        print(f"Telegram quiet-hours timezone warning: {e}")
+
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     for i in range(0, len(text), 3900):
         r = session.post(url, data={"chat_id": TELEGRAM_CHAT_ID, "text": text[i:i+3900]}, timeout=30)
