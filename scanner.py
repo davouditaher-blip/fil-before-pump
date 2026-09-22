@@ -1373,6 +1373,7 @@ def apply_bot_filters(results):
     """Apply selections sent by the Telegram control panel."""
     rank_key = os.environ.get("BOT_RANK_RANGE", "all")
     filter_key = os.environ.get("BOT_FILTER", "all")
+    selected_filters = [x for x in filter_key.split(",") if x]
     lo, hi = RANK_RANGES.get(rank_key, RANK_RANGES["all"])
 
     selected = [
@@ -1413,8 +1414,10 @@ def apply_bot_filters(results):
         "volume": volume,
         "technical": technical,
     }
-    check = checks.get(filter_key)
-    return [x for x in selected if check and check(x)]
+    # Multiple Telegram filters are combined with AND semantics.
+    if not selected_filters or selected_filters == ["all"]:
+        return selected
+    return [x for x in selected if all(checks.get(key, lambda _: False)(x) for key in selected_filters)]
 
 
 def main():
@@ -1638,9 +1641,7 @@ def main():
     )
     print(message)
     send_telegram(message)
-    # Keep the interactive control panel visible in the same Telegram chat.
-    send_telegram_menu()
-
+    # The control panel is opened with /start; do not send unsolicited menu messages.
 
 if __name__ == "__main__":
     main()
