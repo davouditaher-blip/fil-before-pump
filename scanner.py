@@ -74,7 +74,7 @@ def cmc(endpoint, params=None):
 def get_market():
     return cmc(
         "/v1/cryptocurrency/listings/latest",
-        {"start": 1, "limit": 300, "convert": "USD"},
+        {"start": 1, "limit": 1000, "convert": "USD"},
     )["data"]
 
 
@@ -121,7 +121,7 @@ def historical_cmc_volume_batch(coins, history, now_ts):
             missing.append((symbol, cmc_id))
 
     # Keep historical requests bounded. CMC supports multiple comma-separated IDs.
-    missing = missing[:500]
+    missing = missing[:1000]
     for i in range(0, len(missing), 40):
         batch = missing[i:i + 40]
         ids = ",".join(str(cmc_id) for _, cmc_id in batch)
@@ -1314,7 +1314,10 @@ RANK_RANGES = {
     "top100": (1, 100),
     "101_200": (101, 200),
     "201_300": (201, 300),
-    "all": (1, 300),
+    "301_400": (301, 400),
+    "401_500": (401, 500),
+    "501_1000": (501, 1000),
+    "all": (1, 1000),
 }
 
 def telegram_menu_keyboard():
@@ -1370,33 +1373,49 @@ def send_telegram_menu(chat_id=None):
 
 
 def apply_bot_filters(results):
-    """Apply selections sent by the Telegram control panel."""
+    """Apply Telegram rank/filter selections without weakening the core scanner."""
     rank_key = os.environ.get("BOT_RANK_RANGE", "all")
     filter_key = os.environ.get("BOT_FILTER", "all")
-    selected_filters = [x for x in filter_key.split(",") if x]
+    selected_filters = [x for x in filter_key.split(",") if x and x != "all"]
     lo, hi = RANK_RANGES.get(rank_key, RANK_RANGES["all"])
 
     selected = [
         x for x in results
         if x.get("rank") is not None and lo <= int(x["rank"]) <= hi
     ]
-    if filter_key in ("all", ""):
+    if not selected_filters:
         return selected
 
     def smart(x):
         g = x.get("gmgn") or {}
+        w = x.get("wallet") or {}
+        buy_usd = float(g.get("buy_usd", 0) or 0)
+        buys = int(g.get("buy_count", 0) or 0)
+        wallets = len(g.get("wallets") or [])
+        ratio = w.get("buy_sell_ratio_7d")
+        buyers = int(w.get("buyers_7d", 0) or 0)
+        sellers = int(w.get("sellers_7d", 0) or 0)
         return (
-            float(g.get("buy_usd", 0) or 0) >= 2500
-            or int(g.get("buy_count", 0) or 0) >= 2
-            or len(g.get("wallets") or []) >= 2
+            buy_usd >= 2500
+            or buys >= 2
+            or wallets >= 2
+            or (ratio is not None and ratio > 1.10 and buyers > sellers)
         )
 
     def whale(x):
         g = x.get("gmgn") or {}
-        return float(g.get("buy_usd", 0) or 0) >= 10000
+        return (
+            float(g.get("buy_usd", 0) or 0) >= 10000
+            or float(g.get("largest_buy_usd", 0) or 0) >= 10000
+        )
 
     def wallet(x):
-        return bool(x.get("wallet")) or int(x.get("wallet_overlap", 0) or 0) >= 1
+        return (
+            bool(x.get("wallet"))
+            or int(x.get("wallet_overlap", 0) or 0) >= 1
+            or int(x.get("smart_wallet_overlap", 0) or 0) >= 1
+            or int(x.get("wallet_accumulation", 0) or 0) >= 1
+        )
 
     def volume(x):
         v = x.get("vol_changes") or {}
@@ -1405,7 +1424,29 @@ def apply_bot_filters(results):
 
     def technical(x):
         tech = x.get("tech") or {}
-        return any(bool(tech.get(tf)) for tf in ("5m", "15m", "1h", "4h", "1d"))
+        for tf in ("5m", "15m", "1h", "4h", "1d"):
+            t = tech.get(tf) or {}
+            if not t:
+                continue
+            close, vwap = t.get("close"), t.get("vwap")
+            bullish = 0
+            if t.get("rsi") is not None and 45 <= float(t["rsi"]) <= 70:
+                bullish += 1
+            if t.get("ema5") is not None and t.get("ema13") is not None and t["ema5"] > t["ema13"]:
+                bullish += 1
+            if t.get("macd_bull_cross") or (
+                t.get("macd") is not None and t.get("macd_signal") is not None and t["macd"] > t["macd_signal"]
+            ):
+                bullish += 1
+            if close is not None and vwap is not None and close >= vwap:
+                bullish += 1
+            if t.get("volume_ratio") is not None and t["volume_ratio"] >= 1.20:
+                bullish += 1
+            if t.get("ichimoku_tenkan") is not None and t.get("ichimoku_kijun") is not None and t["ichimoku_tenkan"] > t["ichimoku_kijun"]:
+                bullish += 1
+            if bullish >= 2:
+                return True
+        return False
 
     checks = {
         "smart": smart,
@@ -1414,10 +1455,7 @@ def apply_bot_filters(results):
         "volume": volume,
         "technical": technical,
     }
-    # Multiple Telegram filters are combined with AND semantics.
-    if not selected_filters or selected_filters == ["all"]:
-        return selected
-    return [x for x in selected if all(checks.get(key, lambda _: False)(x) for key in selected_filters)]
+    return [x for x in selected if all(checks[key](x) for key in selected_filters if key in checks)]
 
 
 def main():
@@ -1493,7 +1531,9 @@ def main():
         x["vol_changes"].get("3d") or -999999,
     ), reverse=True)
 
-    for result in results:
+    requested_filters = [x for x in os.environ.get("BOT_FILTER", "all").split(",") if x and x != "all"]
+    technical_limit = len(results) if "technical" in requested_filters else min(200, len(results))
+    for result in results[:technical_limit]:
         tech = technical_signals(result["symbol"])
         coin = next((c for c in coins if c.get("symbol") == result["symbol"]), None)
         if coin:
@@ -1508,7 +1548,7 @@ def main():
             result["stage"] = stage
             result["tech"] = tech
 
-    for result in results[200:]:
+    for result in results[technical_limit:]:
         result["tech"] = {}
 
     save_history(history)
@@ -1520,7 +1560,9 @@ def main():
         # Wallet history covers the full CMC top-300 Futures-eligible scan,
         # not only the top-100 scored results. This keeps early/smaller
         # pre-pump assets from being invisible to cross-asset wallet history.
-        for result in results[:300]:
+        wallet_filters_requested = any(x in requested_filters for x in ("wallet", "smart", "whale"))
+        wallet_scan_limit = len(results) if wallet_filters_requested else min(300, len(results))
+        for result in results[:wallet_scan_limit]:
             coin = coin_by_symbol.get(str(result["symbol"]).upper())
             layers = []
             if SOLSCAN_API_KEY:
@@ -1627,6 +1669,7 @@ def main():
         "اولویت بررسی: حجم ← ولت/نهنگ ← تکنیکال\n"
         "منبع حجم: فیوچرز زنده + تاریخچه روزانه فیوچرز\n"
         "نمایش حجم: ۱روز / ۲روز / ۳روز (۷روز / ۱۴روز فقط برای تحلیل داخلی)\n"
+        "فیلتر حجم: ۱روز/۲روز معیار اصلی؛ ۳روز فقط زمینه است و حذف قطعی نمی‌کند.\n"
         "Fallback: Gate Futures در صورت محدودیت Binance/Bybit\n"
         "تکنیکال: ۵دقیقه / ۱۵دقیقه / ۱ساعت / ۴ساعت / ۱روز (اولویت با ۵دقیقه/۱۵دقیقه/۱ساعت)\n"
         "پامپ قبلی قیمت شرط نیست.\n"
