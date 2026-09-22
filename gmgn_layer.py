@@ -79,6 +79,7 @@ def build_signals(trades):
         opens = sum(1 for x in buys if str(x.get("is_open_or_close")) == "0")
         buy_usd = sum(float(x.get("amount_usd") or 0) for x in buys)
         latest = max(items, key=lambda x: int(x.get("timestamp") or 0))
+        latest_side = str(latest.get("side") or "").lower()
         symbol = ((latest.get("base_token") or {}).get("symbol") or "?")
         tags = set()
         for x in buys:
@@ -117,6 +118,13 @@ def build_signals(trades):
             "buy_count": len(buys), "sell_count": len(sells),
             "opens": opens, "buy_usd": buy_usd,
             "latest_ts": int(latest.get("timestamp") or 0),
+            "latest_side": latest_side,
+            "position_status": (
+                "🟢 خرید و نگهداری محتمل" if latest_side == "buy" and buys else
+                "🟡 فروش جزئی" if latest_side == "sell" and len(sells) < len(buys) else
+                "🔴 خروج/توزیع" if latest_side == "sell" and sells else
+                "⚪ نامشخص"
+            ),
             "reasons": reasons,
         })
     return rows
