@@ -1073,20 +1073,20 @@ def apply_gmgn_signals(result, signal):
     opens = int(signal.get("opens", 0) or 0)
     buy_usd = float(signal.get("buy_usd", 0) or 0)
     overlap = int(signal.get("overlap", 0) or 0)
-    if buys: score += min(8, 4 + buys); reasons.append(f"GMGN Smart Money buys {buys}")
-    if wallets >= 3: score += 8; reasons.append(f"GMGN {wallets} Smart Money wallets")
+    if buys: score += min(8, 4 + buys); reasons.append(f"خرید اسمارت‌مانی GMGN: {buys}")
+    if wallets >= 3: score += 8; reasons.append(f"{wallets} ولت اسمارت‌مانی GMGN")
     elif wallets == 2: score += 5; reasons.append("GMGN 2-wallet convergence")
     elif wallets == 1: score += 2; reasons.append("GMGN 1 Smart Money wallet")
-    if opens: score += min(6, opens * 2); reasons.append(f"GMGN position opens {opens}")
-    if buy_usd >= 10000: score += 7; reasons.append("GMGN aggregate buy >$10k")
-    elif buy_usd >= 2500: score += 4; reasons.append("GMGN aggregate buy >$2.5k")
-    if overlap >= 2: score += min(8, overlap * 2); reasons.append(f"GMGN wallet overlap {overlap}")
+    if opens: score += min(6, opens * 2); reasons.append(f"باز شدن پوزیشن در GMGN: {opens}")
+    if buy_usd >= 10000: score += 7; reasons.append("خرید تجمیعی GMGN بیشتر از ۱۰هزار دلار")
+    elif buy_usd >= 2500: score += 4; reasons.append("خرید تجمیعی GMGN بیشتر از ۲۵۰۰ دلار")
+    if overlap >= 2: score += min(8, overlap * 2); reasons.append(f"همپوشانی ولت GMGN: {overlap}")
     result["score"] = round(score, 1)
 
 def format_gmgn(x):
     g = x.get("gmgn") or {}
     if not g:
-        return "GMGN: no matching Smart Money data"
+        return "GMGN: داده اسمارت‌مانی منطبق در دسترس نیست"
     return (
         f"GMGN Smart Money: {int(g.get('buy_count', 0) or 0)} buys | "
         f"{len(g.get('wallets') or [])} wallets | "
@@ -1253,7 +1253,7 @@ def apply_coinglass_signals(result, signals):
 def format_coinglass(x):
     cg = x.get("coinglass") or {}
     if not cg:
-        return "CoinGlass: pending/not available"
+        return "CoinGlass: در انتظار داده / در دسترس نیست"
     oi = "N/A" if cg.get("oi_pct") is None else f"{cg['oi_pct']:+.1f}%"
     funding = "N/A" if cg.get("funding") is None else f"{cg['funding']:+.5f}"
     ls = "N/A" if cg.get("long_short") is None else f"{cg['long_short']:.2f}"
@@ -1271,16 +1271,17 @@ def format_coin(x):
     t15 = x["tech"].get("15m", {})
     r15 = "N/A" if t15.get("rsi") is None else f"{t15['rsi']:.0f}"
 
+    wallet_status = "موجود" if x.get("wallet") else "در انتظار داده"
     return (
         f"🔹 {x['name']} ({x['symbol']})  #{x['rank']}\n"
-        f"Score: {x['score']:.1f} | 1h {x['ch1']:+.2f}% | 24h {x['ch24']:+.2f}% | 7d {x['ch7']:+.2f}%\n"
-        f"Vol 1d {f('1d')} | 2d {f('2d')} | 3d {f('3d')}\n"
-        f"RSI 5m {r5} | RSI 15m {r15} | RSI 1h {r1}\n"
-        f"Technical: 5m/15m/1h/4h/1d loaded={sum(bool(x.get('tech',{}).get(tf)) for tf in ('5m','15m','1h','4h','1d'))}/5\n"
-        f"Wallet: {'available' if x.get('wallet') else 'pending/no provider data'} | provider {x.get('wallet_provider','N/A')} | overlap {x.get('wallet_overlap', 0)}\n"
+        f"امتیاز: {x['score']:.1f} | ۱ساعت {x['ch1']:+.2f}% | ۲۴ساعت {x['ch24']:+.2f}% | ۷روز {x['ch7']:+.2f}%\n"
+        f"حجم ۱روز {f('1d')} | ۲روز {f('2d')} | ۳روز {f('3d')}\n"
+        f"RSI ۵دقیقه {r5} | RSI ۱۵دقیقه {r15} | RSI ۱ساعت {r1}\n"
+        f"تکنیکال: ۵دقیقه/۱۵دقیقه/۱ساعت/۴ساعت/۱روز = {sum(bool(x.get('tech',{}).get(tf)) for tf in ('5m','15m','1h','4h','1d'))}/5\n"
+        f"ولت: {wallet_status} | ارائه‌دهنده: {x.get('wallet_provider','N/A')} | همپوشانی: {x.get('wallet_overlap', 0)}\n"
         f"{format_gmgn(x)}\n"
         f"{format_coinglass(x)}\n"
-        f"Signals: {', '.join(x['reasons'][:10])}\n"
+        f"دلایل: {', '.join(x['reasons'][:10])}\n"
     )
 
 
@@ -1418,7 +1419,7 @@ def main():
             result["wallet_overlap"] = wallet_overlap(wallet_history, result["symbol"])
             if result["wallet_overlap"] >= 1:
                 result["score"] = round(result["score"] + min(10, 4 * result["wallet_overlap"]), 1)
-                result["reasons"].append(f"wallet overlap {result['wallet_overlap']}")
+                result["reasons"].append(f"همپوشانی ولت: {result['wallet_overlap']}")
     results.sort(key=lambda x: x["score"], reverse=True)
 
     # GMGN enriches the SAME existing Futures universe; missing data never excludes candidates.
@@ -1462,13 +1463,13 @@ def main():
         # (down to -15%) when 1d is strongly positive. Severe 2d weakness
         # is removed unless there is meaningful Smart Money/Whale evidence.
         if v2 is not None and v2 <= MAX_RECOVERY_2D_DROP and not override:
-            result["reasons"].append("removed: 2d volume contraction >15%")
+            result["reasons"].append("حذف: افت حجم ۲روزه بیشتر از ۱۵٪")
             continue
         if (
             v2 is not None and v2 < 0 and v2 > MAX_RECOVERY_2D_DROP
             and (v1 is None or v1 <= 5)
         ):
-            result["reasons"].append("recovery watch: weak 1d rebound")
+            result["reasons"].append("تحت نظر: بازیابی ضعیف حجم ۱روزه")
         filtered_results.append(result)
 
     results = filtered_results
@@ -1493,19 +1494,18 @@ def main():
     results.sort(key=lambda x: x["score"], reverse=True)
 
     header = (
-        "🐋 FIL BEFORE PUMP\n\n"
-        "Futures/Perpetual universe: Binance + Bybit + Gate fallback\n"
-        "Priority: volume → wallet/whale → technical\n"
-        "Volume source: live Futures + daily Futures history\n"
-        "Volume display: 1d / 2d / 3d (7d / 14d retained internally)\n"
-        "Fallback: Gate Futures when Binance/Bybit are blocked\n"
-        "Technical: Futures 5m / 15m / 1h / 4h / 1d (5m/15m/1h priority)\n"
-        "Price pump is NOT required.\n"
-        "🐋 Wallet priority: holder map → buy/sell flow → wallet overlap → whale history.\n"
-        "🐋 On-chain providers: Solscan (Solana) + GoldRush (multichain holder/activity data).\n"
-"⚠️ Raw transfers are never treated as buys/sells; provider-labeled trade flow is required for that signal.\n"
-        "⚠️ Transfers are not labeled as buys unless the provider says so.\n"
-        "⚠️ Stablecoins/tokenized stocks/gold-backed assets are excluded.\n\n"
+        "🐋 فیل قبل از پامپ — کاندیداهای اولیه\n\n"
+        "بازار فیوچرز/پرپچوال: Binance + Bybit + Gate\n"
+        "اولویت بررسی: حجم ← ولت/نهنگ ← تکنیکال\n"
+        "منبع حجم: فیوچرز زنده + تاریخچه روزانه فیوچرز\n"
+        "نمایش حجم: ۱روز / ۲روز / ۳روز (۷روز / ۱۴روز فقط برای تحلیل داخلی)\n"
+        "Fallback: Gate Futures در صورت محدودیت Binance/Bybit\n"
+        "تکنیکال: ۵دقیقه / ۱۵دقیقه / ۱ساعت / ۴ساعت / ۱روز (اولویت با ۵دقیقه/۱۵دقیقه/۱ساعت)\n"
+        "پامپ قبلی قیمت شرط نیست.\n"
+        "🐋 اولویت ولت: نقشه هولدرها ← جریان خرید/فروش ← همپوشانی ولت ← سابقه نهنگ\n"
+        "🐋 منابع آن‌چین: Solscan + GoldRush\n"
+        "⚠️ انتقال خام هیچ‌وقت خرید/فروش محسوب نمی‌شود؛ برای این سیگنال باید جریان معامله توسط ارائه‌دهنده برچسب‌گذاری شده باشد.\n"
+        "⚠️ استیبل‌کوین‌ها، سهام توکنیزه و دارایی‌های طلاپشتوانه حذف می‌شوند.\n\n"
     )
     message = header + (
         "\n".join(format_coin(x) for x in results[:30])
