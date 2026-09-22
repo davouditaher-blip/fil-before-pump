@@ -1053,15 +1053,42 @@ def gmgn_enrichment():
     try:
         from gmgn_layer import run_gmgn, build_signals
         trades = []
-        for chain in ("sol", "bsc", "base", "eth"): trades.extend(run_gmgn(chain))
+        for chain in ('sol', 'bsc', 'base', 'eth'):
+            trades.extend(run_gmgn(chain))
         signals = build_signals(trades)
+
+        # Common wallets: wallets that bought at least two different assets in this scan.
+        wallet_assets = {}
+        for trade in trades:
+            wallet = trade.get('maker')
+            symbol = ((trade.get('base_token') or {}).get('symbol') or '').upper()
+            side = str(trade.get('side') or '').lower()
+            if wallet and symbol and side == 'buy':
+                wallet_assets.setdefault(wallet, set()).add(symbol)
+
+        common_by_symbol = {}
+        for wallet, assets in wallet_assets.items():
+            if len(assets) < 2: continue
+            for symbol in assets:
+                common_by_symbol.setdefault(symbol, []).append({'wallet': wallet, 'assets': sorted(assets)})
+
         best = {}
         for row in signals:
-            symbol = str(row.get("symbol") or "").upper()
-            if symbol and row.get("score", 0) > best.get(symbol, {}).get("score", -1): best[symbol] = row
+            symbol = str(row.get('symbol') or '').upper()
+            if not symbol: continue
+            if row.get('score', 0) > best.get(symbol, {}).get('score', -1):
+                row['common_wallets'] = common_by_symbol.get(symbol, [])
+                row['common_wallet_count'] = len(row['common_wallets'])
+                row['common_assets'] = sorted({a for item in row['common_wallets'] for a in item['assets'] if a != symbol})
+                best[symbol] = row
+
+        best['__COMMON_WALLETS__'] = [
+            {'wallet': wallet, 'assets': sorted(assets), 'asset_count': len(assets)}
+            for wallet, assets in wallet_assets.items() if len(assets) >= 2
+        ]
         return best
     except Exception as e:
-        print(f"GMGN enrichment warning: {e}")
+        print(f'GMGN enrichment warning: {e}')
         return {}
 
 def apply_gmgn_signals(result, signal):
@@ -1084,180 +1111,15 @@ def apply_gmgn_signals(result, signal):
     result["score"] = round(score, 1)
 
 def format_gmgn(x):
-    g = x.get("gmgn") or {}
-    if not g:
-        return "GMGN: داده اسمارت‌مانی منطبق در دسترس نیست"
-    return (
-        f"GMGN Smart Money: {int(g.get('buy_count', 0) or 0)} buys | "
-        f"{len(g.get('wallets') or [])} wallets | "
-        f"Buy ${float(g.get('buy_usd', 0) or 0):,.0f} | "
-        f"overlap {int(g.get('overlap', 0) or 0)}"
-    )
-
-COINGLASS_API_KEY = os.environ.get("COINGLASS_API_KEY", "")
-COINGLASS_BASE = "https://open-api-v4.coinglass.com"
-COINGLASS_CACHE_FILE = Path("coinglass_history.json")
-
-
-def coinglass_get(path, params=None):
-    """Read-only CoinGlass V4 request. Fail soft so the scanner keeps running."""
-    if not COINGLASS_API_KEY:
-        return None
-    try:
-        r = session.get(
-            COINGLASS_BASE + path,
-            params=params or {},
-            headers={"CG-API-KEY": COINGLASS_API_KEY, "accept": "application/json"},
-            timeout=20,
-        )
-        r.raise_for_status()
-        payload = r.json()
-        if str(payload.get("code", "0")) not in ("0", "200"):
-            print(f"CoinGlass warning: code={payload.get('code')} msg={payload.get('msg')}")
-            return None
-        return payload.get("data")
-    except requests.RequestException as e:
-        print(f"CoinGlass warning: {e}")
-        return None
-
-
-def load_coinglass_cache():
-    if not COINGLASS_CACHE_FILE.exists():
-        return {}
-    try:
-        return json.loads(COINGLASS_CACHE_FILE.read_text())
-    except Exception:
-        return {}
-
-
-def save_coinglass_cache(cache):
-    COINGLASS_CACHE_FILE.write_text(json.dumps(cache, indent=2))
-
-
-def _cg_rows(data):
-    if isinstance(data, list):
-        return data
-    if isinstance(data, dict):
-        for key in ("data", "list", "items", "rows"):
-            value = data.get(key)
-            if isinstance(value, list):
-                return value
-    return []
-
-
-def _cg_close(rows, keys):
-    for row in reversed(rows):
-        for key in keys:
-            value = row.get(key)
-            if value is not None:
-                try:
-                    return float(value)
-                except (TypeError, ValueError):
-                    pass
-    return None
-
-
-def coinglass_signals(symbol, cache, now_ts):
-    """Fetch a small, quota-conscious derivatives confirmation layer.
-
-    We use 4h history endpoints, which are documented for Hobbyist+ plans.
-    The free key may reject some endpoints; those failures are non-fatal.
-    Calls are cached for two hours and only requested for the highest-priority
-    candidates, keeping API usage bounded.
-    """
-    key = str(symbol).upper()
-    cached = cache.get(key, {})
-    if cached.get("timestamp", 0) and now_ts - int(cached["timestamp"]) < 2 * 3600:
-        return cached.get("signals") or {}
-
-    params = {"symbol": key, "interval": "4h", "limit": 3}
-    endpoints = {
-        "oi": "/api/futures/open-interest/aggregated-history",
-        "funding": "/api/futures/funding-rate/history",
-        "ls": "/api/futures/global-long-short-account-ratio/history",
-        "liq": "/api/futures/liquidation/aggregated-history",
-    }
-    raw = {}
-    for name, endpoint in endpoints.items():
-        data = coinglass_get(endpoint, params)
-        rows = _cg_rows(data)
-        if rows:
-            raw[name] = rows
-        time.sleep(0.05)
-
-    signals = {}
-    oi_rows = raw.get("oi", [])
-    if oi_rows:
-        oi_now = _cg_close(oi_rows, ("close", "open_interest_usd", "open_interest"))
-        oi_old = _cg_close(oi_rows[:-1], ("close", "open_interest_usd", "open_interest"))
-        signals["oi_pct"] = pct(oi_now, oi_old) if oi_now is not None and oi_old not in (None, 0) else None
-
-    fr_rows = raw.get("funding", [])
-    if fr_rows:
-        signals["funding"] = _cg_close(fr_rows, ("close", "funding_rate"))
-
-    ls_rows = raw.get("ls", [])
-    if ls_rows:
-        row = ls_rows[-1]
-        long_pct = row.get("global_account_long_percent")
-        short_pct = row.get("global_account_short_percent")
-        try:
-            if long_pct is not None and short_pct not in (None, 0):
-                signals["long_short"] = float(long_pct) / float(short_pct)
-        except (TypeError, ValueError, ZeroDivisionError):
-            pass
-
-    liq_rows = raw.get("liq", [])
-    if liq_rows:
-        row = liq_rows[-1]
-        long_liq = row.get("aggregated_long_liquidation_usd")
-        short_liq = row.get("aggregated_short_liquidation_usd")
-        try:
-            signals["long_liq_usd"] = float(long_liq or 0)
-            signals["short_liq_usd"] = float(short_liq or 0)
-            signals["liq_total_usd"] = signals["long_liq_usd"] + signals["short_liq_usd"]
-        except (TypeError, ValueError):
-            pass
-
-    signals["updated_at"] = now_ts
-    cache[key] = {"timestamp": now_ts, "signals": signals}
-    return signals
-
-
-def apply_coinglass_signals(result, signals):
-    if not signals:
-        return
-
-    result["coinglass"] = signals
-    oi = signals.get("oi_pct")
-    funding = signals.get("funding")
-    ls = signals.get("long_short")
-    liq_total = signals.get("liq_total_usd")
-
-    # Confirmation only: never exclude a candidate because CoinGlass is weak
-    # or unavailable.
-    if oi is not None and oi >= 2 and result.get("ch24", 0) <= 8:
-        result["score"] = round(result["score"] + 5, 1)
-        result["reasons"].append("CoinGlass OI rising")
-    if funding is not None and -0.0005 <= funding <= 0.0015:
-        result["score"] = round(result["score"] + 2, 1)
-        result["reasons"].append("CoinGlass funding balanced")
-    if ls is not None and 0.85 <= ls <= 1.25:
-        result["score"] = round(result["score"] + 2, 1)
-        result["reasons"].append("CoinGlass L/S balanced")
-    if liq_total is not None and liq_total > 0:
-        result["reasons"].append("CoinGlass liquidations tracked")
-
-
-
-def format_coinglass(x):
-    cg = x.get("coinglass") or {}
-    if not cg:
-        return "CoinGlass: در انتظار داده / در دسترس نیست"
-    oi = "N/A" if cg.get("oi_pct") is None else f"{cg['oi_pct']:+.1f}%"
-    funding = "N/A" if cg.get("funding") is None else f"{cg['funding']:+.5f}"
-    ls = "N/A" if cg.get("long_short") is None else f"{cg['long_short']:.2f}"
-    return f"CoinGlass: OI {oi} | Funding {funding} | L/S {ls}"
+    g = x.get('gmgn') or {}
+    if not g: return 'GMGN: داده اسمارت‌مانی منطبق در دسترس نیست'
+    common_count = int(g.get('common_wallet_count', 0) or 0)
+    common_assets = ', '.join(g.get('common_assets') or [])
+    common_text = f' | common wallets {common_count}' if common_count else ''
+    if common_assets: common_text += f' | مشترک با: {common_assets}'
+    return (f"GMGN Smart Money: {int(g.get('buy_count', 0) or 0)} buys | "
+            f"{len(g.get('wallets') or [])} wallets | Buy ${float(g.get('buy_usd', 0) or 0):,.0f} | "
+            f"overlap {int(g.get('overlap', 0) or 0)}{common_text}")
 
 def candidate_status(x):
     g = x.get("gmgn") or {}
@@ -1743,9 +1605,25 @@ def main():
         "⚠️ استیبل‌کوین‌ها، سهام توکنیزه و دارایی‌های طلاپشتوانه حذف می‌شوند.\n\n"
     )
     message = header + (
-        "\n".join(format_coin(x) for x in results[:30])
-        if results else "No early-volume candidates with available history."
+        '\n'.join(format_coin(x) for x in results[:30])
+        if results else 'No early-volume candidates with available history.'
     )
+
+    # Common-wallet summary appended to every scheduled 30-minute Telegram report.
+    common_rows = (gmgn.get('__COMMON_WALLETS__') or []) if gmgn else []
+    candidate_symbols = {str(x.get('symbol') or '').upper() for x in results}
+    common_rows = [x for x in common_rows if any(a in candidate_symbols for a in x.get('assets', []))]
+    common_rows.sort(key=lambda x: (len([a for a in x.get('assets', []) if a in candidate_symbols]), x.get('asset_count', 0)), reverse=True)
+    common_lines = ['', '🔗 COMMON WALLET SIGNAL — هر ۳۰ دقیقه', 'ولت‌هایی که در این اسکن روی حداقل ۲ ارز خرید داشته‌اند:']
+    if common_rows:
+        for item in common_rows[:15]:
+            wallet = item.get('wallet', '')
+            short = wallet[:8] + '…' + wallet[-6:] if len(wallet) > 18 else wallet
+            assets = item.get('assets') or []
+            candidate_assets = [a for a in assets if a in candidate_symbols]
+            common_lines.append(f"👛 {short} | {len(assets)} ارز مشترک | خرید: {', '.join(assets[:12])}" + (f" | کاندید: {', '.join(candidate_assets)}" if candidate_assets else ''))
+    else: common_lines.append('اطلاعات کافی برای ولت مشترک در این اسکن وجود ندارد.')
+    message += '\n' + '\n'.join(common_lines)
     print(message)
     send_telegram(message)
     # The control panel is opened with /start; do not send unsolicited menu messages.
