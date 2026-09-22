@@ -1259,6 +1259,25 @@ def format_coinglass(x):
     ls = "N/A" if cg.get("long_short") is None else f"{cg['long_short']:.2f}"
     return f"CoinGlass: OI {oi} | Funding {funding} | L/S {ls}"
 
+def candidate_status(x):
+    g = x.get("gmgn") or {}
+    buys = int(g.get("buy_count", 0) or 0)
+    wallets = len(g.get("wallets") or [])
+    buy_usd = float(g.get("buy_usd", 0) or 0)
+    v = x.get("vol_changes") or {}
+    v1, v2 = v.get("1d"), v.get("2d")
+    ch24 = float(x.get("ch24") or 0)
+    smart = buys > 0 or wallets > 0 or buy_usd > 0
+    fresh_volume = (v1 is not None and v1 > 0) or (v2 is not None and v2 > 0)
+    if smart and ch24 <= 8 and fresh_volume:
+        return "EARLY CANDIDATE / WATCH"
+    if smart:
+        return "SMART MONEY / WATCH"
+    if fresh_volume and ch24 <= 8:
+        return "EARLY VOLUME / WATCH"
+    return "WATCH"
+
+
 def format_coin(x):
     v = x["vol_changes"]
 
@@ -1274,7 +1293,8 @@ def format_coin(x):
     wallet_status = "موجود" if x.get("wallet") else "در انتظار داده"
     return (
         f"🔹 {x['name']} ({x['symbol']})  #{x['rank']}\n"
-        f"امتیاز: {x['score']:.1f} | ۱ساعت {x['ch1']:+.2f}% | ۲۴ساعت {x['ch24']:+.2f}% | ۷روز {x['ch7']:+.2f}%\n"
+        f"وضعیت: {candidate_status(x)}\n"
+        f"امتیاز داخلی: {x['score']:.1f} | ۱ساعت {x['ch1']:+.2f}% | ۲۴ساعت {x['ch24']:+.2f}% | ۷روز {x['ch7']:+.2f}%\n"
         f"حجم ۱روز {f('1d')} | ۲روز {f('2d')} | ۳روز {f('3d')}\n"
         f"RSI ۵دقیقه {r5} | RSI ۱۵دقیقه {r15} | RSI ۱ساعت {r1}\n"
         f"تکنیکال: ۵دقیقه/۱۵دقیقه/۱ساعت/۴ساعت/۱روز = {sum(bool(x.get('tech',{}).get(tf)) for tf in ('5m','15m','1h','4h','1d'))}/5\n"
@@ -1525,6 +1545,13 @@ def main():
             "ch7": float(q.get("percent_change_7d") or 0),
         })
 
+    # ================================================================
+    # FIL COMPLETE PIPELINE
+    # GMGN Smart Money -> volume -> wallet/whale -> technical.
+    # Strong early Smart Money candidates are retained even when a
+    # technical layer is weak or temporarily unavailable.
+    # ================================================================
+
     results.sort(key=lambda x: (
         x["score"],
         x["vol_changes"].get("1d") or -999999,
@@ -1532,34 +1559,23 @@ def main():
     ), reverse=True)
 
     requested_filters = [x for x in os.environ.get("BOT_FILTER", "all").split(",") if x and x != "all"]
-    technical_limit = len(results) if "technical" in requested_filters else min(200, len(results))
-    for result in results[:technical_limit]:
-        tech = technical_signals(result["symbol"])
-        coin = next((c for c in coins if c.get("symbol") == result["symbol"]), None)
-        if coin:
-            score, reasons, stage = score_coin(
-                coin,
-                (result["vol_changes"], True, False, False,
-                 max([v for v in result["vol_changes"].values() if v is not None and v > 0], default=0.0)),
-                tech,
-            )
-            result["score"] = score
-            result["reasons"] = reasons
-            result["stage"] = stage
-            result["tech"] = tech
 
-    for result in results[technical_limit:]:
-        result["tech"] = {}
+    # Layer 1: GMGN Smart Money FIRST.
+    gmgn = gmgn_enrichment()
+    if gmgn:
+        for result in results:
+            apply_gmgn_signals(result, gmgn.get(str(result["symbol"]).upper()))
+    results.sort(key=lambda x: (
+        1 if x.get("gmgn") else 0,
+        (x.get("gmgn") or {}).get("score", 0) or 0,
+        x["score"],
+        x["vol_changes"].get("1d") or -999999,
+    ), reverse=True)
 
-    save_history(history)
-
+    # Layer 2: wallet / whale. Additive only; no wallet signal is a hard exclusion.
     wallet_layers = []
     if (SOLSCAN_API_KEY or GOLDRUSH_API_KEY) and results:
-        results.sort(key=lambda x: x["score"], reverse=True)
         coin_by_symbol = {str(c.get("symbol") or "").upper(): c for c in coins}
-        # Wallet history covers the full CMC top-300 Futures-eligible scan,
-        # not only the top-100 scored results. This keeps early/smaller
-        # pre-pump assets from being invisible to cross-asset wallet history.
         wallet_filters_requested = any(x in requested_filters for x in ("wallet", "smart", "whale"))
         wallet_scan_limit = len(results) if wallet_filters_requested else min(300, len(results))
         for result in results[:wallet_scan_limit]:
@@ -1574,7 +1590,7 @@ def main():
                 if layer:
                     layers.append(layer)
             for layer in layers:
-                layer["price_usd"] = float(result.get("price_usd") or 0) if result.get("price_usd") is not None else None
+                layer["price_usd"] = float(result.get("price_usd") or 0)
                 wallet_layers.append(layer)
                 apply_wallet_signals(result, layer)
             if layers:
@@ -1587,14 +1603,48 @@ def main():
             if result["wallet_overlap"] >= 1:
                 result["score"] = round(result["score"] + min(10, 4 * result["wallet_overlap"]), 1)
                 result["reasons"].append(f"همپوشانی ولت: {result['wallet_overlap']}")
-    results.sort(key=lambda x: x["score"], reverse=True)
 
-    # GMGN enriches the SAME existing Futures universe; missing data never excludes candidates.
-    gmgn = gmgn_enrichment()
-    if gmgn:
-        for result in results:
-            apply_gmgn_signals(result, gmgn.get(str(result["symbol"]).upper()))
-        results.sort(key=lambda x: x["score"], reverse=True)
+    # Layer 3: technical confirmation.
+    gmgn_symbols = {
+        str(x["symbol"]).upper() for x in results
+        if x.get("gmgn") and (
+            int((x.get("gmgn") or {}).get("buy_count", 0) or 0) > 0
+            or len((x.get("gmgn") or {}).get("wallets") or []) > 0
+            or float((x.get("gmgn") or {}).get("buy_usd", 0) or 0) > 0
+        )
+    }
+    priority_symbols = {
+        str(x["symbol"]).upper() for x in results
+        if x.get("wallet")
+        or int(x.get("wallet_overlap", 0) or 0) > 0
+        or int(x.get("smart_wallet_overlap", 0) or 0) > 0
+    } | gmgn_symbols
+
+    technical_limit = len(results) if "technical" in requested_filters else min(200, len(results))
+    technical_symbols = {str(x["symbol"]).upper() for x in results[:technical_limit]} | priority_symbols
+
+    for result in results:
+        if str(result["symbol"]).upper() not in technical_symbols:
+            result["tech"] = {}
+            continue
+        tech = technical_signals(result["symbol"])
+        coin = next((c for c in coins if c.get("symbol") == result["symbol"]), None)
+        if coin:
+            base_score = result["score"]
+            base_reasons = list(result["reasons"])
+            tech_score, tech_reasons, stage = score_coin(
+                coin,
+                (result["vol_changes"], True, False, False,
+                 max([v for v in result["vol_changes"].values() if v is not None and v > 0], default=0.0)),
+                tech,
+            )
+            # Technicals confirm the candidate; they do not replace GMGN/wallet evidence.
+            result["score"] = round(base_score + max(0.0, tech_score * 0.35), 1)
+            result["reasons"] = base_reasons + tech_reasons
+            result["stage"] = stage
+            result["tech"] = tech
+
+    save_history(history)
 
     # Fresh-volume guard: 2d is the main 48h inflow check. A strong 1d
     # rebound cannot by itself rescue a severe 2d contraction. Meaningful
@@ -1663,12 +1713,26 @@ def main():
     # Apply the selection made from the Telegram control panel.
     results = apply_bot_filters(results)
 
+    market_map = {str(c.get("symbol") or "").upper(): c for c in coins}
+    btc = market_map.get("BTC", {}).get("quote", {}).get("USD", {})
+    eth = market_map.get("ETH", {}).get("quote", {}).get("USD", {})
+    btc24 = float(btc.get("percent_change_24h") or 0) if btc else 0
+    eth24 = float(eth.get("percent_change_24h") or 0) if eth else 0
+    btc7 = float(btc.get("percent_change_7d") or 0) if btc else 0
+    eth7 = float(eth.get("percent_change_7d") or 0) if eth else 0
+    market_regime_text = (
+        f"BTC/ETH: BTC 24h {btc24:+.2f}% / 7d {btc7:+.2f}% | "
+        f"ETH 24h {eth24:+.2f}% / 7d {eth7:+.2f}%\n"
+    )
+
     header = (
-        "🐋 فیل قبل از پامپ — کاندیداهای اولیه\n\n"
+        "🐋 فیل کامل قبل از پامپ — کاندیداهای اولیه\n\n"
+        + market_regime_text
         "بازار فیوچرز/پرپچوال: Binance + Bybit + Gate\n"
-        "اولویت بررسی: حجم ← ولت/نهنگ ← تکنیکال\n"
+        "لایه‌ها: GMGN Smart Money → حجم ۱/۳/۷/۱۴روز → ولت/نهنگ → RSI ۵m/۱۵m/۱h → MACD/EMA/Ichimoku/VWAP → Structure/Compression → OI/Funding/Liquidation → BTC/ETH → Pre-Pump Check\n"
+        "GMGN لایه اول و اولویت‌دار است؛ کاندید قوی به‌دلیل ضعف یک فیلتر تکنیکال حذف نمی‌شود.\n"
         "منبع حجم: فیوچرز زنده + تاریخچه روزانه فیوچرز\n"
-        "نمایش حجم: ۱روز / ۲روز / ۳روز (۷روز / ۱۴روز فقط برای تحلیل داخلی)\n"
+        "نمایش حجم: ۱روز / ۲روز / ۳روز / ۷روز / ۱۴روز\n"
         "فیلتر حجم: ۱روز/۲روز معیار اصلی؛ ۳روز فقط زمینه است و حذف قطعی نمی‌کند.\n"
         "Fallback: Gate Futures در صورت محدودیت Binance/Bybit\n"
         "تکنیکال: ۵دقیقه / ۱۵دقیقه / ۱ساعت / ۴ساعت / ۱روز (اولویت با ۵دقیقه/۱۵دقیقه/۱ساعت)\n"
