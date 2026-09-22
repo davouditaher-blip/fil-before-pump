@@ -1196,10 +1196,7 @@ RANK_RANGES = {
     "top100": (1, 100),
     "101_200": (101, 200),
     "201_300": (201, 300),
-    "301_400": (301, 400),
-    "401_500": (401, 500),
-    "501_1000": (501, 1000),
-    "all": (1, 1000),
+    "all": (1, 300),
 }
 
 def telegram_menu_keyboard():
@@ -1215,7 +1212,7 @@ def telegram_menu_keyboard():
             ],
             [
                 {"text": "🥉 رتبه 201–300", "callback_data": "rank|201_300|all"},
-                {"text": "🌐 همه ارزها", "callback_data": "rank|all|all"},
+                {"text": "🐋 اسکن ولت‌محور", "callback_data": "rank|all|all"},
             ],
             [
                 {"text": "📊 حجم", "callback_data": "filter|all|volume"},
