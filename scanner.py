@@ -673,13 +673,16 @@ def score_coin(coin, volume_info, tech):
 
     changes, early, strong, acceleration, max_vol = volume_info
     current_1d = changes.get("1d")
+    current_2d = changes.get("2d")
     current_3d = changes.get("3d")
     context_7d = changes.get("7d")
     context_14d = changes.get("14d")
     score = 0.0
     reasons = []
 
-    current_positive = [v for v in (current_1d, current_3d) if v is not None and v > 0]
+    # Short-term volume priority: 1d and 2d capture fresh 24–48h inflow.
+    # 3d is context only and is never a hard exclusion by itself.
+    current_positive = [v for v in (current_1d, current_2d) if v is not None and v > 0]
     current_max = max(current_positive) if current_positive else 0.0
 
     if current_positive:
