@@ -1041,6 +1041,50 @@ def apply_wallet_signals(result, layer):
 
 
 
+GMGN_API_KEY = os.environ.get("GMGN_API_KEY", "")
+
+def gmgn_enrichment():
+    if not GMGN_API_KEY: return {}
+    try:
+        from gmgn_layer import run_gmgn, build_signals
+        trades = []
+        for chain in ("sol", "bsc", "base", "eth"): trades.extend(run_gmgn(chain))
+        signals = build_signals(trades)
+        best = {}
+        for row in signals:
+            symbol = str(row.get("symbol") or "").upper()
+            if symbol and row.get("score", 0) > best.get(symbol, {}).get("score", -1): best[symbol] = row
+        return best
+    except Exception as e:
+        print(f"GMGN enrichment warning: {e}")
+        return {}
+
+def apply_gmgn_signals(result, signal):
+    if not signal: return
+    result["gmgn"] = signal
+    score, reasons = result["score"], result["reasons"]
+    wallets = len(signal.get("wallets") or [])
+    buys = int(signal.get("buy_count", 0) or 0)
+    opens = int(signal.get("opens", 0) or 0)
+    buy_usd = float(signal.get("buy_usd", 0) or 0)
+    overlap = int(signal.get("overlap", 0) or 0)
+    if buys: score += min(8, 4 + buys); reasons.append(f"GMGN Smart Money buys {buys}")
+    if wallets >= 3: score += 8; reasons.append(f"GMGN {wallets} Smart Money wallets")
+    elif wallets == 2: score += 5; reasons.append("GMGN 2-wallet convergence")
+    elif wallets == 1: score += 2; reasons.append("GMGN 1 Smart Money wallet")
+    if opens: score += min(6, opens * 2); reasons.append(f"GMGN position opens {opens}")
+    if buy_usd >= 10000: score += 7; reasons.append("GMGN aggregate buy >$10k")
+    elif buy_usd >= 2500: score += 4; reasons.append("GMGN aggregate buy >$2.5k")
+    if overlap >= 2: score += min(8, overlap * 2); reasons.append(f"GMGN wallet overlap {overlap}")
+    result["score"] = round(score, 1)
+
+def format_gmgn(x):
+    g = x.get("gmgn") or {}
+    if not g: return "GMGN: no matching Smart Money data"
+    return (f"GMGN Smart Money: {int(g.get("buy_count", 0) or 0)} buys | "
+            f"{len(g.get("wallets") or [])} wallets | Buy ${float(g.get("buy_usd", 0) or 0):,.0f} | "
+            f"overlap {int(g.get("overlap", 0) or 0)}")
+
 COINGLASS_API_KEY = os.environ.get("COINGLASS_API_KEY", "")
 COINGLASS_BASE = "https://open-api-v4.coinglass.com"
 COINGLASS_CACHE_FILE = Path("coinglass_history.json")
@@ -1225,6 +1269,7 @@ def format_coin(x):
         f"RSI 5m {r5} | RSI 15m {r15} | RSI 1h {r1}\n"
         f"Technical: 5m/15m/1h/4h/1d loaded={sum(bool(x.get('tech',{}).get(tf)) for tf in ('5m','15m','1h','4h','1d'))}/5\n"
         f"Wallet: {'available' if x.get('wallet') else 'pending/no provider data'} | provider {x.get('wallet_provider','N/A')} | overlap {x.get('wallet_overlap', 0)}\n"
+        f"{format_gmgn(x)}\n"
         f"{format_coinglass(x)}\n"
         f"Signals: {', '.join(x['reasons'][:10])}\n"
     )
@@ -1366,6 +1411,13 @@ def main():
                 result["score"] = round(result["score"] + min(10, 4 * result["wallet_overlap"]), 1)
                 result["reasons"].append(f"wallet overlap {result['wallet_overlap']}")
     results.sort(key=lambda x: x["score"], reverse=True)
+
+    # GMGN enriches the SAME existing Futures universe; missing data never excludes candidates.
+    gmgn = gmgn_enrichment()
+    if gmgn:
+        for result in results:
+            apply_gmgn_signals(result, gmgn.get(str(result["symbol"]).upper()))
+        results.sort(key=lambda x: x["score"], reverse=True)
 
     # CoinGlass is a confirmation layer, not a hard filter. To keep the
     # free API quota under control, refresh only the top 5 candidates every
