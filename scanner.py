@@ -74,7 +74,7 @@ def cmc(endpoint, params=None):
 def get_market():
     return cmc(
         "/v1/cryptocurrency/listings/latest",
-        {"start": 1, "limit": 1000, "convert": "USD"},
+        {"start": 1, "limit": 300, "convert": "USD"},
     )["data"]
 
 
@@ -1342,7 +1342,7 @@ def apply_bot_filters(results):
 
 def main():
     print("🐋 FIL BEFORE PUMP — EARLY SCANNER")
-    coins = get_market()
+    coins = [x for x in get_market() if x.get("cmc_rank") is not None and int(x.get("cmc_rank")) <= 300]
     history = load_history()
     now_ts = int(datetime.now(timezone.utc).timestamp())
 
@@ -1466,46 +1466,7 @@ def main():
                 result["score"] = round(result["score"] + min(10, 4 * result["wallet_overlap"]), 1)
                 result["reasons"].append(f"همپوشانی ولت: {result['wallet_overlap']}")
 
-    # Layer 3: technical confirmation.
-    gmgn_symbols = {
-        str(x["symbol"]).upper() for x in results
-        if x.get("gmgn") and (
-            int((x.get("gmgn") or {}).get("buy_count", 0) or 0) > 0
-            or len((x.get("gmgn") or {}).get("wallets") or []) > 0
-            or float((x.get("gmgn") or {}).get("buy_usd", 0) or 0) > 0
-        )
-    }
-    priority_symbols = {
-        str(x["symbol"]).upper() for x in results
-        if x.get("wallet")
-        or int(x.get("wallet_overlap", 0) or 0) > 0
-        or int(x.get("smart_wallet_overlap", 0) or 0) > 0
-    } | gmgn_symbols
-
-    technical_limit = len(results) if "technical" in requested_filters else min(200, len(results))
-    technical_symbols = {str(x["symbol"]).upper() for x in results[:technical_limit]} | priority_symbols
-
-    for result in results:
-        if str(result["symbol"]).upper() not in technical_symbols:
-            result["tech"] = {}
-            continue
-        tech = technical_signals(result["symbol"])
-        coin = next((c for c in coins if c.get("symbol") == result["symbol"]), None)
-        if coin:
-            base_score = result["score"]
-            base_reasons = list(result["reasons"])
-            tech_score, tech_reasons, stage = score_coin(
-                coin,
-                (result["vol_changes"], True, False, False,
-                 max([v for v in result["vol_changes"].values() if v is not None and v > 0], default=0.0)),
-                tech,
-            )
-            # Technicals confirm the candidate; they do not replace GMGN/wallet evidence.
-            result["score"] = round(base_score + max(0.0, tech_score * 0.35), 1)
-            result["reasons"] = base_reasons + tech_reasons
-            result["stage"] = stage
-            result["tech"] = tech
-
+    # لایه تکنیکال در این نسخه اجرا نمی‌شود؛ فیلتر اصلی ولت‌محور است.
     save_history(history)
 
     # Fresh-volume guard: 2d is the main 48h inflow check. A strong 1d
