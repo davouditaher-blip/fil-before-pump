@@ -1234,21 +1234,12 @@ def format_gmgn(x):
     g = x.get("gmgn") or {}
     if not g:
         return "GMGN: داده اسمارت‌مانی منطبق در دسترس نیست"
-    common_rows = g.get("common_wallets") or []
     common_count = int(g.get("common_wallet_count", 0) or 0)
-    common_assets = ", ".join(g.get("common_assets") or [])
     common_text = f" | 🔁 ولت مشترک: {common_count}" if common_count else ""
-    if common_assets:
-        common_text += f" | مشترک با: {common_assets}"
-    lines = [
+    return (
         f"🐋 GMGN: {int(g.get('buy_count', 0) or 0)} خرید | {len(g.get('wallets') or [])} ولت | "
         f"Buy ${float(g.get('buy_usd', 0) or 0):,.0f} | overlap {int(g.get('overlap', 0) or 0)}{common_text}"
-    ]
-    for row in common_rows[:4]:
-        wallet = row.get("wallet", "")
-        short = wallet[:8] + "…" + wallet[-4:] if len(wallet) > 14 else wallet
-        lines.append(f"{row.get('status', '⚪ نامشخص')}: {short}")
-    return "\n".join(lines)
+    )
 
 def candidate_status(x):
     g = x.get("gmgn") or {}
