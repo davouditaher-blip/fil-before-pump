@@ -30,11 +30,13 @@ TOKENIZED_MARKER_NAMES = (
 NON_CRYPTO_MARKER_NAMES = (
     "global dollar", "digital dollar", "dollar", "stables",
     "stablecoin", "stable coin", "euro coinvertible",
-    "gold", "pax gold", "tether gold", "tokenized gold",
+    "gold", "pax gold", "tether gold", "tokenized gold", "gold-backed",
+    "gold backed", "tokenized commodity", "tokenised commodity", "commodity-backed",
 )
 
 NON_CRYPTO_SYMBOLS = {
     "USDG", "U", "EUSX", "USDSUI", "FIDD", "EURCV", "PAXG", "XAUT",
+    "KAU", "DGX",
 }
 
 
