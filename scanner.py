@@ -1189,7 +1189,7 @@ def format_coin(x):
         f"حجم ۱روز قبل: {f('1d')} | ۲روز قبل: {f('2d')}\n"
         f"🐋 حجم ۷روز و ۱۴روز در تحلیل داخلی حفظ شده و فقط نمایش داده نمی‌شود.\n"        f"ولت: {wallet_status} | ارائه‌دهنده: {x.get('wallet_provider','N/A')} | همپوشانی: {x.get('wallet_overlap', 0)}\n"
         f"{format_gmgn(x)}\n"
-        f"{format_coinglass(x)}\n"
+
         f"دلایل: {', '.join(x['reasons'][:10])}\n"
     )
 
@@ -1539,21 +1539,7 @@ def main():
     if removed:
         print(f"Fresh-volume guard removed {removed} severe 2d-volume contraction candidates.")
 
-    # CoinGlass is a confirmation layer, not a hard filter. To keep the
-    # free API quota under control, refresh only the top 5 candidates every
-    # two hours; cached values are reused between refreshes.
-    cg_cache = load_coinglass_cache()
-    if COINGLASS_API_KEY and results:
-        if datetime.now(timezone.utc).hour % 2 == 0:
-            for result in results[:5]:
-                signals = coinglass_signals(result["symbol"], cg_cache, now_ts)
-                apply_coinglass_signals(result, signals)
-        else:
-            for result in results[:5]:
-                cached = cg_cache.get(result["symbol"], {}).get("signals") or {}
-                apply_coinglass_signals(result, cached)
-        save_coinglass_cache(cg_cache)
-    results.sort(key=lambda x: x["score"], reverse=True)
+    # CoinGlass execution is disabled in this wallet-first build; no API call is required here.\n\n    results.sort(key=lambda x: x["score"], reverse=True)
 
     # Apply the selection made from the Telegram control panel.
     results = apply_bot_filters(results)
@@ -1575,7 +1561,7 @@ def main():
         + market_regime_text
         + "بازار فیوچرز/پرپچوال: Binance + Bybit + Gate\n"
         "اولویت: 🐋 Smart Money → 👛 ولت مشترک → سابقه ولت → وضعیت خروج → 🐳 نهنگ → 💰 حجم\n"
-        "لایه‌های پشتیبان: GMGN + Solscan + GoldRush + CoinGlass + حجم فیوچرز + BTC/ETH\n"
+        "لایه‌های پشتیبان: GMGN + Solscan + GoldRush + حجم فیوچرز + BTC/ETH\n"
         "تکنیکال از این نسخه حذف شده تا سیگنال‌ها شلوغ نشوند.\n"
         "منبع حجم: فیوچرز زنده + تاریخچه روزانه فیوچرز\n"
         "نمایش حجم: ۲۴ساعت / ۱روز قبل / ۲روز قبل\n"
