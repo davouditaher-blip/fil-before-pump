@@ -478,7 +478,7 @@ def futures_daily_backfill(symbols, history):
                 data = get_json(BASE_BINANCE_FUTURES + "/fapi/v1/klines", {"symbol": pair, "interval": "1d", "limit": 16}, timeout=15)
                 if isinstance(data, list) and data:
                     history[pair] = [
-                        {"timestamp": int(x[0]) // 1000, "volume": float(x[7]), "source": "binance_futures"}
+                        {"timestamp": int(x[0]) // 1000, "volume": float(x[7]), "price": float(x[4]), "source": "binance_futures"}
                         for x in data if float(x[7] or 0) > 0
                     ]
                     got = True
@@ -491,7 +491,7 @@ def futures_daily_backfill(symbols, history):
                 rows2 = ((data.get("result") or {}).get("list") or [])
                 if rows2:
                     history[pair] = [
-                        {"timestamp": int(x[0]) // 1000, "volume": float(x[6]), "source": "bybit_futures"}
+                        {"timestamp": int(x[0]) // 1000, "volume": float(x[6]), "price": float(x[4]), "source": "bybit_futures"}
                         for x in rows2 if float(x[6] or 0) > 0
                     ]
                     got = True
@@ -508,7 +508,7 @@ def futures_daily_backfill(symbols, history):
                 rows3 = data if isinstance(data, list) else []
                 if rows3:
                     history[pair] = [
-                        {"timestamp": int(x.get("t", 0)), "volume": float(x.get("sum") or 0), "source": "gate_futures"}
+                        {"timestamp": int(x.get("t", 0)), "volume": float(x.get("sum") or 0), "price": float(x.get("c") or x.get("close") or 0), "source": "gate_futures"}
                         for x in rows3 if float(x.get("sum") or 0) > 0
                     ]
                     got = True
