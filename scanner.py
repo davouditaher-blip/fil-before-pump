@@ -1048,6 +1048,65 @@ def apply_wallet_signals(result, layer):
 
 GMGN_API_KEY = os.environ.get("GMGN_API_KEY", "")
 
+def _trade_price(trade):
+    for key in ("price_usd", "price", "base_price", "token_price", "priceUsd"):
+        try:
+            value = float(trade.get(key))
+            if value > 0:
+                return value
+        except (TypeError, ValueError):
+            pass
+    return None
+
+def _historical_wallet_reputation(gmgn_history, futures_history):
+    profiles = {}
+    now_ts = int(datetime.now(timezone.utc).timestamp())
+    for wallet, rows in gmgn_history.items():
+        by_asset = {}
+        for r in rows:
+            if str(r.get("side") or "").lower() != "buy":
+                continue
+            symbol = str(r.get("symbol") or "").upper()
+            pair = f"{symbol}USDT"
+            if not symbol or pair not in futures_history:
+                continue
+            by_asset.setdefault((symbol, pair), []).append(r)
+        wins = []
+        attempts = 0
+        for (symbol, pair), buys in by_asset.items():
+            daily = sorted(futures_history.get(pair, []), key=lambda x: int(x.get("timestamp", 0)))
+            for buy in sorted(buys, key=lambda x: int(x.get("timestamp") or 0))[-8:]:
+                ts = int(buy.get("timestamp") or 0)
+                if ts <= 0 or ts > now_ts:
+                    continue
+                before = [x for x in daily if int(x.get("timestamp", 0)) <= ts + 36*3600 and x.get("price")]
+                if not before:
+                    continue
+                entry = before[-1]
+                entry_price = float(buy.get("price_usd") or buy.get("price") or entry.get("price") or 0)
+                if entry_price <= 0:
+                    continue
+                attempts += 1
+                end_ts = min(ts + 14*86400, now_ts)
+                future = [x for x in daily if ts <= int(x.get("timestamp", 0)) <= end_ts and x.get("price")]
+                if len(future) < 2:
+                    continue
+                peak_row = max(future, key=lambda x: float(x.get("price") or 0))
+                peak = float(peak_row.get("price") or 0)
+                gain = (peak / entry_price - 1) * 100
+                days = max(0.0, (int(peak_row.get("timestamp", ts)) - ts) / 86400)
+                if gain >= 15:
+                    wins.append({"symbol": symbol, "gain": round(gain, 1), "days_to_peak": round(days, 1), "buy_ts": ts})
+        if attempts:
+            profiles[wallet] = {
+                "attempts": attempts,
+                "wins": len(wins),
+                "win_rate": round(len(wins) / attempts * 100, 1),
+                "wins_detail": sorted(wins, key=lambda x: x["gain"], reverse=True)[:10],
+                "proven": len(wins) >= 2 or (wins and max(x["gain"] for x in wins) >= 30),
+            }
+    return profiles
+
 def gmgn_enrichment():
     """Build the Smart Money layer and persist cross-asset wallet history.
 
@@ -1094,6 +1153,8 @@ def gmgn_enrichment():
                 'amount_usd': float(trade.get('amount_usd') or 0),
                 'is_open_or_close': trade.get('is_open_or_close'),
                 'maker_info': trade.get('maker_info') or {},
+                'price_usd': _trade_price(trade),
+                'price_change': trade.get('price_change'),
             })
 
         # Deduplicate and cap each wallet's history.
@@ -1120,6 +1181,29 @@ def gmgn_enrichment():
             print(f"GMGN history save warning: {e}")
 
         signals = build_signals(trades)
+
+        futures_history = load_futures_history()
+        reputation = _historical_wallet_reputation(gmgn_history, futures_history)
+        for signal in signals:
+            proven = []
+            for wallet in signal.get('wallets') or []:
+                profile = reputation.get(wallet)
+                if profile and profile.get('proven'):
+                    proven.append({"wallet": wallet, **profile})
+            signal['proven_wallets'] = proven
+            signal['proven_wallet_count'] = len(proven)
+            if proven:
+                signal['reputation_wins'] = sum(int(x.get('wins', 0)) for x in proven)
+                signal['reputation_attempts'] = sum(int(x.get('attempts', 0)) for x in proven)
+                signal['reputation_win_rate'] = round(
+                    signal['reputation_wins'] / signal['reputation_attempts'] * 100, 1
+                ) if signal['reputation_attempts'] else None
+                details = [d for x in proven for d in x.get('wins_detail', [])]
+                signal['reputation_days_to_peak'] = round(
+                    sum(d.get('days_to_peak', 0) for d in details) / len(details), 1
+                ) if details else None
+                signal['reasons'] = list(signal.get('reasons') or [])
+                signal['reasons'].append(f"proven wallet trail {len(proven)}")
 
         # Build the cross-asset wallet map from current trades + the last
         # 180 days of persisted GMGN observations.
@@ -1220,6 +1304,11 @@ def apply_gmgn_signals(result, signal):
     opens = int(signal.get("opens", 0) or 0)
     buy_usd = float(signal.get("buy_usd", 0) or 0)
     overlap = int(signal.get("overlap", 0) or 0)
+    proven = int(signal.get("proven_wallet_count", 0) or 0)
+    early_price = float(result.get("ch24") or 0) <= 8 and float(result.get("ch7") or 0) <= 20
+    if proven and early_price:
+        score += min(20, 10 + proven * 5)
+        reasons.append(f"ردپای {proven} ولت معتبر قبل از پامپ")
     if buys: score += min(8, 4 + buys); reasons.append(f"خرید اسمارت‌مانی GMGN: {buys}")
     if wallets >= 3: score += 8; reasons.append(f"{wallets} ولت اسمارت‌مانی GMGN")
     elif wallets == 2: score += 5; reasons.append("GMGN 2-wallet convergence")
@@ -1235,10 +1324,22 @@ def format_gmgn(x):
     if not g:
         return "GMGN: داده اسمارت‌مانی منطبق در دسترس نیست"
     common_count = int(g.get("common_wallet_count", 0) or 0)
-    common_text = f" | 🔁 ولت مشترک: {common_count}" if common_count else ""
+    common_text = f" | 🔁 مشترک: {common_count}" if common_count else ""
+    proven = int(g.get("proven_wallet_count", 0) or 0)
+    trail = ""
+    if proven:
+        wins = int(g.get("reputation_wins", 0) or 0)
+        attempts = int(g.get("reputation_attempts", 0) or 0)
+        rate = g.get("reputation_win_rate")
+        days = g.get("reputation_days_to_peak")
+        trail = f" | 🧠 معتبر: {proven} ولت | سابقه موفق: {wins}/{attempts}"
+        if rate is not None:
+            trail += f" ({rate:.0f}%)"
+        if days is not None:
+            trail += f" | رشد بعد از ~{days:.1f} روز"
     return (
         f"🐋 GMGN: {int(g.get('buy_count', 0) or 0)} خرید | {len(g.get('wallets') or [])} ولت | "
-        f"Buy ${float(g.get('buy_usd', 0) or 0):,.0f} | overlap {int(g.get('overlap', 0) or 0)}{common_text}"
+        f"Buy ${float(g.get('buy_usd', 0) or 0):,.0f} | overlap {int(g.get('overlap', 0) or 0)}{common_text}{trail}"
     )
 
 def candidate_status(x):
@@ -1591,6 +1692,8 @@ def main():
         if buy_usd >= 2500:
             return True
         if buys >= 2 and wallets >= 2:
+            return True
+        if int(g.get("proven_wallet_count", 0) or 0) > 0 and ch24 <= 8 and float(result.get("ch7") or 0) <= 20:
             return True
 
         w = result.get("wallet") or {}
