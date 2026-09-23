@@ -127,6 +127,36 @@ def process(update):
             "reply_markup": json.dumps(menu(rank, filters), ensure_ascii=False),
         })
 
+def github_token_check():
+    """Safe diagnostic: never returns or logs the GitHub token."""
+    if not GITHUB_TOKEN.strip():
+        return {"ok": False, "stage": "environment", "status": None, "message": "GITHUB_TOKEN is empty"}
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "Authorization": f"Bearer {GITHUB_TOKEN}",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    try:
+        user = requests.get("https://api.github.com/user", headers=headers, timeout=15)
+        if user.status_code != 200:
+            return {"ok": False, "stage": "authentication", "status": user.status_code,
+                    "message": user.json().get("message", "GitHub authentication failed")}
+        repo = requests.get(f"https://api.github.com/repos/{REPO}", headers=headers, timeout=15)
+        if repo.status_code != 200:
+            return {"ok": False, "stage": "repository_access", "status": repo.status_code,
+                    "message": repo.json().get("message", "Repository access failed")}
+        workflow = requests.get(
+            f"https://api.github.com/repos/{REPO}/actions/workflows/{WORKFLOW_FILE}",
+            headers=headers, timeout=15,
+        )
+        if workflow.status_code != 200:
+            return {"ok": False, "stage": "workflow_access", "status": workflow.status_code,
+                    "message": workflow.json().get("message", "Workflow access failed")}
+        return {"ok": True, "stage": "complete", "status": 200,
+                "message": "GitHub authentication, repository access, and workflow access are OK"}
+    except Exception as exc:
+        return {"ok": False, "stage": "network", "status": None, "message": str(exc)[:200]}
+
 def set_webhook():
     external = os.environ.get("WEBHOOK_URL") or os.environ.get("RENDER_EXTERNAL_URL")
     if not external:
@@ -138,6 +168,15 @@ def set_webhook():
 
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
+        if self.path == "/github-check":
+            result = github_token_check()
+            body = json.dumps(result, ensure_ascii=False).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
         if self.path in ("/", "/health"):
             body = b"Fil Before Pump Telegram Bot is running."
             self.send_response(200)
