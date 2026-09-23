@@ -131,22 +131,65 @@ def build_signals(trades):
 
 
 def update_history(trades, history):
+    """Persist one record per GMGN transaction and keep its latest price_change.
+
+    GMGN's price_change is the current-price / entry-price ratio. That lets us
+    measure whether a wallet's earlier buy subsequently became a 2x+ move.
+    """
     now = int(datetime.now(timezone.utc).timestamp())
     for t in trades:
-        wallet, address = t.get("maker"), t.get("base_address")
+        wallet = t.get("maker")
+        address = t.get("base_address")
+        tx = t.get("transaction_hash") or t.get("id")
         if not wallet or not address:
             continue
-        history.setdefault(wallet, []).append({
+
+        trade_ts = int(t.get("timestamp") or now)
+        symbol = ((t.get("base_token") or {}).get("symbol") or "?").upper()
+        row = {
             "timestamp": now,
-            "trade_timestamp": int(t.get("timestamp") or 0),
+            "trade_timestamp": trade_ts,
+            "transaction_hash": tx or "",
             "chain": t.get("chain") or "",
             "address": address,
-            "symbol": ((t.get("base_token") or {}).get("symbol") or "?"),
-            "side": t.get("side"),
-            "amount_usd": t.get("amount_usd"),
-            "price_change": t.get("price_change"),
-        })
-        history[wallet] = history[wallet][-500:]
+            "symbol": symbol,
+            "side": str(t.get("side") or "").lower(),
+            "amount_usd": float(t.get("amount_usd") or 0),
+            "price_usd": float(t.get("price_usd") or 0),
+            "price_change": float(t.get("price_change") or 0),
+            "is_open_or_close": t.get("is_open_or_close"),
+            "maker_tags": (t.get("maker_info") or {}).get("tags") or [],
+        }
+        bucket = history.setdefault(wallet, [])
+
+        # Update the same transaction instead of appending a duplicate every
+        # 30 minutes. This is important because price_change evolves over time.
+        match = None
+        if tx:
+            for existing in bucket:
+                if existing.get("transaction_hash") == tx:
+                    match = existing
+                    break
+        if match is None:
+            for existing in bucket:
+                if (
+                    existing.get("trade_timestamp") == trade_ts
+                    and existing.get("chain") == row["chain"]
+                    and existing.get("address") == address
+                    and existing.get("side") == row["side"]
+                    and abs(float(existing.get("amount_usd") or 0) - row["amount_usd"]) < 0.01
+                ):
+                    match = existing
+                    break
+        if match is None:
+            bucket.append(row)
+        else:
+            match.update(row)
+
+        history[wallet] = sorted(
+            bucket,
+            key=lambda x: int(x.get("trade_timestamp") or x.get("timestamp") or 0)
+        )[-1000:]
 
 
 def cross_asset_wallets(history, address, chain):
@@ -156,6 +199,70 @@ def cross_asset_wallets(history, address, chain):
         if (chain, address) in assets and len(assets) >= 2:
             out.append(wallet)
     return out
+
+
+def wallet_track_profile(history, wallet, current_symbol, current_trade_ts):
+    """Measure whether this wallet previously bought other coins before large moves.
+
+    A prior buy is considered a proven pre-pump example when GMGN currently
+    reports price_change >= 2.0 (the asset reached at least 2x the entry).
+    The 'recent' subset is limited to 1-14 days old, matching the user's
+    pre-pump window. No prediction is made from this history alone.
+    """
+    rows = history.get(wallet, [])
+    prior = []
+    for r in rows:
+        if str(r.get("side") or "").lower() != "buy":
+            continue
+        if str(r.get("symbol") or "").upper() == str(current_symbol or "").upper():
+            continue
+        ts = int(r.get("trade_timestamp") or r.get("timestamp") or 0)
+        if not ts or ts >= int(current_trade_ts or 0):
+            continue
+        prior.append(r)
+
+    now = int(datetime.now(timezone.utc).timestamp())
+    winners = []
+    recent_winners = []
+    for r in prior:
+        multiple = float(r.get("price_change") or 0)
+        if multiple < 2.0:
+            continue
+        age_days = max(0.0, (now - int(r.get("trade_timestamp") or r.get("timestamp") or now)) / 86400.0)
+        item = {
+            "symbol": r.get("symbol"),
+            "multiple": multiple,
+            "age_days": round(age_days, 1),
+            "timestamp": int(r.get("trade_timestamp") or r.get("timestamp") or 0),
+        }
+        winners.append(item)
+        if 1.0 <= age_days <= 14.0:
+            recent_winners.append(item)
+
+    total_prior = len(prior)
+    win_rate = (len(winners) / total_prior) if total_prior else 0.0
+    return {
+        "wallet": wallet,
+        "prior_buys": total_prior,
+        "successful_prior_buys": len(winners),
+        "recent_successful_buys": len(recent_winners),
+        "win_rate": round(win_rate * 100, 1),
+        "recent_examples": sorted(recent_winners, key=lambda x: x["multiple"], reverse=True)[:5],
+        "proven": bool(winners) or bool(recent_winners),
+    }
+
+
+def current_wallet_entry(history, wallet, symbol, trade_ts):
+    rows = history.get(wallet, [])
+    matches = [
+        r for r in rows
+        if str(r.get("side") or "").lower() == "buy"
+        and str(r.get("symbol") or "").upper() == str(symbol or "").upper()
+        and int(r.get("trade_timestamp") or r.get("timestamp") or 0) == int(trade_ts or 0)
+    ]
+    if not matches:
+        return {}
+    return max(matches, key=lambda r: float(r.get("price_change") or 0))
 
 
 def send_telegram(message):
@@ -187,6 +294,7 @@ def main():
     update_history(trades, history)
     cmc = get_cmc()
 
+    tracked_signals = []
     for x in signals:
         overlaps = cross_asset_wallets(history, x["address"], x["chain"])
         x["overlap"] = len(overlaps)
@@ -198,18 +306,73 @@ def main():
             x["rank"] = c.get("cmc_rank")
             x["change24"] = float(q.get("percent_change_24h") or 0)
             x["change7"] = float(q.get("percent_change_7d") or 0)
-            if x["change24"] <= 8 and x["buy_count"]:
-                x["score"] += 5
-                x["reasons"].append("price still early")
-            if x["change24"] > 15:
-                x["reasons"].append("already +15% 24h")
+
+        # Follow the wallets, not the coin: score only current buyers whose
+        # earlier buys subsequently reached 2x+. Current entry must still be
+        # early (GMGN entry-to-now <= 15% and CMC 24h <= 8%).
+        proven_wallets = []
+        current_trade_ts = int(x.get("latest_ts") or 0)
+        for wallet in x.get("wallets") or []:
+            profile = wallet_track_profile(history, wallet, x["symbol"], current_trade_ts)
+            entry = current_wallet_entry(history, wallet, x["symbol"], current_trade_ts)
+            current_multiple = float(entry.get("price_change") or 0)
+            if profile["proven"] and (current_multiple <= 1.15 or current_multiple <= 0):
+                proven_wallets.append({
+                    **profile,
+                    "current_multiple": current_multiple,
+                })
+
+        x["proven_wallets"] = proven_wallets
+        x["proven_wallet_count"] = len(proven_wallets)
+        x["wallet_track_signal"] = bool(proven_wallets)
+
+        if x.get("change24", 0) <= 8 and x["buy_count"]:
+            x["score"] += 5
+            x["reasons"].append("price still early")
+        if x.get("change24", 0) > 15:
+            x["reasons"].append("already +15% 24h")
 
         if x["overlap"] >= 2:
             x["score"] += min(12, x["overlap"] * 3)
             x["reasons"].append(f"wallet overlap {x['overlap']}")
 
+        if x["proven_wallet_count"] >= 2:
+            x["score"] += min(20, 10 + 5 * x["proven_wallet_count"])
+            x["reasons"].append(f"proven pre-pump wallets {x['proven_wallet_count']}")
+        elif x["proven_wallet_count"] == 1:
+            x["score"] += 10
+            x["reasons"].append("proven pre-pump wallet")
+        elif x.get("buy_count"):
+            x["reasons"].append("smart-money buy, historical proof not yet established")
+
+        # This is the actual Fil wallet-tracking gate. A coin is surfaced by
+        # the wallet-copy layer only when a currently buying wallet has a
+        # documented prior 2x+ entry and the current entry is still early.
+        if x["wallet_track_signal"] and x.get("change24", 0) <= 8:
+            tracked_signals.append(x)
+
     save_history(history)
-    signals.sort(key=lambda x: (x["score"], x["buy_usd"], x["buy_count"]), reverse=True)
+
+    # The wallet-track layer is primary. Fall back to the broader Smart Money
+    # feed only when no proven-wallet early entries are available, so the bot
+    # never goes silent during a cold-start history period.
+    if tracked_signals:
+        signals = tracked_signals
+    else:
+        signals = [x for x in signals if x.get("buy_count")]
+        for x in signals:
+            x["reasons"].append("cold-start / no proven wallet history yet")
+
+    signals.sort(
+        key=lambda x: (
+            x.get("wallet_track_signal", False),
+            x.get("proven_wallet_count", 0),
+            x.get("score", 0),
+            x.get("buy_usd", 0),
+            x.get("buy_count", 0),
+        ),
+        reverse=True,
+    )
 
     lines = [
         "🐋 FIL BEFORE PUMP — GMGN SMART MONEY LAYER",
@@ -224,12 +387,26 @@ def main():
         rank = f" #{x['rank']}" if x.get("rank") else ""
         move = f" | 24h {x['change24']:+.1f}% | 7d {x['change7']:+.1f}%" if x.get("change24") is not None else ""
         wallets = ", ".join(w[:8] + "…" for w in x["wallets"][:4])
+        proven_text = []
+        for w in x.get("proven_wallets", [])[:4]:
+            examples = ", ".join(
+                f"{e['symbol']} {e['multiple']:.1f}x"
+                for e in w.get("recent_examples", [])[:2]
+            )
+            proven_text.append(
+                f"{w['wallet'][:8]}… | سابقه {w['successful_prior_buys']}/{w['prior_buys']} "
+                f"({w['win_rate']:.0f}%)"
+                + (f" | نمونه: {examples}" if examples else "")
+            )
+        track = "🎯 ردپای ولت معتبر" if x.get("wallet_track_signal") else "🧠 Smart Money"
         lines.append(
             f"🔹 {x['symbol']} [{x['chain']}] {rank}\n"
-            f"Score {x['score']} | SM buys {x['buy_count']} | wallets {len(x['wallets'])} | "
+            f"{track} | Score {x['score']} | SM buys {x['buy_count']} | wallets {len(x['wallets'])} | "
             f"buy volume {x['buy_usd']:,.0f}{move}\n"
-            f"Reasons: {', '.join(x['reasons'][:8])}\n"
-            f"Wallets: {wallets}"
+            f"💡 ولت‌های دارای سابقه پامپ: {x.get('proven_wallet_count', 0)}\n"
+            + (f"👛 {chr(10).join(proven_text)}\n" if proven_text else "")
+            + f"Reasons: {', '.join(x['reasons'][:8])}\n"
+            + f"Wallets: {wallets}"
         )
 
     send_telegram("\n\n".join(lines))
