@@ -1636,6 +1636,14 @@ def main():
     if gmgn:
         for result in results:
             apply_gmgn_signals(result, gmgn.get(str(result["symbol"]).upper()))
+            signal = gmgn.get(str(result["symbol"]).upper()) or {}
+            shared_wallets = signal.get("common_wallets") or []
+            result["shared_wallet_count"] = int(signal.get("common_wallet_count", len(shared_wallets)) or 0)
+            result["shared_wallets"] = shared_wallets
+            result["shared_wallet_assets"] = signal.get("common_assets") or []
+            if result["shared_wallet_count"] >= 1:
+                result["score"] = round(result["score"] + min(12, 3 * result["shared_wallet_count"]), 1)
+                result["reasons"].append(f"GMGN shared wallets: {result['shared_wallet_count']}")
     results.sort(key=lambda x: (
         1 if x.get("gmgn") else 0,
         (x.get("gmgn") or {}).get("score", 0) or 0,
@@ -1689,11 +1697,14 @@ def main():
         buy_usd = float(g.get("buy_usd", 0) or 0)
         buys = int(g.get("buy_count", 0) or 0)
         wallets = len(g.get("wallets") or [])
+        shared_wallets = int(result.get("shared_wallet_count", 0) or 0)
         if buy_usd >= 2500:
             return True
         if buys >= 2 and wallets >= 2:
             return True
-        if int(g.get("proven_wallet_count", 0) or 0) > 0 and ch24 <= 8 and float(result.get("ch7") or 0) <= 20:
+        if shared_wallets >= 1:
+            return True
+        if int(g.get("proven_wallet_count", 0) or 0) > 0 and float(result.get("ch24") or 0) <= 8 and float(result.get("ch7") or 0) <= 20:
             return True
 
         w = result.get("wallet") or {}
@@ -1760,12 +1771,16 @@ def main():
     total_accum = sum(int(x.get("wallet_accumulation", 0) or 0) for x in results)
     total_reducing = sum(int(x.get("wallet_reductions", 0) or 0) for x in results)
     recurring_wallet_ids = set()
+    shared_wallet_ids = set()
     proven_wallet_ids = set()
     for item in results:
         wallet_layer = item.get("wallet") or {}
         for rw in wallet_layer.get("recurring_wallets", []) or []:
             if rw.get("wallet"):
                 recurring_wallet_ids.add(str(rw["wallet"]))
+        for sw in item.get("shared_wallets", []) or []:
+            if sw.get("wallet"):
+                shared_wallet_ids.add(str(sw["wallet"]))
         gm = item.get("gmgn") or {}
         for pw in gm.get("proven_wallets", []) or []:
             if pw.get("wallet"):
@@ -1773,6 +1788,7 @@ def main():
     wallet_summary_text = (
         f"👛 خلاصه ولت: accumulation {total_accum} | "
         f"recurring accumulating wallets {len(recurring_wallet_ids)} | "
+        f"shared smart-money wallets {len(shared_wallet_ids)} | "
         f"reducing {total_reducing} | "
         f"historically proven wallets {len(proven_wallet_ids)}\n"
     )
