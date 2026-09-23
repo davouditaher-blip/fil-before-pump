@@ -215,51 +215,117 @@ def cross_asset_wallets(history, address, chain):
 
 
 def wallet_track_profile(history, wallet, current_symbol, current_trade_ts):
-    """Measure repeatable early-entry -> move-start behavior for a wallet."""
+    """Measure unique pre-pump entry opportunities for a wallet.
+
+    One opportunity = one unique prior asset where the wallet's earliest
+    recorded buy was still early (entry multiple <= 1.15x) and the asset has
+    at least 24h of observed history. Success = that early entry later reached
+    2x+. This avoids counting repeated GMGN snapshots/transactions as separate
+    opportunities.
+    """
     rows = history.get(wallet, [])
-    prior = []
+    current_ts = int(current_trade_ts or 0)
     now = int(datetime.now(timezone.utc).timestamp())
+
+    prior = []
     for r in rows:
         if str(r.get("side") or "").lower() != "buy":
             continue
         if str(r.get("symbol") or "").upper() == str(current_symbol or "").upper():
             continue
         ts = int(r.get("trade_timestamp") or r.get("timestamp") or 0)
-        if ts and ts < int(current_trade_ts or 0):
+        if ts and ts < current_ts:
             prior.append(r)
 
-    winners = []
+    # Collapse repeated observations/transactions for the same asset.
+    grouped = defaultdict(list)
     for r in prior:
-        peak = max(float(r.get("peak_multiple") or 0), float(r.get("price_change") or 0))
-        if peak < 2.0:
+        key = (
+            str(r.get("chain") or ""),
+            str(r.get("address") or ""),
+            str(r.get("symbol") or "").upper(),
+        )
+        grouped[key].append(r)
+
+    opportunities = []
+    for key, asset_rows in grouped.items():
+        asset_rows.sort(
+            key=lambda r: int(r.get("trade_timestamp") or r.get("timestamp") or 0)
+        )
+        first = asset_rows[0]
+        entry_ts = int(first.get("trade_timestamp") or first.get("timestamp") or 0)
+        if not entry_ts:
             continue
-        entry_ts = int(r.get("trade_timestamp") or r.get("timestamp") or now)
+
+        # The first GMGN observation is our best available proxy for whether
+        # the wallet entered before the move. Keep a small early-entry window.
+        entry_multiple = float(first.get("price_change") or 0)
+        if entry_multiple <= 0:
+            entry_multiple = 1.0
+
         age_days = max(0.0, (now - entry_ts) / 86400.0)
-        first_2x = int(r.get("first_2x_timestamp") or 0)
+        if age_days < 1.0:
+            continue
+
+        peak = max(
+            [float(x.get("peak_multiple") or x.get("price_change") or 0) for x in asset_rows]
+            + [entry_multiple]
+        )
+        first_2x = 0
+        for x in asset_rows:
+            ts2 = int(x.get("first_2x_timestamp") or 0)
+            if ts2 and (not first_2x or ts2 < first_2x):
+                first_2x = ts2
+
+        # If the earliest observation was already above 1.15x, this is not
+        # counted as a pre-pump opportunity even if it later reached 2x+.
+        if entry_multiple > 1.15:
+            continue
+
         move_days = max(0.0, (first_2x - entry_ts) / 86400.0) if first_2x else None
+        success = peak >= 2.0
         recency_weight = max(0.2, min(1.0, 1.0 - age_days / 180.0))
-        winners.append({
-            "symbol": r.get("symbol"),
+
+        opportunities.append({
+            "symbol": first.get("symbol"),
             "multiple": peak,
+            "entry_multiple": round(entry_multiple, 3),
             "age_days": round(age_days, 1),
             "move_days": round(move_days, 2) if move_days is not None else None,
             "recency_weight": round(recency_weight, 2),
             "timestamp": entry_ts,
+            "success": success,
         })
 
-    recent = [x for x in winners if 1.0 <= x["age_days"] <= 14.0]
-    fast = [x for x in winners if x["move_days"] is not None and x["move_days"] <= 7.0]
-    weighted_rate = (sum(x["recency_weight"] for x in winners) / len(prior) * 100.0) if prior else 0.0
+    successes = [x for x in opportunities if x["success"]]
+    recent = [x for x in successes if 1.0 <= x["age_days"] <= 14.0]
+    fast = [x for x in successes if x["move_days"] is not None and x["move_days"] <= 7.0]
+    weighted_success = sum(x["recency_weight"] for x in successes)
+    weighted_total = sum(x["recency_weight"] for x in opportunities)
+    weighted_rate = (weighted_success / weighted_total * 100.0) if weighted_total else 0.0
+
+    examples = sorted(
+        recent or successes,
+        key=lambda x: (x["multiple"], x["move_days"] if x["move_days"] is not None else 9999),
+        reverse=True,
+    )[:5]
+
     return {
         "wallet": wallet,
-        "prior_buys": len(prior),
-        "successful_prior_buys": len(winners),
+        # Legacy field kept for compatibility, but now it means actual
+        # pre-pump opportunities rather than raw transaction rows.
+        "prior_buys": len(opportunities),
+        "raw_prior_rows": len(prior),
+        "pre_pump_opportunities": len(opportunities),
+        "successful_prior_buys": len(successes),
+        "successful_pre_pump_entries": len(successes),
         "recent_successful_buys": len(recent),
         "fast_successful_buys": len(fast),
         "weighted_win_rate": round(weighted_rate, 1),
-        "recent_examples": sorted(recent or winners, key=lambda x: x["multiple"], reverse=True)[:5],
-        "repeatable": len(winners) >= 2,
-        "proven": bool(winners),
+        "pre_pump_win_rate": round((len(successes) / len(opportunities) * 100.0), 1) if opportunities else 0.0,
+        "recent_examples": examples,
+        "repeatable": len(successes) >= 2,
+        "proven": bool(successes),
     }
 
 def current_wallet_entry(history, wallet, symbol, trade_ts):
@@ -458,8 +524,9 @@ def main():
                 for e in p.get("recent_examples", [])[:2]
             )
             shared_history.append(
-                f"{p['wallet'][:8]}… {p['successful_prior_buys']}/{p['prior_buys']}"
-                f" ({p['weighted_win_rate']:.0f}%)"
+                f"{p['wallet'][:8]}… {p.get('successful_pre_pump_entries', p['successful_prior_buys'])}/"
+                f"{p.get('pre_pump_opportunities', p['prior_buys'])}"
+                f" ({p.get('pre_pump_win_rate', p['weighted_win_rate']):.0f}%)"
                 + (f" | {examples}" if examples else "")
             )
         shared_text = (
