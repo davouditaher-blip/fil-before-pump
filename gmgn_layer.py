@@ -55,9 +55,66 @@ def load_history():
     if not HISTORY_FILE.exists():
         return {}
     try:
-        return json.loads(HISTORY_FILE.read_text())
+        history = json.loads(HISTORY_FILE.read_text())
+        return deduplicate_history(history)
     except Exception:
         return {}
+
+
+def deduplicate_history(history):
+    """Collapse repeated GMGN observations while preserving peak evidence.
+
+    The key is transaction hash when available, otherwise the stable trade
+    tuple. Existing historical files are migrated on load so duplicates from
+    older bot versions do not distort wallet quality metrics.
+    """
+    cleaned = {}
+    for wallet, rows in history.items():
+        merged = {}
+        for row in rows if isinstance(rows, list) else []:
+            if not isinstance(row, dict):
+                continue
+            tx = str(row.get("transaction_hash") or "").strip()
+            key = (
+                ("tx", tx)
+                if tx
+                else
+                (
+                    "trade",
+                    int(row.get("trade_timestamp") or row.get("timestamp") or 0),
+                    str(row.get("chain") or ""),
+                    str(row.get("address") or ""),
+                    str(row.get("side") or "").lower(),
+                    round(float(row.get("amount_usd") or 0), 2),
+                )
+            )
+            if key not in merged:
+                merged[key] = dict(row)
+                continue
+
+            existing = merged[key]
+            existing["peak_multiple"] = max(
+                float(existing.get("peak_multiple") or existing.get("price_change") or 0),
+                float(row.get("peak_multiple") or row.get("price_change") or 0),
+            )
+            existing["price_change"] = float(
+                row.get("price_change")
+                if row.get("price_change") is not None
+                else existing.get("price_change") or 0
+            )
+            for field in ("first_1_2x_timestamp", "first_1_5x_timestamp", "first_2x_timestamp"):
+                a = int(existing.get(field) or 0)
+                b = int(row.get(field) or 0)
+                if a and b:
+                    existing[field] = min(a, b)
+                else:
+                    existing[field] = a or b
+
+        cleaned[wallet] = sorted(
+            merged.values(),
+            key=lambda x: int(x.get("trade_timestamp") or x.get("timestamp") or 0)
+        )
+    return cleaned
 
 
 def save_history(history):
@@ -202,7 +259,7 @@ def update_history(trades, history):
         history[wallet] = sorted(
             bucket,
             key=lambda x: int(x.get("trade_timestamp") or x.get("timestamp") or 0)
-        )[-1000:]
+        )
 
 
 
