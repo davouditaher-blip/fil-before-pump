@@ -511,8 +511,10 @@ def main():
                 for e in w.get("recent_examples", [])[:2]
             )
             proven_text.append(
-                f"{w['wallet'][:8]}… | سابقه {w['successful_prior_buys']}/{w['prior_buys']} "
-                f"({w['weighted_win_rate']:.0f}%)"
+                f"{w['wallet'][:8]}… | فرصت زودهنگام "
+                f"{w.get('successful_pre_pump_entries', w['successful_prior_buys'])}/"
+                f"{w.get('pre_pump_opportunities', w['prior_buys'])} "
+                f"({w.get('pre_pump_win_rate', w['weighted_win_rate']):.0f}%)"
                 + (f" | نمونه: {examples}" if examples else "")
             )
         track = "🎯 ردپای ولت معتبر" if x.get("wallet_track_signal") else "🧠 Smart Money"
