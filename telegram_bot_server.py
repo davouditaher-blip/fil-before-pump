@@ -14,15 +14,13 @@ RANKS = {
     "top100": "🥇 رتبه 1–100",
     "101_200": "🥈 رتبه 101–200",
     "201_300": "🥉 رتبه 201–300",
-    "all": "🌐 همه ارزها (1–300)",
+    "all": "🌐 همه 1–300",
 }
 FILTERS = {
     "smart": "🐋 Smart Money",
-    "common": "🔁 ولت‌های مشترک",
-    "history": "🧠 سابقه ولت",
-    "status": "📍 وضعیت ولت",
+    "wallet": "👛 ولت و accumulation",
     "whale": "🐳 نهنگ",
-    "volume": "📊 حجم",
+    "volume": "💰 حجم 24–48h",
 }
 
 def tg(method, **kwargs):
@@ -33,11 +31,12 @@ def tg(method, **kwargs):
 def menu(rank="all", filters=None):
     filters = filters or []
     selected = ",".join(filters) or "all"
+
     def cb(action, r=rank, f=selected):
         return f"{action}|{r}|{f}"[:64]
 
     rows = [
-        [{"text": "🔥 فیل کامل (1–300)", "callback_data": cb("run", "all", "all")}],
+        [{"text": "🚀 اجرای فیل کامل", "callback_data": cb("run", rank, "all")}],
         [
             {"text": ("✅ " if rank == "top100" else "") + RANKS["top100"], "callback_data": cb("rank", "top100", selected)},
             {"text": ("✅ " if rank == "101_200" else "") + RANKS["101_200"], "callback_data": cb("rank", "101_200", selected)},
@@ -46,15 +45,20 @@ def menu(rank="all", filters=None):
             {"text": ("✅ " if rank == "201_300" else "") + RANKS["201_300"], "callback_data": cb("rank", "201_300", selected)},
             {"text": ("✅ " if rank == "all" else "") + RANKS["all"], "callback_data": cb("rank", "all", selected)},
         ],
+        [{"text": "🎯 انتخاب لایه‌های بررسی", "callback_data": cb("noop", rank, selected)}],
     ]
-    for key in ("smart", "common", "history", "status", "whale", "volume"):
+
+    for key in ("smart", "wallet", "whale", "volume"):
         new_filters = [x for x in filters if x != key] if key in filters else filters + [key]
         rows.append([{
-            "text": ("✅ " if key in filters else "") + FILTERS[key],
+            "text": ("✅ " if key in filters else "▫️ ") + FILTERS[key],
             "callback_data": cb("toggle", rank, ",".join(new_filters) or "all"),
         }])
-    rows.append([{"text": "🧹 پاک کردن فیلترها", "callback_data": "clear|all|all"}])
-    rows.append([{"text": "🚀 اجرای بررسی", "callback_data": cb("run")}])
+
+    rows.append([
+        {"text": "🧹 پاک کردن انتخاب‌ها", "callback_data": cb("clear", "all", "all")},
+        {"text": "▶️ اجرای انتخاب فعلی", "callback_data": cb("run", rank, selected)},
+    ])
     return {"inline_keyboard": rows}
 
 def send_menu(chat_id, rank="all", filters=None, message_id=None):
@@ -63,8 +67,9 @@ def send_menu(chat_id, rank="all", filters=None, message_id=None):
     body = (
         "🐋 فیل قبل از پامپ\n\n"
         f"رتبه: {RANKS.get(rank, RANKS['all'])}\n"
-        "اولویت: Smart Money → ولت مشترک → سابقه ولت → وضعیت خروج → نهنگ → حجم\n"
-        f"فیلترها: {' + '.join(active) if active else 'همه سیگنال‌ها'}"
+        "اولویت: 🐋 Smart Money → 👛 accumulation/ولت مشترک → سابقه ولت → 🐳 نهنگ → 💰 حجم\n"
+        "تکنیکال: فعلاً بدون اثر در انتخاب کاندید\n"
+        f"لایه‌های انتخابی: {' + '.join(active) if active else 'فیل کامل (همه لایه‌های اصلی)'}"
     )
     data = {
         "chat_id": chat_id,
@@ -93,7 +98,9 @@ def process(update):
         msg = update["message"]
         chat_id = str(msg["chat"]["id"])
         text = (msg.get("text") or "").strip().lower()
-        if text in ("/start", "start", "menu", "منو") or text:
+        if text in ("/start", "/fil", "start", "menu", "منو"):
+            send_menu(chat_id)
+        elif text:
             send_menu(chat_id)
         return
 
