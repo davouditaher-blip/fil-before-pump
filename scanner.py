@@ -459,82 +459,130 @@ def save_futures_history(history):
     FUTURES_HISTORY_FILE.write_text(json.dumps(history, indent=2))
 
 
-def futures_daily_backfill(symbols, history):
+def futures_daily_backfill(symbols, history, preferred_sources=None):
+    """Refresh daily futures volume using the SAME exchange as the live ticker."""
     now = int(datetime.now(timezone.utc).timestamp())
     stale_before = now - 36 * 3600
     fetched = 0
+    preferred_sources = preferred_sources or {}
     binance_futures = load_binance_futures_symbols()
     _, bybit_linear = load_bybit_symbols()
     gate_futures = load_gate_futures_symbols()
 
+    source_specs = {
+        "Binance Futures": ("binance_futures", binance_futures),
+        "Bybit Futures": ("bybit_futures", bybit_linear),
+        "Gate Futures": ("gate_futures", gate_futures),
+    }
+
     for pair in symbols:
-        rows = history.get(pair, [])
-        if rows and max(int(x.get("timestamp", 0)) for x in rows) >= stale_before and all(x.get("price") for x in rows):
-            continue
+        wanted = preferred_sources.get(pair)
+        sources_to_try = []
+        if wanted in source_specs:
+            sources_to_try.append(wanted)
+        sources_to_try.extend(name for name in source_specs if name != wanted)
+
         got = False
+        for source_name in sources_to_try:
+            source_key, supported = source_specs[source_name]
+            if pair not in supported:
+                continue
 
-        if pair in binance_futures:
-            try:
-                data = get_json(BASE_BINANCE_FUTURES + "/fapi/v1/klines", {"symbol": pair, "interval": "1d", "limit": 16}, timeout=15)
-                if isinstance(data, list) and data:
-                    history[pair] = [
-                        {"timestamp": int(x[0]) // 1000, "volume": float(x[7]), "price": float(x[4]), "source": "binance_futures"}
-                        for x in data if float(x[7] or 0) > 0
-                    ]
-                    got = True
-            except requests.RequestException:
-                pass
+            rows = [x for x in history.get(pair, []) if x.get("source") == source_key]
+            fresh = (
+                rows
+                and max(int(x.get("timestamp", 0)) for x in rows) >= stale_before
+                and all(float(x.get("price") or 0) > 0 for x in rows)
+            )
+            if fresh:
+                got = True
+                break
 
-        if not got and pair in bybit_linear:
             try:
-                data = get_json(BASE_BYBIT + "/v5/market/kline", {"category": "linear", "symbol": pair, "interval": "D", "limit": 16}, timeout=15)
-                rows2 = ((data.get("result") or {}).get("list") or [])
-                if rows2:
-                    history[pair] = [
-                        {"timestamp": int(x[0]) // 1000, "volume": float(x[6]), "price": float(x[4]), "source": "bybit_futures"}
+                new_rows = []
+                if source_key == "binance_futures":
+                    data = get_json(
+                        BASE_BINANCE_FUTURES + "/fapi/v1/klines",
+                        {"symbol": pair, "interval": "1d", "limit": 16},
+                        timeout=15,
+                    )
+                    if isinstance(data, list) and data:
+                        new_rows = [
+                            {"timestamp": int(x[0]) // 1000, "volume": float(x[7]),
+                             "price": float(x[4]), "source": source_key}
+                            for x in data if float(x[7] or 0) > 0
+                        ]
+
+                elif source_key == "bybit_futures":
+                    data = get_json(
+                        BASE_BYBIT + "/v5/market/kline",
+                        {"category": "linear", "symbol": pair, "interval": "D", "limit": 16},
+                        timeout=15,
+                    )
+                    rows2 = ((data.get("result") or {}).get("list") or [])
+                    new_rows = [
+                        {"timestamp": int(x[0]) // 1000, "volume": float(x[6]),
+                         "price": float(x[4]), "source": source_key}
                         for x in rows2 if float(x[6] or 0) > 0
                     ]
-                    got = True
-            except requests.RequestException:
-                pass
 
-        if not got and pair in gate_futures:
-            try:
-                data = get_json(
-                    BASE_GATE + "/api/v4/futures/usdt/candlesticks",
-                    {"contract": gate_contract(pair[:-4]), "interval": "1d", "limit": 16},
-                    timeout=15,
-                )
-                rows3 = data if isinstance(data, list) else []
-                if rows3:
-                    history[pair] = [
-                        {"timestamp": int(x.get("t", 0)), "volume": float(x.get("sum") or 0), "price": float(x.get("c") or x.get("close") or 0), "source": "gate_futures"}
-                        for x in rows3 if float(x.get("sum") or 0) > 0
+                else:
+                    data = get_json(
+                        BASE_GATE + "/api/v4/futures/usdt/candlesticks",
+                        {"contract": gate_contract(pair[:-4]), "interval": "1d", "limit": 16},
+                        timeout=15,
+                    )
+                    rows3 = data if isinstance(data, list) else []
+                    new_rows = [
+                        {"timestamp": int(x.get("t", 0)),
+                         "volume": float(x.get("sum_quote") or x.get("volume_quote") or x.get("sum") or 0),
+                         "price": float(x.get("c") or x.get("close") or 0),
+                         "source": source_key}
+                        for x in rows3
+                        if float(x.get("sum_quote") or x.get("volume_quote") or x.get("sum") or 0) > 0
                     ]
+
+                if new_rows:
+                    history[pair] = [
+                        x for x in history.get(pair, []) if x.get("source") != source_key
+                    ] + new_rows
+                    history[pair] = sorted(
+                        history[pair],
+                        key=lambda x: int(x.get("timestamp", 0))
+                    )[-60:]
                     got = True
+                    break
             except requests.RequestException:
-                pass
+                continue
 
         if got:
             fetched += 1
         time.sleep(0.025)
 
-    print(f"Futures daily history refreshed: {fetched}/{len(symbols)}")
+    print(f"Futures daily history refreshed/matched: {fetched}/{len(symbols)}")
+    return history
 
 
-def futures_volume_signals(pair, current_volume, history):
-    rows = sorted(history.get(pair, []), key=lambda x: x.get("timestamp", 0))
+def futures_volume_signals(pair, current_volume, history, current_source=None):
+    """Compare live and historical volume on the SAME futures venue."""
+    source_map = {
+        "Binance Futures": "binance_futures",
+        "Bybit Futures": "bybit_futures",
+        "Gate Futures": "gate_futures",
+    }
+    wanted = source_map.get(current_source)
+    rows = history.get(pair, [])
+    if wanted:
+        rows = [x for x in rows if x.get("source") == wanted]
+    rows = sorted(rows, key=lambda x: x.get("timestamp", 0))
     if not rows:
         return {"1d": None, "2d": None, "3d": None, "7d": None, "14d": None}
     now = int(datetime.now(timezone.utc).timestamp())
     out = {}
-    # 1d/2d/3d are the short-term display signals.
-    # 7d/14d remain part of the internal pre-pump analysis/scoring.
     for name, days in (("1d", 1), ("2d", 2), ("3d", 3), ("7d", 7), ("14d", 14)):
         old = nearest(rows, now - days * 86400, 36 * 3600 if days <= 3 else 72 * 3600)
         out[name] = pct(current_volume, old.get("volume")) if old else None
     return out
-
 
 def ema(values, period):
     if len(values) < period:
@@ -1569,8 +1617,13 @@ def main():
         if symbol and is_primary_crypto_asset(coin) and pair in futures_universe and pair in ftickers and ftickers[pair]["volume"] > 0:
             eligible_pairs.append(pair)
 
-    # Backfill history for the actual CMC top-300 Futures-eligible scan universe.
-    futures_daily_backfill(eligible_pairs, fhistory)
+    # Backfill history on the SAME exchange selected by the live ticker.
+    preferred_sources = {
+        pair: ftickers[pair]["source"]
+        for pair in eligible_pairs
+        if pair in ftickers
+    }
+    futures_daily_backfill(eligible_pairs, fhistory, preferred_sources)
     save_futures_history(fhistory)
 
     results = []
@@ -1584,7 +1637,12 @@ def main():
         if not is_primary_crypto_asset(coin) or pair not in futures_universe:
             continue
 
-        changes = futures_volume_signals(pair, ticker["volume"], fhistory)
+        changes = futures_volume_signals(
+            pair,
+            ticker["volume"],
+            fhistory,
+            ticker.get("source"),
+        )
         available = [v for v in changes.values() if v is not None]
         early = any(v > 0 for v in available)
         strong = any(v >= 3 for v in available)
