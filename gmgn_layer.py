@@ -546,26 +546,25 @@ def main():
         # A shared wallet is not treated as a current buyer unless GMGN lists
         # it in the current wallet set for this asset.
         shared_profiles = []
+        shared_kline_cache = {}
         for wallet in x.get("overlap_wallets") or []:
-            rows = history.get(wallet, [])
-            if not rows:
-                continue
-            latest_ts = max(
-                int(r.get("trade_timestamp") or r.get("timestamp") or 0)
-                for r in rows
+            activity = portfolio_activity(x["chain"], wallet, limit=200)
+            profile = analyze_wallet_activity(
+                x["chain"], wallet, activity, shared_kline_cache,
+                int(datetime.now(timezone.utc).timestamp())
             )
-            profile = wallet_track_profile(history, wallet, x["symbol"], latest_ts)
-            if profile.get("prior_buys", 0):
+            if profile.get("opportunities", 0) or profile.get("unknown_opportunities", 0):
                 shared_profiles.append(profile)
         shared_profiles.sort(
             key=lambda p: (
                 bool(p.get("proven")),
-                int(p.get("successful_prior_buys", 0)),
-                float(p.get("weighted_win_rate", 0) or 0),
-                int(p.get("prior_buys", 0)),
+                int(p.get("successful_pre_pump_entries", 0)),
+                int(p.get("observed_opportunities", 0)),
+                int(p.get("opportunities", 0)),
             ),
             reverse=True,
         )
+
         x["shared_wallet_profiles"] = shared_profiles[:8]
         x["shared_proven_wallet_count"] = sum(
             1 for p in shared_profiles if p.get("proven")
