@@ -469,7 +469,7 @@ def futures_daily_backfill(symbols, history):
 
     for pair in symbols:
         rows = history.get(pair, [])
-        if rows and max(int(x.get("timestamp", 0)) for x in rows) >= stale_before:
+        if rows and max(int(x.get("timestamp", 0)) for x in rows) >= stale_before and all(x.get("price") for x in rows):
             continue
         got = False
 
