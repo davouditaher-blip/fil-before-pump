@@ -1762,7 +1762,32 @@ def main():
         "⚠️ انتقال خام هیچ‌وقت خرید/فروش محسوب نمی‌شود؛ برای این سیگنال باید جریان معامله توسط ارائه‌دهنده برچسب‌گذاری شده باشد.\n"
         "⚠️ استیبل‌کوین‌ها، سهام توکنیزه و دارایی‌های طلاپشتوانه حذف می‌شوند.\n\n"
     )
-    message = header + (
+    follow_candidates = [
+        x for x in results
+        if int((x.get("gmgn") or {}).get("proven_wallet_count", 0) or 0) > 0
+        and float(x.get("ch24") or 0) <= 8
+        and float(x.get("ch7") or 0) <= 20
+    ]
+    follow_lines = ["🎯 FOLLOW THE WALLET — ردپای معتبر قبل از پامپ"]
+    if follow_candidates:
+        for x in follow_candidates[:10]:
+            g = x.get("gmgn") or {}
+            wallets = []
+            for item in g.get("proven_wallets", [])[:5]:
+                w = str(item.get("wallet") or "")
+                short = w[:8] + "…" + w[-6:] if len(w) > 18 else w
+                wallets.append(short)
+            follow_lines.append(
+                f"🔸 {x['name']} ({x['symbol']}) #{x['rank']} | 24h {x['ch24']:+.2f}% | 7d {x['ch7']:+.2f}%"
+            )
+            follow_lines.append(
+                f"   🧠 {g.get('proven_wallet_count', 0)} ولت معتبر | "
+                f"سابقه موفق {g.get('reputation_wins', 0)}/{g.get('reputation_attempts', 0)} | "
+                f"ولت‌ها: {', '.join(wallets) if wallets else 'N/A'}"
+            )
+    else:
+        follow_lines.append("فعلاً خرید جدید از ولت معتبرِ دارای سابقه موفق و قیمت هنوز زودهنگام ثبت نشده است.")
+    message = header + "\n".join(follow_lines) + "\n\n" + (
         '\n'.join(format_coin(x) for x in results[:30])
         if results else 'No early-volume candidates with available history.'
     )
