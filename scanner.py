@@ -1757,8 +1757,29 @@ def main():
         f"ETH 24h {eth24:+.2f}% / 7d {eth7:+.2f}%\n"
     )
 
+    total_accum = sum(int(x.get("wallet_accumulation", 0) or 0) for x in results)
+    total_reducing = sum(int(x.get("wallet_reductions", 0) or 0) for x in results)
+    recurring_wallet_ids = set()
+    proven_wallet_ids = set()
+    for item in results:
+        wallet_layer = item.get("wallet") or {}
+        for rw in wallet_layer.get("recurring_wallets", []) or []:
+            if rw.get("wallet"):
+                recurring_wallet_ids.add(str(rw["wallet"]))
+        gm = item.get("gmgn") or {}
+        for pw in gm.get("proven_wallets", []) or []:
+            if pw.get("wallet"):
+                proven_wallet_ids.add(str(pw["wallet"]))
+    wallet_summary_text = (
+        f"👛 خلاصه ولت: accumulation {total_accum} | "
+        f"recurring accumulating wallets {len(recurring_wallet_ids)} | "
+        f"reducing {total_reducing} | "
+        f"historically proven wallets {len(proven_wallet_ids)}\n"
+    )
+
     header = (
         "🐋 فیل کامل قبل از پامپ — کاندیداهای اولیه\n\n"
+        + wallet_summary_text
         + market_regime_text
         + "بازار فیوچرز/پرپچوال: Binance + Bybit + Gate\n"
         "اولویت: 🐋 Smart Money → 👛 ولت مشترک → سابقه ولت → وضعیت خروج → 🐳 نهنگ → 💰 حجم\n"
@@ -1777,8 +1798,6 @@ def main():
     follow_candidates = [
         x for x in results
         if int((x.get("gmgn") or {}).get("proven_wallet_count", 0) or 0) > 0
-        and float(x.get("ch24") or 0) <= 8
-        and float(x.get("ch7") or 0) <= 20
     ]
     follow_lines = ["🎯 FOLLOW THE WALLET — ردپای معتبر قبل از پامپ"]
     if follow_candidates:
