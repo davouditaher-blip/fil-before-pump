@@ -13,6 +13,8 @@ GMGN_API_KEY = os.environ.get("GMGN_API_KEY", "")
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 HISTORY_FILE = Path("gmgn_wallet_history.json")
+HISTORY_MANIFEST_FILE = Path("wallet_history_manifest.json")
+HISTORY_SCHEMA_VERSION = 2
 CHAINS = ("sol", "bsc", "base", "eth")
 
 
@@ -118,7 +120,63 @@ def deduplicate_history(history):
 
 
 def save_history(history):
-    HISTORY_FILE.write_text(json.dumps(history, indent=2))
+    HISTORY_FILE.write_text(json.dumps(history, indent=2, ensure_ascii=False))
+    save_history_manifest(history)
+
+
+def save_history_manifest(history):
+    """Persist a compact local-first lifetime ledger beside the raw history.
+
+    The raw GMGN history is the source of record. This manifest is a durable
+    summary that survives loss of external GMGN/Nansen access and makes it
+    easy to inspect how long each wallet has been observed and how much
+    qualified activity has been accumulated.
+    """
+    wallets = {}
+    total_records = 0
+    qualified_buys = 0
+    qualified_sells = 0
+    for wallet, rows in history.items():
+        if not isinstance(rows, list):
+            continue
+        valid = [r for r in rows if isinstance(r, dict)]
+        if not valid:
+            continue
+        total_records += len(valid)
+        buys = [r for r in valid if str(r.get("side") or "").lower() == "buy"]
+        sells = [r for r in valid if str(r.get("side") or "").lower() == "sell"]
+        q_buys = [r for r in buys if float(r.get("amount_usd") or 0) >= 5000]
+        q_sells = [r for r in sells if float(r.get("amount_usd") or 0) >= 5000]
+        qualified_buys += len(q_buys)
+        qualified_sells += len(q_sells)
+        timestamps = [int(r.get("trade_timestamp") or r.get("timestamp") or 0) for r in valid]
+        timestamps = [x for x in timestamps if x]
+        peaks = [float(r.get("peak_multiple") or r.get("price_change") or 0) for r in q_buys]
+        wallets[wallet] = {
+            "first_seen": min(timestamps) if timestamps else 0,
+            "last_seen": max(timestamps) if timestamps else 0,
+            "records": len(valid),
+            "qualified_buys": len(q_buys),
+            "qualified_buy_usd": round(sum(float(r.get("amount_usd") or 0) for r in q_buys), 2),
+            "qualified_sells": len(q_sells),
+            "successful_2x_entries": sum(1 for p in peaks if p >= 2.0),
+            "best_peak_multiple": round(max(peaks), 3) if peaks else None,
+        }
+
+    manifest = {
+        "version": "wallet-history-v2",
+        "source_of_record": "local_gmgn_observations",
+        "external_sources_are_enrichment_only": True,
+        "generated_at": int(datetime.now(timezone.utc).timestamp()),
+        "wallet_count": len(wallets),
+        "total_records": total_records,
+        "qualified_buys_5k": qualified_buys,
+        "qualified_sells_5k": qualified_sells,
+        "wallets": wallets,
+    }
+    HISTORY_MANIFEST_FILE.write_text(
+        json.dumps(manifest, indent=2, ensure_ascii=False)
+    )
 
 
 def build_signals(trades):
@@ -207,6 +265,9 @@ def update_history(trades, history):
         row = {
             "timestamp": now,
             "trade_timestamp": trade_ts,
+            "history_schema_version": HISTORY_SCHEMA_VERSION,
+            "first_seen_at": now,
+            "last_seen_at": now,
             "transaction_hash": tx or "",
             "chain": t.get("chain") or "",
             "address": address,
@@ -250,7 +311,10 @@ def update_history(trades, history):
             old_12 = int(match.get("first_1_2x_timestamp") or 0)
             old_15 = int(match.get("first_1_5x_timestamp") or 0)
             old_2x = int(match.get("first_2x_timestamp") or 0)
+            first_seen = int(match.get("first_seen_at") or match.get("timestamp") or now)
             match.update(row)
+            match["first_seen_at"] = first_seen
+            match["last_seen_at"] = now
             match["peak_multiple"] = max(old_peak, multiple)
             match["first_1_2x_timestamp"] = old_12 or (now if multiple >= 1.2 else 0)
             match["first_1_5x_timestamp"] = old_15 or (now if multiple >= 1.5 else 0)
@@ -260,7 +324,6 @@ def update_history(trades, history):
             bucket,
             key=lambda x: int(x.get("trade_timestamp") or x.get("timestamp") or 0)
         )
-
 
 
 def run_gmgn_cli(args, timeout=60):
