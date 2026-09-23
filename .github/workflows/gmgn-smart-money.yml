@@ -8,6 +8,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: fil-before-pump-repo-writers
+  cancel-in-progress: false
+
 jobs:
   gmgn-smart-money:
     runs-on: ubuntu-latest
