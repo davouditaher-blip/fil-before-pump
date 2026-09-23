@@ -311,8 +311,19 @@ def main():
         # earlier buys subsequently reached 2x+. Current entry must still be
         # early (GMGN entry-to-now <= 15% and CMC 24h <= 8%).
         proven_wallets = []
-        current_trade_ts = int(x.get("latest_ts") or 0)
         for wallet in x.get("wallets") or []:
+            wallet_rows = [
+                r for r in history.get(wallet, [])
+                if str(r.get("side") or "").lower() == "buy"
+                and str(r.get("symbol") or "").upper() == str(x["symbol"] or "").upper()
+            ]
+            if not wallet_rows:
+                continue
+            current_entry = max(
+                wallet_rows,
+                key=lambda r: int(r.get("trade_timestamp") or r.get("timestamp") or 0)
+            )
+            current_trade_ts = int(current_entry.get("trade_timestamp") or current_entry.get("timestamp") or 0)
             profile = wallet_track_profile(history, wallet, x["symbol"], current_trade_ts)
             entry = current_wallet_entry(history, wallet, x["symbol"], current_trade_ts)
             current_multiple = float(entry.get("price_change") or 0)
