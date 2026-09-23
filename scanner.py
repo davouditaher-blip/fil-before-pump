@@ -1728,7 +1728,19 @@ def main():
     if removed:
         print(f"Fresh-volume guard removed {removed} severe 2d-volume contraction candidates.")
 
-    # CoinGlass execution is disabled in this wallet-first build; no API call is required here.\n\n    results.sort(key=lambda x: x["score"], reverse=True)
+    # CoinGlass execution is disabled in this wallet-first build; no API call is required here.\n\n    # Final wallet-first ordering: wallet accumulation/recurring activity and
+    # Smart Money evidence lead the candidate list. Volume remains an important
+    # supporting signal, but technical strength is intentionally not used here.
+    results.sort(key=lambda x: (
+        int(x.get("wallet_accumulation", 0) or 0),
+        int(x.get("smart_wallet_overlap", 0) or 0),
+        1 if x.get("wallet") else 0,
+        (x.get("gmgn") or {}).get("score", 0) or 0,
+        int((x.get("gmgn") or {}).get("buy_count", 0) or 0),
+        float((x.get("gmgn") or {}).get("buy_usd", 0) or 0),
+        x["score"],
+        x["vol_changes"].get("1d") or -999999,
+    ), reverse=True)
 
     # Apply the selection made from the Telegram control panel.
     results = apply_bot_filters(results)
