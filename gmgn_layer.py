@@ -327,7 +327,7 @@ def main():
             profile = wallet_track_profile(history, wallet, x["symbol"], current_trade_ts)
             entry = current_wallet_entry(history, wallet, x["symbol"], current_trade_ts)
             current_multiple = float(entry.get("price_change") or 0)
-            if profile["proven"] and (current_multiple <= 1.15 or current_multiple <= 0):
+            if profile["proven"] and 0 < current_multiple <= 1.15:
                 proven_wallets.append({
                     **profile,
                     "current_multiple": current_multiple,
