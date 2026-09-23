@@ -146,6 +146,7 @@ def update_history(trades, history):
 
         trade_ts = int(t.get("timestamp") or now)
         symbol = ((t.get("base_token") or {}).get("symbol") or "?").upper()
+        multiple = float(t.get("price_change") or 0)
         row = {
             "timestamp": now,
             "trade_timestamp": trade_ts,
@@ -156,7 +157,11 @@ def update_history(trades, history):
             "side": str(t.get("side") or "").lower(),
             "amount_usd": float(t.get("amount_usd") or 0),
             "price_usd": float(t.get("price_usd") or 0),
-            "price_change": float(t.get("price_change") or 0),
+            "price_change": multiple,
+            "peak_multiple": multiple,
+            "first_1_2x_timestamp": now if multiple >= 1.2 else 0,
+            "first_1_5x_timestamp": now if multiple >= 1.5 else 0,
+            "first_2x_timestamp": now if multiple >= 2.0 else 0,
             "is_open_or_close": t.get("is_open_or_close"),
             "maker_tags": (t.get("maker_info") or {}).get("tags") or [],
         }
@@ -184,7 +189,15 @@ def update_history(trades, history):
         if match is None:
             bucket.append(row)
         else:
+            old_peak = float(match.get("peak_multiple") or match.get("price_change") or 0)
+            old_12 = int(match.get("first_1_2x_timestamp") or 0)
+            old_15 = int(match.get("first_1_5x_timestamp") or 0)
+            old_2x = int(match.get("first_2x_timestamp") or 0)
             match.update(row)
+            match["peak_multiple"] = max(old_peak, multiple)
+            match["first_1_2x_timestamp"] = old_12 or (now if multiple >= 1.2 else 0)
+            match["first_1_5x_timestamp"] = old_15 or (now if multiple >= 1.5 else 0)
+            match["first_2x_timestamp"] = old_2x or (now if multiple >= 2.0 else 0)
 
         history[wallet] = sorted(
             bucket,
@@ -202,55 +215,52 @@ def cross_asset_wallets(history, address, chain):
 
 
 def wallet_track_profile(history, wallet, current_symbol, current_trade_ts):
-    """Measure whether this wallet previously bought other coins before large moves.
-
-    A prior buy is considered a proven pre-pump example when GMGN currently
-    reports price_change >= 2.0 (the asset reached at least 2x the entry).
-    The 'recent' subset is limited to 1-14 days old, matching the user's
-    pre-pump window. No prediction is made from this history alone.
-    """
+    """Measure repeatable early-entry -> move-start behavior for a wallet."""
     rows = history.get(wallet, [])
     prior = []
+    now = int(datetime.now(timezone.utc).timestamp())
     for r in rows:
         if str(r.get("side") or "").lower() != "buy":
             continue
         if str(r.get("symbol") or "").upper() == str(current_symbol or "").upper():
             continue
         ts = int(r.get("trade_timestamp") or r.get("timestamp") or 0)
-        if not ts or ts >= int(current_trade_ts or 0):
-            continue
-        prior.append(r)
+        if ts and ts < int(current_trade_ts or 0):
+            prior.append(r)
 
-    now = int(datetime.now(timezone.utc).timestamp())
     winners = []
-    recent_winners = []
     for r in prior:
-        multiple = float(r.get("price_change") or 0)
-        if multiple < 2.0:
+        peak = max(float(r.get("peak_multiple") or 0), float(r.get("price_change") or 0))
+        if peak < 2.0:
             continue
-        age_days = max(0.0, (now - int(r.get("trade_timestamp") or r.get("timestamp") or now)) / 86400.0)
-        item = {
+        entry_ts = int(r.get("trade_timestamp") or r.get("timestamp") or now)
+        age_days = max(0.0, (now - entry_ts) / 86400.0)
+        first_2x = int(r.get("first_2x_timestamp") or 0)
+        move_days = max(0.0, (first_2x - entry_ts) / 86400.0) if first_2x else None
+        recency_weight = max(0.2, min(1.0, 1.0 - age_days / 180.0))
+        winners.append({
             "symbol": r.get("symbol"),
-            "multiple": multiple,
+            "multiple": peak,
             "age_days": round(age_days, 1),
-            "timestamp": int(r.get("trade_timestamp") or r.get("timestamp") or 0),
-        }
-        winners.append(item)
-        if 1.0 <= age_days <= 14.0:
-            recent_winners.append(item)
+            "move_days": round(move_days, 2) if move_days is not None else None,
+            "recency_weight": round(recency_weight, 2),
+            "timestamp": entry_ts,
+        })
 
-    total_prior = len(prior)
-    win_rate = (len(winners) / total_prior) if total_prior else 0.0
+    recent = [x for x in winners if 1.0 <= x["age_days"] <= 14.0]
+    fast = [x for x in winners if x["move_days"] is not None and x["move_days"] <= 7.0]
+    weighted_rate = (sum(x["recency_weight"] for x in winners) / len(prior) * 100.0) if prior else 0.0
     return {
         "wallet": wallet,
-        "prior_buys": total_prior,
+        "prior_buys": len(prior),
         "successful_prior_buys": len(winners),
-        "recent_successful_buys": len(recent_winners),
-        "win_rate": round(win_rate * 100, 1),
-        "recent_examples": sorted(recent_winners, key=lambda x: x["multiple"], reverse=True)[:5],
-        "proven": bool(winners) or bool(recent_winners),
+        "recent_successful_buys": len(recent),
+        "fast_successful_buys": len(fast),
+        "weighted_win_rate": round(weighted_rate, 1),
+        "recent_examples": sorted(recent or winners, key=lambda x: x["multiple"], reverse=True)[:5],
+        "repeatable": len(winners) >= 2,
+        "proven": bool(winners),
     }
-
 
 def current_wallet_entry(history, wallet, symbol, trade_ts):
     rows = history.get(wallet, [])
@@ -327,7 +337,8 @@ def main():
             profile = wallet_track_profile(history, wallet, x["symbol"], current_trade_ts)
             entry = current_wallet_entry(history, wallet, x["symbol"], current_trade_ts)
             current_multiple = float(entry.get("price_change") or 0)
-            if profile["proven"] and 0 < current_multiple <= 1.15:
+            strong_history = profile["repeatable"] or profile["recent_successful_buys"] >= 1
+            if profile["proven"] and strong_history and 0 < current_multiple <= 1.15:
                 proven_wallets.append({
                     **profile,
                     "current_multiple": current_multiple,
@@ -401,7 +412,7 @@ def main():
         proven_text = []
         for w in x.get("proven_wallets", [])[:4]:
             examples = ", ".join(
-                f"{e['symbol']} {e['multiple']:.1f}x"
+                f"{e['symbol']} {e['multiple']:.1f}x" + (f"/{e['move_days']:.1f}d" if e.get("move_days") is not None else "")
                 for e in w.get("recent_examples", [])[:2]
             )
             proven_text.append(
