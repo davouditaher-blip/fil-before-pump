@@ -205,6 +205,142 @@ def update_history(trades, history):
         )[-1000:]
 
 
+
+def run_gmgn_cli(args, timeout=60):
+    env = os.environ.copy()
+    env["GMGN_API_KEY"] = GMGN_API_KEY
+    cmd = ["npx", "--yes", "gmgn-cli", *args, "--raw"]
+    try:
+        p = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=timeout)
+        if p.returncode != 0:
+            print(f"GMGN CLI warning: {p.stderr[-800:]}")
+            return {}
+        for line in reversed(p.stdout.strip().splitlines()):
+            try:
+                obj = json.loads(line)
+                if isinstance(obj, dict):
+                    return obj
+            except json.JSONDecodeError:
+                pass
+    except Exception as e:
+        print(f"GMGN CLI warning: {e}")
+    return {}
+
+
+def portfolio_activity(chain, wallet, limit=200):
+    obj = run_gmgn_cli([
+        "portfolio", "activity", "--chain", chain, "--wallet", wallet,
+        "--limit", str(limit), "--type", "buy", "--type", "sell"
+    ], timeout=75)
+    data = obj.get("list") or obj.get("data") or []
+    return data if isinstance(data, list) else []
+
+
+def token_kline(chain, address, start_ts, end_ts):
+    if not address or not start_ts or not end_ts or end_ts <= start_ts:
+        return []
+    obj = run_gmgn_cli([
+        "market", "kline", "--chain", chain, "--address", address,
+        "--resolution", "4h", "--from", str(int(start_ts)), "--to", str(int(end_ts))
+    ], timeout=75)
+    data = obj.get("list") or obj.get("data") or []
+    return data if isinstance(data, list) else []
+
+
+def _num(*values):
+    for v in values:
+        try:
+            if v is not None and str(v) != "":
+                return float(v)
+        except (TypeError, ValueError):
+            pass
+    return 0.0
+
+
+def analyze_wallet_activity(chain, wallet, activity, kline_cache, now_ts):
+    """Measure real historical entries; UNKNOWN is never converted to 0%."""
+    cutoff = now_ts - 180 * 86400
+    buys = []
+    for r in activity:
+        side = str(r.get("side") or r.get("type") or "").lower()
+        if side != "buy":
+            continue
+        ts = int(_num(r.get("timestamp"), r.get("block_timestamp"), r.get("time")))
+        if not ts or ts < cutoff:
+            continue
+        address = r.get("base_address") or r.get("token_address") or r.get("address")
+        if not address:
+            continue
+        symbol = str(r.get("base_token_symbol") or ((r.get("base_token") or {}).get("symbol"))
+                     or r.get("symbol") or "?").upper()
+        price = _num(r.get("price_usd"), r.get("price"), r.get("execution_price"),
+                     r.get("avg_price"), r.get("token_price"))
+        buys.append({
+            "chain": chain, "address": address, "symbol": symbol,
+            "timestamp": ts, "price": price,
+            "amount_usd": _num(r.get("amount_usd"), r.get("usd_value"), r.get("amount"))
+        })
+
+    grouped = defaultdict(list)
+    for row in buys:
+        grouped[(row["chain"], row["address"], row["symbol"])].append(row)
+
+    opportunities = []
+    for _, rows in grouped.items():
+        rows.sort(key=lambda x: x["timestamp"])
+        first = rows[0]
+        if first["price"] <= 0:
+            opportunities.append({**first, "status": "unknown", "peak_multiple": None})
+            continue
+
+        end_ts = min(now_ts, first["timestamp"] + 14 * 86400)
+        cache_key = (first["chain"], first["address"], first["timestamp"] // 3600, end_ts // 3600)
+        if cache_key not in kline_cache:
+            kline_cache[cache_key] = token_kline(
+                first["chain"], first["address"], first["timestamp"], end_ts
+            )
+        candles = kline_cache.get(cache_key) or []
+
+        peak = first["price"]
+        peak_ts = 0
+        for candle in candles:
+            ts = int(_num(candle.get("time"), candle.get("timestamp")))
+            if ts < first["timestamp"]:
+                continue
+            high = _num(candle.get("high"), candle.get("close"))
+            if high > peak:
+                peak, peak_ts = high, ts
+
+        if not candles:
+            status, multiple = "unknown", None
+        else:
+            multiple = peak / first["price"] if first["price"] > 0 else None
+            status = "success" if multiple is not None and multiple >= 2.0 else "observed_no_2x"
+
+        opportunities.append({
+            **first, "status": status,
+            "peak_multiple": round(multiple, 3) if multiple is not None else None,
+            "peak_timestamp": peak_ts,
+            "days_to_peak": round((peak_ts - first["timestamp"]) / 86400.0, 2) if peak_ts else None
+        })
+
+    successes = [x for x in opportunities if x["status"] == "success"]
+    observed = [x for x in opportunities if x["status"] in ("success", "observed_no_2x")]
+    unknown = [x for x in opportunities if x["status"] == "unknown"]
+    return {
+        "wallet": wallet, "chain": chain,
+        "opportunities": len(opportunities),
+        "observed_opportunities": len(observed),
+        "unknown_opportunities": len(unknown),
+        "successful_pre_pump_entries": len(successes),
+        "pre_pump_win_rate": round(len(successes) / len(observed) * 100.0, 1) if observed else None,
+        "proven": bool(successes),
+        "recent_examples": sorted(successes, key=lambda x: x.get("peak_multiple") or 0, reverse=True)[:5],
+        "all_examples": sorted(opportunities, key=lambda x: x["timestamp"], reverse=True)[:12]
+    }
+
+
+
 def cross_asset_wallets(history, address, chain):
     out = []
     for wallet, rows in history.items():
@@ -387,32 +523,24 @@ def main():
         # earlier buys subsequently reached 2x+. Current entry must still be
         # early (GMGN entry-to-now <= 15% and CMC 24h <= 8%).
         proven_wallets = []
+        activity_profiles = []
+        wallet_kline_cache = {}
         for wallet in x.get("wallets") or []:
-            wallet_rows = [
-                r for r in history.get(wallet, [])
-                if str(r.get("side") or "").lower() == "buy"
-                and str(r.get("symbol") or "").upper() == str(x["symbol"] or "").upper()
-            ]
-            if not wallet_rows:
-                continue
-            current_entry = max(
-                wallet_rows,
-                key=lambda r: int(r.get("trade_timestamp") or r.get("timestamp") or 0)
+            activity = portfolio_activity(x["chain"], wallet, limit=200)
+            profile = analyze_wallet_activity(
+                x["chain"], wallet, activity, wallet_kline_cache,
+                int(datetime.now(timezone.utc).timestamp())
             )
-            current_trade_ts = int(current_entry.get("trade_timestamp") or current_entry.get("timestamp") or 0)
-            profile = wallet_track_profile(history, wallet, x["symbol"], current_trade_ts)
-            entry = current_wallet_entry(history, wallet, x["symbol"], current_trade_ts)
-            current_multiple = float(entry.get("price_change") or 0)
-            strong_history = profile["repeatable"] or profile["recent_successful_buys"] >= 1
-            if profile["proven"] and strong_history and 0 < current_multiple <= 1.15:
-                proven_wallets.append({
-                    **profile,
-                    "current_multiple": current_multiple,
-                })
+            activity_profiles.append(profile)
+            if profile.get("proven"):
+                proven_wallets.append(profile)
 
         x["proven_wallets"] = proven_wallets
         x["proven_wallet_count"] = len(proven_wallets)
         x["wallet_track_signal"] = bool(proven_wallets)
+        x["historical_activity_count"] = sum(int(p.get("opportunities", 0) or 0) for p in activity_profiles)
+        x["historical_unknown_count"] = sum(int(p.get("unknown_opportunities", 0) or 0) for p in activity_profiles)
+        x["activity_profiles"] = activity_profiles
 
         # Separate shared-wallet historical evidence from current buying.
         # A shared wallet is not treated as a current buyer unless GMGN lists
@@ -505,17 +633,19 @@ def main():
         move = f" | 24h {x['change24']:+.1f}% | 7d {x['change7']:+.1f}%" if x.get("change24") is not None else ""
         wallets = ", ".join(w[:8] + "…" for w in x["wallets"][:4])
         proven_text = []
-        for w in x.get("proven_wallets", [])[:4]:
+        for w in x.get("activity_profiles", [])[:4]:
+            if w.get("pre_pump_win_rate") is not None:
+                status = f"موفق {w['successful_pre_pump_entries']}/{w['observed_opportunities']} ({w['pre_pump_win_rate']:.0f}%)"
+            else:
+                status = f"سابقه {w['opportunities']} | قابل‌اثبات {w['observed_opportunities']} | نامشخص {w['unknown_opportunities']}"
             examples = ", ".join(
-                f"{e['symbol']} {e['multiple']:.1f}x" + (f"/{e['move_days']:.1f}d" if e.get("move_days") is not None else "")
-                for e in w.get("recent_examples", [])[:2]
+                f"{e['symbol']} {e['peak_multiple']:.1f}x"
+                for e in w.get("recent_examples", [])[:3]
+                if e.get("peak_multiple") is not None
             )
             proven_text.append(
-                f"{w['wallet'][:8]}… | فرصت زودهنگام "
-                f"{w.get('successful_pre_pump_entries', w['successful_prior_buys'])}/"
-                f"{w.get('pre_pump_opportunities', w['prior_buys'])} "
-                f"({w.get('pre_pump_win_rate', w['weighted_win_rate']):.0f}%)"
-                + (f" | نمونه: {examples}" if examples else "")
+                f"{w['wallet'][:8]}… | {status}"
+                + (f" | ارزهای قبلی: {examples}" if examples else "")
             )
         track = "🎯 ردپای ولت معتبر" if x.get("wallet_track_signal") else "🧠 Smart Money"
         shared_history = []
@@ -541,7 +671,7 @@ def main():
             f"🔹 {x['symbol']} [{x['chain']}] {rank}\n"
             f"{track} | Score {x['score']} | SM buys {x['buy_count']} | wallets {len(x['wallets'])} | "
             f"buy volume {x['buy_usd']:,.0f}{move}\n"
-            f"💡 ولت‌های دارای سابقه پامپ: {x.get('proven_wallet_count', 0)}\n"
+            f"💡 ورود قبلیِ قابل‌اثبات: {x.get('proven_wallet_count', 0)} | فرصت‌های بررسی‌شده: {x.get('historical_activity_count', 0)} | نامشخص: {x.get('historical_unknown_count', 0)}\n"
             + (f"👛 {chr(10).join(proven_text)}\n" if proven_text else "")
             + f"Reasons: {', '.join(x['reasons'][:8])}\n"
             + f"Wallets: {wallets}\n"
