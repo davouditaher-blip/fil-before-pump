@@ -348,6 +348,35 @@ def main():
         x["proven_wallet_count"] = len(proven_wallets)
         x["wallet_track_signal"] = bool(proven_wallets)
 
+        # Separate shared-wallet historical evidence from current buying.
+        # A shared wallet is not treated as a current buyer unless GMGN lists
+        # it in the current wallet set for this asset.
+        shared_profiles = []
+        for wallet in x.get("overlap_wallets") or []:
+            rows = history.get(wallet, [])
+            if not rows:
+                continue
+            latest_ts = max(
+                int(r.get("trade_timestamp") or r.get("timestamp") or 0)
+                for r in rows
+            )
+            profile = wallet_track_profile(history, wallet, x["symbol"], latest_ts)
+            if profile.get("prior_buys", 0):
+                shared_profiles.append(profile)
+        shared_profiles.sort(
+            key=lambda p: (
+                bool(p.get("proven")),
+                int(p.get("successful_prior_buys", 0)),
+                float(p.get("weighted_win_rate", 0) or 0),
+                int(p.get("prior_buys", 0)),
+            ),
+            reverse=True,
+        )
+        x["shared_wallet_profiles"] = shared_profiles[:8]
+        x["shared_proven_wallet_count"] = sum(
+            1 for p in shared_profiles if p.get("proven")
+        )
+
         if x.get("change24", 0) <= 8 and x["buy_count"]:
             x["score"] += 5
             x["reasons"].append("price still early")
@@ -417,10 +446,28 @@ def main():
             )
             proven_text.append(
                 f"{w['wallet'][:8]}… | سابقه {w['successful_prior_buys']}/{w['prior_buys']} "
-                f"({w['win_rate']:.0f}%)"
+                f"({w['weighted_win_rate']:.0f}%)"
                 + (f" | نمونه: {examples}" if examples else "")
             )
         track = "🎯 ردپای ولت معتبر" if x.get("wallet_track_signal") else "🧠 Smart Money"
+        shared_history = []
+        for p in x.get("shared_wallet_profiles", [])[:3]:
+            examples = ", ".join(
+                f"{e['symbol']} {e['multiple']:.1f}x"
+                + (f"/{e['move_days']:.1f}d" if e.get("move_days") is not None else "")
+                for e in p.get("recent_examples", [])[:2]
+            )
+            shared_history.append(
+                f"{p['wallet'][:8]}… {p['successful_prior_buys']}/{p['prior_buys']}"
+                f" ({p['weighted_win_rate']:.0f}%)"
+                + (f" | {examples}" if examples else "")
+            )
+        shared_text = (
+            f"🔗 سابقه ولت‌های مشترک ({x.get('shared_proven_wallet_count', 0)} موفق): "
+            + " | ".join(shared_history)
+            if shared_history else
+            "🔗 سابقه ولت‌های مشترک: داده تاریخی کافی نیست"
+        )
         lines.append(
             f"🔹 {x['symbol']} [{x['chain']}] {rank}\n"
             f"{track} | Score {x['score']} | SM buys {x['buy_count']} | wallets {len(x['wallets'])} | "
@@ -428,7 +475,8 @@ def main():
             f"💡 ولت‌های دارای سابقه پامپ: {x.get('proven_wallet_count', 0)}\n"
             + (f"👛 {chr(10).join(proven_text)}\n" if proven_text else "")
             + f"Reasons: {', '.join(x['reasons'][:8])}\n"
-            + f"Wallets: {wallets}"
+            + f"Wallets: {wallets}\n"
+            + shared_text
         )
 
     send_telegram("\n\n".join(lines))
