@@ -1372,8 +1372,8 @@ def format_coin(x):
         f"🔹 {x['name']} ({x['symbol']})  #{x['rank']}\n"
         f"وضعیت: {candidate_status(x)}\n"
         f"امتیاز داخلی: {x['score']:.1f} | ۱ساعت {x['ch1']:+.2f}% | ۲۴ساعت {x['ch24']:+.2f}% | ۷روز {x['ch7']:+.2f}%\n"
-        f"💰 حجم ۲۴ساعت: ${float((x.get('current_volume') or 0)):,.0f} | "
-        f"حجم ۱روز قبل: {f('1d')} | ۲روز قبل: {f('2d')}\n"
+        f"💰 حجم ۲۴ساعت: {f('1d')} | "
+        f"حجم ۲روز قبل: {f('2d')} | حجم ۳روز قبل: {f('3d')}\n"
         f"🐋 حجم ۷روز و ۱۴روز در تحلیل داخلی حفظ شده و فقط نمایش داده نمی‌شود.\n"        f"ولت: {wallet_status} | ارائه‌دهنده: {x.get('wallet_provider','N/A')} | همپوشانی: {x.get('wallet_overlap', 0)}\n"
         f"{format_gmgn(x)}\n"
 
