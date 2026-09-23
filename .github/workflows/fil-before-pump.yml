@@ -11,8 +11,6 @@ on:
         description: "Telegram filter"
         required: false
         default: "all"
-  schedule:
-    - cron: "*/30 * * * *"
 
 permissions:
   contents: write
@@ -65,9 +63,6 @@ jobs:
             exit 0
           fi
           git commit -m "Update scanner history"
-          # Rebase AFTER committing so generated files are never unstaged.
-          # If another run updates main during the scan, the local commit can
-          # be rebased cleanly before the push.
           git fetch origin main
           git rebase origin/main
           git push origin HEAD:main
