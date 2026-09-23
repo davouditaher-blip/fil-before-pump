@@ -234,21 +234,24 @@ def enhanced_apply(result, layer):
     reasons = result["reasons"]
 
     acc = int(layer.get("accumulation_count", 0))
+    recurring = int(layer.get("recurring_wallet_count", len(layer.get("recurring_wallets", []) or [])) or 0)
     overlap = int(layer.get("smart_wallet_overlap", 0))
     win_rate = layer.get("smart_wallet_win_rate")
 
     if acc >= 1:
         score += min(12, 4 + 2 * acc)
         reasons.append(f"{acc} wallet accumulation")
-    if overlap >= 1:
-        score += min(12, 4 * overlap)
-        reasons.append(f"{overlap} recurring wallet(s) accumulating")
+    if recurring >= 1:
+        score += min(12, 4 * recurring)
+        reasons.append(f"{recurring} recurring accumulating wallet(s)")
 
     result["score"] = round(score, 1)
     result["wallet_accumulation"] = acc
+    result["recurring_wallet_count"] = recurring
     result["smart_wallet_overlap"] = overlap
     result["wallet_reductions"] = int(layer.get("reduction_count", 0))
     result["wallet_win_rate"] = win_rate
+    result["wallet_win_stats"] = layer.get("wallet_win_stats", [])
     return result
 
 
@@ -257,10 +260,15 @@ def enhanced_format(result):
     if not result.get("wallet"):
         return base
 
+    recurring = int(result.get("recurring_wallet_count", 0) or 0)
+    stats = result.get("wallet_win_stats") or []
     extra = (
         f"Smart-wallet accumulation: {result.get('wallet_accumulation', 0)}"
-        f" | recurring accumulating wallets: {result.get('smart_wallet_overlap', 0)}"
-        f" | reducing: {result.get('wallet_reductions', 0)}" + (f" | est. wallet win-rate: {result.get('wallet_win_rate')}%" if result.get('wallet_win_rate') is not None else "") + "\n"
+        f" | recurring accumulating wallets: {recurring}"
+        f" | reducing: {result.get('wallet_reductions', 0)}"
+        + (f" | historical win-rate: {result.get('wallet_win_rate')}%" if result.get('wallet_win_rate') is not None else " | historical win-rate: N/A")
+        + f" | historical attempts: {sum(int(x.get('attempts', 0) or 0) for x in stats)}"
+        + "\n"
     )
     return base + extra
 
@@ -437,6 +445,18 @@ def enhanced_goldrush_with_history(coin):
         if len(syms) >= 2:
             recurring.append({"wallet": wallet, "symbols": syms})
     layer["recurring_wallets"] = recurring
+    layer["recurring_wallet_count"] = len(recurring)
+    layer["historical_wallet_profiles"] = [
+        {
+            "wallet": x.get("wallet"),
+            "attempts": int(x.get("attempts", 0) or 0),
+            "wins": int(x.get("wins", 0) or 0),
+            "win_rate": x.get("win_rate"),
+            "successful_symbols": x.get("successful_symbols", []),
+            "accumulation_symbols": x.get("accumulation_symbols", []),
+        }
+        for x in wallet_stats
+    ]
     return layer
 
 
