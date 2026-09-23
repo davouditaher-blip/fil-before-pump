@@ -32,7 +32,8 @@ def main():
 
     rows = build_wallet_quality(radar, history)
     assert len(rows) == 1
-    assert rows[0]["quality_label"] in {"MEDIUM", "HIGH"}
+    assert rows[0]["quality_label"] == "LOW"
+    assert rows[0]["quality_score"] == 41.7
     assert 0 <= rows[0]["quality_score"] <= 100
     assert quality_label(0, 0) == "INSUFFICIENT_DATA"
 
