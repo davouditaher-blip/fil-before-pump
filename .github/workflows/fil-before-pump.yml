@@ -11,6 +11,8 @@ on:
         description: "Telegram filter"
         required: false
         default: "all"
+  schedule:
+    - cron: "*/30 * * * *"
 
 permissions:
   contents: write
