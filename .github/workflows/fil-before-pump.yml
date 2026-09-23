@@ -65,11 +65,9 @@ jobs:
             exit 0
           fi
           git commit -m "Update scanner history"
-          # Another scheduled workflow may update the repository while this scan runs.
-          # Stash any unrelated generated changes before rebasing to avoid
-          # "cannot pull with rebase: You have unstaged changes".
-          git stash push --include-untracked -m "pre-rebase scanner changes" || true
+          # Rebase AFTER committing so generated files are never unstaged.
+          # If another run updates main during the scan, the local commit can
+          # be rebased cleanly before the push.
           git fetch origin main
           git rebase origin/main
-          git stash pop || true
           git push origin HEAD:main
