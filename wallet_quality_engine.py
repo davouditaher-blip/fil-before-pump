@@ -113,6 +113,93 @@ def _forward_hit_rate(buys: list[dict[str, Any]], rows: list[dict[str, Any]]) ->
     return attempts, hits
 
 
+def _pre_pump_proof(qualified_buys: list[dict[str, Any]], rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Replay observable wallet entries and measure early-entry evidence.
+
+    This is an observational proof layer, not a trading PnL claim. For every
+    >=$5K buy we only inspect rows timestamped after the entry and measure
+    whether +10/+20/+30% was reached within 6/12/24 hours. MFE/MAE are also
+    recorded from the same forward-only window.
+    """
+    by_symbol: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        symbol = str(row.get("symbol") or "").upper()
+        if symbol:
+            by_symbol.setdefault(symbol, []).append(row)
+    for symbol in by_symbol:
+        by_symbol[symbol] = sorted(by_symbol[symbol], key=_ts)
+
+    first_buy_by_symbol: dict[str, int] = {}
+    for buy in sorted(qualified_buys, key=_ts):
+        symbol = str(buy.get("symbol") or "").upper()
+        if symbol and symbol not in first_buy_by_symbol:
+            first_buy_by_symbol[symbol] = _ts(buy)
+
+    attempts = 0
+    first_entry_attempts = 0
+    hits = {6: {10: 0, 20: 0, 30: 0}, 12: {10: 0, 20: 0, 30: 0}, 24: {10: 0, 20: 0, 30: 0}}
+    first_entry_hits = {6: 0, 12: 0, 24: 0}
+    observations = []
+
+    for buy in sorted(qualified_buys, key=_ts):
+        symbol = str(buy.get("symbol") or "").upper()
+        entry = _price(buy)
+        t0 = _ts(buy)
+        if not symbol or entry <= 0 or t0 <= 0:
+            continue
+        future = [
+            r for r in by_symbol.get(symbol, [])
+            if _ts(r) > t0 and 0 < _ts(r) - t0 <= 24 * 3600 and _price(r) > 0
+        ]
+        if not future:
+            continue
+        attempts += 1
+        is_first = t0 == first_buy_by_symbol.get(symbol)
+        if is_first:
+            first_entry_attempts += 1
+
+        window_stats = {}
+        for hours in (6, 12, 24):
+            window = [r for r in future if _ts(r) - t0 <= hours * 3600]
+            prices = [_price(r) for r in window if _price(r) > 0]
+            if not prices:
+                continue
+            mfe = max(prices) / entry - 1.0
+            mae = min(prices) / entry - 1.0
+            window_stats[str(hours)] = {"mfe_pct": round(mfe * 100, 2), "mae_pct": round(mae * 100, 2)}
+            for target in (10, 20, 30):
+                if mfe >= target / 100:
+                    hits[hours][target] += 1
+            if is_first and mfe >= 0.10:
+                first_entry_hits[hours] += 1
+
+        observations.append({
+            "symbol": symbol,
+            "timestamp": t0,
+            "price": entry,
+            "first_qualified_entry": is_first,
+            "windows": window_stats,
+        })
+
+    def rate(n: int, d: int) -> float | None:
+        return round(n / d * 100.0, 1) if d else None
+
+    return {
+        "attempts": attempts,
+        "first_entry_attempts": first_entry_attempts,
+        "first_entry_rate": rate(first_entry_hits[24], first_entry_attempts),
+        "hit_rates": {
+            str(hours): {str(target): rate(hits[hours][target], attempts) for target in (10, 20, 30)}
+            for hours in (6, 12, 24)
+        },
+        "first_entry_hit_rates": {
+            str(hours): rate(first_entry_hits[hours], first_entry_attempts)
+            for hours in (6, 12, 24)
+        },
+        "observations": observations[-100:],
+    }
+
+
 def _tier(score: float, proven: bool) -> str:
     if proven and score >= 80:
         return "A"
@@ -163,6 +250,9 @@ def build_profiles(data: dict[str, list[dict[str, Any]]] | None = None) -> dict[
 
         attempts, hits = _forward_hit_rate(qualified_buys, rows)
         forward_hit_rate = round(hits / attempts * 100.0, 1) if attempts else None
+        pre_pump = _pre_pump_proof(qualified_buys, rows)
+        first_entry_rate = pre_pump.get("first_entry_rate")
+        first_24_rate = (pre_pump.get("hit_rates") or {}).get("24", {}).get("10")
 
         pnl_rows = [p for p in (_pnl(r) for r in qualified_sells) if p is not None]
         realized_win_rate = (
@@ -178,12 +268,18 @@ def build_profiles(data: dict[str, list[dict[str, Any]]] | None = None) -> dict[
         hit_score = (forward_hit_rate / 100.0 * 30.0) if forward_hit_rate is not None else 0.0
         realized_score = (realized_win_rate / 100.0 * 10.0) if realized_win_rate is not None else 0.0
 
-        score = round(min(100.0, activity_score + capital_score + repeat_bonus + hit_score + realized_score), 1)
+        pre_pump_bonus = 0.0
+        if first_entry_rate is not None:
+            pre_pump_bonus += min(10.0, first_entry_rate / 10.0)
+        if first_24_rate is not None:
+            pre_pump_bonus += min(5.0, first_24_rate / 20.0)
+        score = round(min(100.0, activity_score + capital_score + repeat_bonus + hit_score + realized_score + pre_pump_bonus), 1)
         proven = bool(
             len(qualified_buys) >= 3
             and attempts >= 3
             and forward_hit_rate is not None
             and forward_hit_rate >= 60.0
+            and (first_entry_rate is None or first_entry_rate >= 50.0)
         )
 
         profiles[wallet] = {
@@ -199,6 +295,9 @@ def build_profiles(data: dict[str, list[dict[str, Any]]] | None = None) -> dict[
             "forward_14d_attempts": attempts,
             "forward_14d_hits": hits,
             "forward_14d_hit_rate": forward_hit_rate,
+            "pre_pump_proof": pre_pump,
+            "pre_pump_first_entry_rate": first_entry_rate,
+            "pre_pump_24h_10pct_rate": first_24_rate,
             "realized_sell_observations": len(pnl_rows),
             "realized_win_rate": realized_win_rate,
             "quality_score": score,
