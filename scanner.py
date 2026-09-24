@@ -1081,6 +1081,14 @@ def update_wallet_history(layer_results):
             })
             history[wallet] = rows[-200:]
 
+    # Global safety compaction: keep only the newest 80 observations per wallet.
+    # This prevents old high-frequency history from ever crossing GitHub's 100 MiB limit.
+    for wallet, rows in list(history.items()):
+        rows = sorted(rows, key=lambda r: int(r.get("timestamp", 0) or 0))
+        history[wallet] = rows[-80:]
+        if not history[wallet]:
+            history.pop(wallet, None)
+
     WALLET_HISTORY_FILE.write_text(json.dumps(history, separators=(",", ":")))
     return history
 
