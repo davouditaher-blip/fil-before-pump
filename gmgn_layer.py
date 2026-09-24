@@ -239,6 +239,8 @@ def portfolio_activity(chain, wallet, limit=200):
         "--limit", str(limit), "--type", "buy", "--type", "sell"
     ], timeout=75)
     data = obj.get("list") or obj.get("data") or []
+    if isinstance(data, dict):
+        data = data.get("list") or data.get("data") or data.get("activities") or []
     return data if isinstance(data, list) else []
 
 
