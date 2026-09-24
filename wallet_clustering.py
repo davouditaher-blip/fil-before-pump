@@ -115,7 +115,10 @@ def main():
 
     OUTPUT.write_text(json.dumps({
         "assets": result,
-        "pairs": pair_rows[:500],\n        "shared_holding_wallets": sorted(\n            {w for row in pair_rows for w in row["holding_wallets"]}\n        ),
+        "pairs": pair_rows[:500],
+        "shared_holding_wallets": sorted(
+            {w for row in pair_rows for w in row["holding_wallets"]}
+        ),
     }, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
     print(f"wallet clusters: {len(result)} assets | {len(pair_rows)} pairs with >=2 common wallets")
 
