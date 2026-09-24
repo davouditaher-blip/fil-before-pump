@@ -42,6 +42,64 @@ jobs:
           python -m pip install --upgrade requests
           npm install -g gmgn-cli
 
+      - name: Test Nansen API connectivity
+        env:
+          NANSEN_API_KEY: ${{ secrets.NANSEN_API_KEY }}
+        shell: bash
+        run: |
+          set +e
+
+          if [ -z "${NANSEN_API_KEY:-}" ]; then
+            printf 'HTTP_STATUS=MISSING_SECRET\n' > nansen_test_result.txt
+            exit 0
+          fi
+
+          BODY='{
+            "address":"0x28c6c06298d514db089934071355e5743bf21d60",
+            "chain":"ethereum",
+            "date":{
+              "from":"2026-09-20T00:00:00Z",
+              "to":"2026-09-21T23:59:59Z"
+            },
+            "pagination":{
+              "page":1,
+              "per_page":2
+            }
+          }'
+
+          TMP=$(mktemp)
+          HTTP_CODE=$(curl -sS -o "$TMP" -w "%{http_code}" \
+            -X POST "https://api.nansen.ai/api/v1/profiler/address/historical-balances" \
+            -H "apiKey: ${NANSEN_API_KEY}" \
+            -H "Content-Type: application/json" \
+            -H "Accept: application/json" \
+            --data "$BODY")
+
+          python3 - "$TMP" "$HTTP_CODE" <<'PY'
+          import json, sys
+          p, code = sys.argv[1], sys.argv[2]
+          out = [f"HTTP_STATUS={code}"]
+          try:
+              obj=json.load(open(p))
+              if isinstance(obj, dict):
+                  out.append("RESPONSE_KEYS=" + ",".join(sorted(obj.keys())))
+                  data=obj.get("data")
+                  if isinstance(data, list):
+                      out.append("DATA_COUNT=" + str(len(data)))
+                  pagination=obj.get("pagination")
+                  if isinstance(pagination, dict):
+                      out.append("IS_LAST_PAGE=" + str(pagination.get("is_last_page")))
+                  if "error" in obj:
+                      out.append("ERROR_PRESENT=true")
+          except Exception as e:
+              out.append("JSON_PARSE_ERROR=" + type(e).__name__)
+          open("nansen_test_result.txt","w").write("\n".join(out)+"\n")
+          print("\n".join(out))
+          PY
+
+          rm -f "$TMP"
+          exit 0
+
       - name: Run Fil Before Pump scanner
         env:
           CMC_API_KEY: ${{ secrets.CMC_API_KEY }}
@@ -60,7 +118,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add volume_history.json wallet_history.json wallet_events.json futures_volume_history.json gmgn_wallet_history.json
+          git add volume_history.json wallet_history.json wallet_events.json futures_volume_history.json gmgn_wallet_history.json nansen_test_result.txt
           if git diff --cached --quiet; then
             echo "No history changes to commit."
             exit 0
