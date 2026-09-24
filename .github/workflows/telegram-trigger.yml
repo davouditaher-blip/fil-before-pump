@@ -23,23 +23,18 @@ jobs:
           set -e
           curl -L --max-time 25 -sS "https://fil-before-pump.onrender.com/scan-request" -o /tmp/request.json
           cat /tmp/request.json
-          python - <<PY
+          python - <<'PY'
 import json
-data=json.load(open("/tmp/request.json"))
-request=data.get("request") or {}
-print("pending="+str(bool(data.get("pending"))).lower())
-print("rank_range="+str(request.get("rank_range") or "all"))
-print("filter="+str(request.get("filter") or "all"))
+import os
+
+data = json.load(open("/tmp/request.json"))
+request = data.get("request") or {}
+with open(os.environ["GITHUB_OUTPUT"], "a") as out:
+    out.write(f"pending={str(bool(data.get('pending'))).lower()}\n")
+    out.write(f"rank_range={request.get('rank_range') or 'all'}\n")
+    out.write(f"filter={request.get('filter') or 'all'}\n")
+print(data)
 PY
-          pending="$(python -c "import json; print(str(bool(json.load(open('/tmp/request.json')).get('pending'))).lower())")"
-          echo "pending=$pending" >> "$GITHUB_OUTPUT"
-          if [ "$pending" = "true" ]; then
-            echo "rank_range=$(python -c "import json; print((json.load(open('/tmp/request.json')).get('request') or {}).get('rank_range','all')")" >> "$GITHUB_OUTPUT"
-            echo "filter=$(python -c "import json; print((json.load(open('/tmp/request.json')).get('request') or {}).get('filter','all')")" >> "$GITHUB_OUTPUT"
-          else
-            echo "rank_range=all" >> "$GITHUB_OUTPUT"
-            echo "filter=all" >> "$GITHUB_OUTPUT"
-          fi
 
       - name: Checkout repository
         if: steps.request.outputs.pending == 'true'
