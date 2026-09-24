@@ -28,7 +28,22 @@ def main():
         s=sym(t); a=q['assets'].setdefault(s,{'buy_usd':0.0,'buys':0}); a['buy_usd']+=amount; a['buys']+=1
     radar=json.loads(OUT.read_text()) if OUT.exists() else {}; report=[]
     for key,q in qualified.items():
-        w,c=q['wallet'],q['chain']; act=portfolio_activity(c,w,limit=500); p=analyze_wallet_activity(c,w,act,{},now); cur=holdings(c,w)
+        w,c=q['wallet'],q['chain']
+        try:
+            act=portfolio_activity(c,w,limit=500) or []
+        except Exception as e:
+            print(f'portfolio warning {c}:{w[:8]}: {e}')
+            act=[]
+        try:
+            p=analyze_wallet_activity(c,w,act,{},now) or {}
+        except Exception as e:
+            print(f'analysis warning {c}:{w[:8]}: {e}')
+            p={}
+        try:
+            cur=holdings(c,w)
+        except Exception as e:
+            print(f'holdings warning {c}:{w[:8]}: {e}')
+            cur=[]
         held=[{'symbol':sym(x),'value_usd':num(x.get('value_usd'),x.get('usd_value'),x.get('amount_usd')),'pnl_usd':num(x.get('pnl_usd'),x.get('profit_usd'),x.get('unrealized_pnl'))} for x in cur if sym(x)!='?']
         by=defaultdict(list)
         for a in act:
@@ -38,11 +53,12 @@ def main():
         for s,ev in by.items():
             b=sum(v for side,v in ev if side=='buy'); z=sum(v for side,v in ev if side=='sell'); states[s]='holding' if s in hs else ('exited' if z>=b*.9 and z>0 else ('trimmed' if z>0 else 'holding_unknown_balance'))
         row={'wallet':w,'chain':c,'threshold_usd':THRESHOLD,'qualified_buy_count':q['qualified_buy_count'],'qualified_buy_usd':round(q['qualified_buy_usd'],2),'assets':q['assets'],'performance':{'observed_opportunities':p.get('observed_opportunities',0),'unknown_opportunities':p.get('unknown_opportunities',0),'successful_pre_pump_entries':p.get('successful_pre_pump_entries',0),'pre_pump_win_rate':p.get('pre_pump_win_rate')},'current_holdings':held[:100],'position_states':states,'last_scan':now}; radar[key]=row; report.append(row)
-    OUT.write_text(json.dumps(radar,indent=2,ensure_ascii=False)); lines=['ð WALLET RADAR â Ø®Ø±ÛØ¯ÙØ§Û >= $5K','Read-only | $5K ÙØ¹ÛØ§Ø± Ú©Ø´Ù Ø§Ø³ØªØ ÙÙ Ø§Ø«Ø¨Ø§Øª Ú©ÛÙÛØª.']
+    OUT.write_text(json.dumps(radar,indent=2,ensure_ascii=False), encoding='utf-8')
+    # Telegram output is intentionally disabled here: the integrated scanner
+    # owns the 30-minute report so Radar does not create duplicate messages.
+    lines=['🐋 WALLET RADAR — خریدهای >= $5K','Read-only | $5K معیار کشف است، نه اثبات کیفیت.']
     for w in sorted(report,key=lambda x:x['qualified_buy_usd'],reverse=True)[:30]:
         p=w['performance']; wr=p['pre_pump_win_rate']; wt=f'{wr:.0f}%' if isinstance(wr,(int,float)) else 'N/A'; short=w['wallet'][:8]+'â¦'+w['wallet'][-6:]; lines.append(f"\nð {short} | {w['chain']} | buys {w['qualified_buy_count']} | ${w['qualified_buy_usd']:,.0f} | pre-pump {p['successful_pre_pump_entries']}/{p['observed_opportunities']} ({wt})"); lines += [f"   {s}: {st}" for s,st in list(w['position_states'].items())[:8]]; heldnames=[x['symbol'] for x in w['current_holdings']]; lines.append('   ð¢ holdings: '+', '.join(heldnames[:10])) if heldnames else None
-    msg='\n'.join(lines); print(msg); tok=os.environ.get('TELEGRAM_BOT_TOKEN',''); chat=os.environ.get('TELEGRAM_CHAT_ID','')
-    if tok and chat:
-        import requests
-        for i in range(0,len(msg),3900): requests.post(f'https://api.telegram.org/bot{tok}/sendMessage',data={'chat_id':chat,'text':msg[i:i+3900]},timeout=30).raise_for_status()
+    msg='\n'.join(lines)
+    print(msg)
 if __name__=='__main__': main()
