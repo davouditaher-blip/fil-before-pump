@@ -2052,7 +2052,11 @@ def main():
     )
     follow_candidates = [
         x for x in results
-        if int((x.get("gmgn") or {}).get("proven_wallet_count", 0) or 0) > 0
+        if (
+            int((x.get("gmgn") or {}).get("proven_wallet_count", 0) or 0) > 0
+            or int(x.get("radar_proven_holding_wallet_count", 0) or 0) > 0
+            or int(x.get("radar_shared_holding_wallet_count", 0) or 0) > 0
+        )
     ]
     follow_lines = ["🎯 FOLLOW THE WALLET — ردپای معتبر قبل از پامپ"]
     if follow_candidates:
@@ -2067,8 +2071,11 @@ def main():
                 f"🔸 {x['name']} ({x['symbol']}) #{x['rank']} | 24h {x['ch24']:+.2f}% | 7d {x['ch7']:+.2f}%"
             )
             follow_lines.append(
-                f"   🧠 {g.get('proven_wallet_count', 0)} ولت معتبر | "
-                f"سابقه موفق {g.get('reputation_wins', 0)}/{g.get('reputation_attempts', 0)} | "
+                f"   🧠 GMGN معتبر: {g.get('proven_wallet_count', 0)} | "
+                f"📡 Radar فعال: {x.get('radar_active_wallet_count', 0)} | "
+                f"معتبر: {x.get('radar_proven_holding_wallet_count', 0)} | "
+                f"مشترک: {x.get('radar_shared_holding_wallet_count', 0)} | "
+                f"سابقه موفق: {g.get('reputation_wins', 0)}/{g.get('reputation_attempts', 0)} | "
                 f"ولت‌ها: {', '.join(wallets) if wallets else 'N/A'}"
             )
     else:
