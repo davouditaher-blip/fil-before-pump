@@ -28,11 +28,12 @@ jobs:
           NANSEN_TO: "2026-09-24T23:59:59Z"
         run: python3 nansen_backfill.py
 
-      - name: Save historical archive
+      - name: Save historical archive (including partial checkpoints)
+        if: always()
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add wallet_archive/raw/nansen/historical_balances
+          git add -A wallet_archive/raw/nansen/historical_balances
           if git diff --cached --quiet; then
             echo "No archive changes."
             exit 0
