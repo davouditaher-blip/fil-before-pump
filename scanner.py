@@ -1286,10 +1286,15 @@ def gmgn_enrichment():
             gmgn_history[wallet] = rows[-500:]
         gmgn_history = {w: rows for w, rows in gmgn_history.items() if rows}
 
-        try:
-            history_path.write_text(json.dumps(gmgn_history, indent=2))
-        except Exception as e:
-            print(f"GMGN history save warning: {e}")
+        # Do not overwrite a populated history file with an empty snapshot
+        # when GMGN is temporarily unavailable or returns no rows.
+        if trades or not gmgn_history:
+            try:
+                history_path.write_text(json.dumps(gmgn_history, indent=2))
+            except Exception as e:
+                print(f"GMGN history save warning: {e}")
+        else:
+            print("GMGN history preserved: current feed returned no trades.")
 
         signals = build_signals(trades)
 
