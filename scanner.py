@@ -233,6 +233,9 @@ def wallet_conviction_signals(result):
                 "chain": item.get("chain"),
                 "active": bool(item.get("active", active_default)),
                 "proven": bool(item.get("proven", proven_default)),
+                "pre_pump_first_entry_rate": item.get("pre_pump_first_entry_rate"),
+                "pre_pump_24h_10pct_rate": item.get("pre_pump_24h_10pct_rate"),
+                "pre_pump_proof_attempts": int(item.get("pre_pump_proof_attempts") or 0),
                 "shared": bool(item.get("shared", shared_default)),
                 "exited": bool(item.get("exited", False)),
                 "sources": [source],
@@ -282,8 +285,15 @@ def wallet_conviction_signals(result):
     reasons = result.setdefault("reasons", [])
     if active:
         reasons.append(f"اعتماد ولت یکپارچه: {len(active)} فعال")
+    proof_rates = [float(x.get("pre_pump_first_entry_rate")) for x in unique if x.get("pre_pump_first_entry_rate") is not None]
+    proof_attempts = sum(int(x.get("pre_pump_proof_attempts") or 0) for x in unique)
+    proof_rate = round(sum(proof_rates) / len(proof_rates), 1) if proof_rates else None
+    result["wallet_pre_pump_proof_rate"] = proof_rate
+    result["wallet_pre_pump_proof_attempts"] = proof_attempts
     if proven:
         reasons.append(f"ولت معتبر یکتا: {len(proven)}")
+    if proof_rate is not None:
+        reasons.append(f"اثبات پیش‌پامپ تاریخی: {proof_rate:.1f}%")
     if shared:
         reasons.append(f"ولت مشترک یکتا: {len(shared)}")
     if exit_pressure > 0:
