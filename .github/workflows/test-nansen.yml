@@ -1,0 +1,71 @@
+name: Test Nansen API
+
+on:
+  push:
+    paths:
+      - ".github/workflows/test-nansen.yml"
+  workflow_dispatch:
+
+jobs:
+  test-nansen:
+    runs-on: ubuntu-latest
+    env:
+      NANSEN_API_KEY: ${{ secrets.NANSEN_API_KEY }}
+    steps:
+      - name: Test Nansen historical balances
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ -z "${NANSEN_API_KEY:-}" ]; then
+            echo "NANSEN_STATUS=MISSING_SECRET"
+            exit 1
+          fi
+
+          BODY='{
+            "address":"0x28c6c06298d514db089934071355e5743bf21d60",
+            "chain":"ethereum",
+            "date":{
+              "from":"2026-09-20T00:00:00Z",
+              "to":"2026-09-21T23:59:59Z"
+            },
+            "pagination":{
+              "page":1,
+              "per_page":2
+            }
+          }'
+
+          TMP=$(mktemp)
+          HTTP_CODE=$(curl -sS -o "$TMP" -w "%{http_code}" \
+            -X POST "https://api.nansen.ai/api/v1/profiler/address/historical-balances" \
+            -H "apiKey: ${NANSEN_API_KEY}" \
+            -H "Content-Type: application/json" \
+            -H "Accept: application/json" \
+            --data "$BODY")
+
+          echo "NANSEN_HTTP_STATUS=$HTTP_CODE"
+
+          python3 - "$TMP" <<'PY'
+          import json, sys
+          p=sys.argv[1]
+          try:
+              obj=json.load(open(p))
+              if isinstance(obj, dict):
+                  print("NANSEN_RESPONSE_KEYS=" + ",".join(sorted(obj.keys())))
+                  data=obj.get("data")
+                  if isinstance(data, list):
+                      print("NANSEN_DATA_COUNT=" + str(len(data)))
+                  pagination=obj.get("pagination")
+                  if isinstance(pagination, dict):
+                      print("NANSEN_IS_LAST_PAGE=" + str(pagination.get("is_last_page")))
+                  if "error" in obj:
+                      print("NANSEN_ERROR_PRESENT=true")
+              else:
+                  print("NANSEN_RESPONSE_TYPE=" + type(obj).__name__)
+          except Exception as e:
+              print("NANSEN_JSON_PARSE_ERROR=" + type(e).__name__)
+          PY
+
+          rm -f "$TMP"
+
+          test "$HTTP_CODE" = "200"
