@@ -98,7 +98,7 @@ def main():
             "errors":errors[:50],"records_data":rows}
     OUT.write_text(json.dumps(report,ensure_ascii=False,indent=2))
     print(json.dumps({k:v for k,v in report.items() if k not in {"records_data","errors"}},ensure_ascii=False,indent=2))
-    print("errors=",len(errors))
+    print("errors=",len(errors))\n    print("error_samples=",json.dumps(errors[:5],ensure_ascii=False))
 
 if __name__=="__main__":
     main()
