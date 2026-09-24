@@ -1,0 +1,62 @@
+name: Nansen API Connectivity Test
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-nansen:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Test Nansen API
+        env:
+          NANSEN_API_KEY: ${{ secrets.NANSEN_API_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ -z "${NANSEN_API_KEY:-}" ]; then
+            echo "NANSEN_API_KEY is missing"
+            exit 1
+          fi
+
+          BODY='{
+            "address":"0x28c6c06298d514db089934071355e5743bf21d60",
+            "chain":"ethereum",
+            "date":{
+              "from":"2026-09-20T00:00:00Z",
+              "to":"2026-09-21T23:59:59Z"
+            },
+            "pagination":{
+              "page":1,
+              "per_page":2
+            }
+          }'
+
+          TMP=$(mktemp)
+          HTTP_CODE=$(curl -sS -o "$TMP" -w "%{http_code}"             -X POST "https://api.nansen.ai/api/v1/profiler/address/historical-balances"             -H "apiKey: ${NANSEN_API_KEY}"             -H "Content-Type: application/json"             -H "Accept: application/json"             --data "$BODY")
+
+          echo "HTTP_STATUS=$HTTP_CODE"
+
+          python3 - "$TMP" "$HTTP_CODE" <<'PY'
+          import json, sys
+          p, code = sys.argv[1], sys.argv[2]
+          obj = json.load(open(p))
+          print("HTTP_STATUS=" + code)
+          if isinstance(obj, dict):
+              print("RESPONSE_KEYS=" + ",".join(sorted(obj.keys())))
+              data = obj.get("data")
+              if isinstance(data, list):
+                  print("DATA_COUNT=" + str(len(data)))
+              pagination = obj.get("pagination")
+              if isinstance(pagination, dict):
+                  print("IS_LAST_PAGE=" + str(pagination.get("is_last_page")))
+              if "error" in obj:
+                  print("ERROR_PRESENT=true")
+          if not (200 <= int(code) < 300):
+              raise SystemExit(1)
+          PY
+
+          rm -f "$TMP"
