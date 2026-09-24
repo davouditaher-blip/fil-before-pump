@@ -87,6 +87,38 @@ def load_history():
         return {}
 
 
+WALLET_CLUSTERS_FILE = Path("wallet_clusters.json")
+
+def load_wallet_clusters():
+    if not WALLET_CLUSTERS_FILE.exists():
+        return {"assets": {}, "pairs": []}
+    try:
+        data = json.loads(WALLET_CLUSTERS_FILE.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {"assets": {}, "pairs": []}
+    except Exception as e:
+        print(f"wallet clusters load warning: {e}")
+        return {"assets": {}, "pairs": []}
+
+def apply_wallet_cluster_signals(result, clusters):
+    symbol = str(result.get("symbol") or "").upper()
+    row = (clusters.get("assets") or {}).get(symbol) or {}
+    wallets = row.get("wallets") or []
+    holding = [w for w in wallets if w.get("status") == "holding"]
+    proven = [w for w in holding if w.get("proven_pre_pump_wallet")]
+    result["cluster_wallet_count"] = int(row.get("wallet_count", 0) or 0)
+    result["cluster_holding_wallet_count"] = len(holding)
+    result["cluster_proven_holding_wallet_count"] = len(proven)
+    result["cluster_holding_wallets"] = holding[:25]
+    result["cluster_proven_holding_wallets"] = proven[:25]
+    bonus = min(10, 2 * len(holding)) + min(6, 3 * len(proven))
+    if bonus:
+        result["score"] = round(result.get("score", 0) + bonus, 1)
+        result.setdefault("reasons", []).append(f"ولت‌های مشترک فعال: {len(holding)}")
+    if proven:
+        result.setdefault("reasons", []).append(f"ولت معتبرِ فعال: {len(proven)}")
+
+
+
 def save_history(history):
     HISTORY_FILE.write_text(json.dumps(history, indent=2))
 
@@ -1454,6 +1486,7 @@ def format_coin(x):
         f"💰 حجم ۲۴ساعت: {f('1d')} | "
         f"حجم ۲روز قبل: {f('2d')} | حجم ۳روز قبل: {f('3d')}\n"
         f"🐋 حجم ۷روز و ۱۴روز در تحلیل داخلی حفظ شده و فقط نمایش داده نمی‌شود.\n"        f"ولت: {wallet_status} | ارائه‌دهنده: {x.get('wallet_provider','N/A')} | همپوشانی: {x.get('wallet_overlap', 0)}\n"
+        f"🔗 ولت مشترک فعال: {x.get('cluster_holding_wallet_count', 0)} | ولت معتبرِ فعال: {x.get('cluster_proven_holding_wallet_count', 0)}\n"
         f"{format_gmgn(x)}\n"
 
         f"دلایل: {', '.join(x['reasons'][:10])}\n"
@@ -1772,6 +1805,11 @@ def main():
                 result["score"] = round(result["score"] + min(10, 4 * result["wallet_overlap"]), 1)
                 result["reasons"].append(f"همپوشانی ولت: {result['wallet_overlap']}")
 
+    # Cross-wallet clustering: active shared wallets are additive and read-only.
+    wallet_clusters = load_wallet_clusters()
+    for result in results:
+        apply_wallet_cluster_signals(result, wallet_clusters)
+
     # لایه تکنیکال در این نسخه اجرا نمی‌شود؛ فیلتر اصلی ولت‌محور است.
     save_history(history)
 
@@ -1832,6 +1870,8 @@ def main():
     # Smart Money evidence lead the candidate list. Volume remains an important
     # supporting signal, but technical strength is intentionally not used here.
     results.sort(key=lambda x: (
+        int(x.get("cluster_proven_holding_wallet_count", 0) or 0),
+        int(x.get("cluster_holding_wallet_count", 0) or 0),
         int(x.get("wallet_accumulation", 0) or 0),
         int(x.get("smart_wallet_overlap", 0) or 0),
         1 if x.get("wallet") else 0,
