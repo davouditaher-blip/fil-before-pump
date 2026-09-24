@@ -24,7 +24,7 @@ jobs:
       - name: Unit tests
         run: PYTHONPATH=. pytest -q tests
       - name: Historical proxy backtest
-        run: python tools/run_historical_backtest.py
+        run: PYTHONPATH=. python tools/run_historical_backtest.py
       - name: Upload backtest report
         uses: actions/upload-artifact@v4
         with:
