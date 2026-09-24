@@ -1,0 +1,79 @@
+name: Fil Before Pump Self-Healing Watchdog
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  watchdog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check and recover failed workflows
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          set -euo pipefail
+
+          recover_workflow() {
+            local workflow="$1"
+            local label="$2"
+
+            echo "Checking $label"
+
+            runs="$(gh run list --workflow "$workflow" --limit 10 --json databaseId,status,conclusion,createdAt,attempt,headBranch,event --repo "$GITHUB_REPOSITORY")"
+
+            echo "$runs" | python -c '
+import json,sys,datetime
+data=json.load(sys.stdin)
+now=datetime.datetime.now(datetime.timezone.utc)
+for r in data:
+    if r.get("status") != "completed" or r.get("conclusion") != "failure":
+        continue
+    created=datetime.datetime.fromisoformat(r["createdAt"].replace("Z","+00:00"))
+    age=(now-created).total_seconds()/60
+    if age <= 90 and int(r.get("attempt") or 1) == 1:
+        print(r["databaseId"])
+        break
+' | while read -r run_id; do
+              [ -z "$run_id" ] && continue
+              echo "Recovering failed $label run $run_id"
+              gh run rerun "$run_id" --failed --repo "$GITHUB_REPOSITORY" || true
+              if [ -n "${TELEGRAM_BOT_TOKEN:-}" ] && [ -n "${TELEGRAM_CHAT_ID:-}" ]; then
+                curl -sS -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+                  -d "chat_id=${TELEGRAM_CHAT_ID}" \
+                  --data-urlencode "text=🛠 Fil Before Pump Self-Healing: failed $label run $run_id was automatically retried." >/dev/null || true
+              fi
+          done
+          }
+
+          recover_workflow "fil-before-pump.yml" "Scanner"
+          recover_workflow "gmgn-smart-money.yml" "GMGN"
+
+      - name: Check Render service
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          set +e
+          response="$(curl -L --max-time 20 -sS -o /tmp/render_body -w "%{http_code}" "https://fil-before-pump.onrender.com/")"
+          status=$?
+          echo "Render HTTP status: $response"
+          if [ "$status" -ne 0 ] || [ "$response" -lt 200 ] || [ "$response" -ge 500 ]; then
+            echo "Render health check failed."
+            if [ -n "${TELEGRAM_BOT_TOKEN:-}" ] && [ -n "${TELEGRAM_CHAT_ID:-}" ]; then
+              curl -sS -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+                -d "chat_id=${TELEGRAM_CHAT_ID}" \
+                --data-urlencode "text=⚠️ Fil Before Pump Render health check failed. HTTP=${response:-no-response}" >/dev/null || true
+            fi
+            exit 1
+          fi
+          echo "Render service is reachable."
