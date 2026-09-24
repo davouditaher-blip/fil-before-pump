@@ -1,6 +1,9 @@
 name: Fil Before Pump Scanner
 
 on:
+  push:
+    paths:
+      - ".github/workflows/fil-before-pump.yml"
   workflow_dispatch:
     inputs:
       rank_range:
