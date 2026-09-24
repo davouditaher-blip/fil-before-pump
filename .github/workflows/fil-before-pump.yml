@@ -11,6 +11,7 @@ on:
       - "futures_volume_history.json"
       - "gmgn_wallet_history.json"
       - "wallet_quality.json"
+      - "wallet_clusters.json"
   workflow_dispatch:
     inputs:
       rank_range:
@@ -81,19 +82,24 @@ jobs:
           done
           exit "$status"
 
+      - name: Build cross-wallet clusters
+        run: |
+          set -e
+          python wallet_clustering.py
+
       - name: Save scanner history safely
         run: |
           set -e
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          git add volume_history.json wallet_history.json wallet_events.json futures_volume_history.json gmgn_wallet_history.json wallet_quality.json
+          git add volume_history.json wallet_history.json wallet_events.json futures_volume_history.json gmgn_wallet_history.json wallet_quality.json wallet_clusters.json
           if git diff --cached --quiet; then
             echo "No history changes to commit."
             exit 0
           fi
 
-          git commit -m "Update scanner history and wallet quality"
+          git commit -m "Update scanner wallet intelligence"
 
           # Other scheduled jobs can update main while this scan is running.
           # Rebase with the scanner commit's history files winning conflicts,
