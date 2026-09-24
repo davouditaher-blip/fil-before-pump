@@ -143,10 +143,21 @@ def build_profiles(data: dict[str, list[dict[str, Any]]] | None = None) -> dict[
                 by_symbol.setdefault(symbol, []).append(row)
 
         active_assets = []
+        asset_flow = {}
         for symbol, symbol_rows in by_symbol.items():
-            buys = sum(1 for r in symbol_rows if _side(r) == "buy" and _usd(r) >= THRESHOLD_USD)
-            sells = sum(1 for r in symbol_rows if _side(r) == "sell" and _usd(r) >= THRESHOLD_USD)
-            if buys > sells:
+            buy_usd = sum(_usd(r) for r in symbol_rows if _side(r) == "buy" and _usd(r) >= THRESHOLD_USD)
+            sell_usd = sum(_usd(r) for r in symbol_rows if _side(r) == "sell" and _usd(r) >= THRESHOLD_USD)
+            net_usd = buy_usd - sell_usd
+            asset_flow[symbol] = {
+                "buy_usd": round(buy_usd, 2),
+                "sell_usd": round(sell_usd, 2),
+                "net_usd": round(net_usd, 2),
+                "exit_ratio": round(sell_usd / buy_usd, 3) if buy_usd > 0 else None,
+            }
+            # Count a wallet as still holding only when qualified buy value
+            # remains above qualified sell value. A raw transaction-count
+            # comparison can misclassify one large exit as "holding".
+            if buy_usd > sell_usd:
                 active_assets.append(symbol)
 
         attempts, hits = _forward_hit_rate(qualified_buys, rows)
