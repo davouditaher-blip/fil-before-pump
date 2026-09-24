@@ -25,6 +25,7 @@ concurrency:
 jobs:
   scan:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - name: Checkout repository
@@ -39,10 +40,11 @@ jobs:
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade requests
+          python -m pip install --upgrade pip
+          python -m pip install requests
           npm install -g gmgn-cli
 
-      - name: Run Fil Before Pump scanner
+      - name: Run Fil Before Pump scanner with retry
         env:
           CMC_API_KEY: ${{ secrets.CMC_API_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -54,9 +56,22 @@ jobs:
           NANSEN_API_KEY: ${{ secrets.NANSEN_API_KEY }}
           BOT_RANK_RANGE: ${{ github.event.inputs.rank_range || 'all' }}
           BOT_FILTER: ${{ github.event.inputs.filter || 'all' }}
-        run: python wallet_enhancement.py
+        run: |
+          set +e
+          for attempt in 1 2 3; do
+            echo "Scanner attempt $attempt/3"
+            python wallet_enhancement.py
+            status=$?
+            if [ "$status" -eq 0 ]; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              sleep 20
+            fi
+          done
+          exit "$status"
 
-      - name: Save volume history
+      - name: Save scanner history safely
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
