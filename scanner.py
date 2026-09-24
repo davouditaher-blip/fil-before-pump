@@ -1698,6 +1698,8 @@ def apply_bot_filters(results):
             buy_usd >= 2500
             or buys >= 2
             or wallets >= 2
+            or int(x.get("radar_active_wallet_count", 0) or 0) >= 1
+            or int(x.get("radar_proven_holding_wallet_count", 0) or 0) >= 1
             or (ratio is not None and ratio > 1.10 and buyers > sellers)
         )
 
@@ -1714,6 +1716,8 @@ def apply_bot_filters(results):
             or int(x.get("wallet_overlap", 0) or 0) >= 1
             or int(x.get("smart_wallet_overlap", 0) or 0) >= 1
             or int(x.get("wallet_accumulation", 0) or 0) >= 1
+            or int(x.get("radar_active_wallet_count", 0) or 0) >= 1
+            or int(x.get("radar_proven_holding_wallet_count", 0) or 0) >= 1
         )
 
     def volume(x):
