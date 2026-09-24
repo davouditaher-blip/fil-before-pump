@@ -22,7 +22,7 @@ jobs:
       - name: Compile
         run: python -m compileall -q fil_engine tools
       - name: Unit tests
-        run: pytest -q tests
+        run: PYTHONPATH=. pytest -q tests
       - name: Historical proxy backtest
         run: python tools/run_historical_backtest.py
       - name: Upload backtest report
