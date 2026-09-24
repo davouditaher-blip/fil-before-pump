@@ -199,6 +199,10 @@ def update_history(trades, history):
             match["first_1_5x_timestamp"] = old_15 or (now if multiple >= 1.5 else 0)
             match["first_2x_timestamp"] = old_2x or (now if multiple >= 2.0 else 0)
 
+        # Never erase a previously collected history because a transient
+        # GMGN/API response returned zero trades on this run.
+        if not trades:
+            return
         history[wallet] = sorted(
             bucket,
             key=lambda x: int(x.get("trade_timestamp") or x.get("timestamp") or 0)
