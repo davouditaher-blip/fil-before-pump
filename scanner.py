@@ -215,6 +215,15 @@ def _merge_wallet_rows(rows):
             existing["proven"] = bool(existing.get("proven")) or bool(row.get("proven"))
             existing["shared"] = bool(existing.get("shared")) or bool(row.get("shared"))
             existing["exited"] = bool(existing.get("exited")) or bool(row.get("exited"))
+            for field in ("pre_pump_first_entry_rate", "pre_pump_24h_10pct_rate"):
+                values = [existing.get(field), row.get(field)]
+                values = [float(v) for v in values if v is not None]
+                if values:
+                    existing[field] = max(values)
+            existing["pre_pump_proof_attempts"] = max(
+                int(existing.get("pre_pump_proof_attempts") or 0),
+                int(row.get("pre_pump_proof_attempts") or 0),
+            )
             existing["sources"] = sorted(set(existing.get("sources", [])) | set(row.get("sources", [])))
     return list(merged.values())
 
@@ -271,6 +280,9 @@ def wallet_conviction_signals(result):
     bonus += min(8.0, 4.0 * len(proven))
     bonus += min(6.0, 3.0 * len(shared))
     bonus += min(4.0, qavg / 25.0)
+    proof_rates = [float(x.get("pre_pump_first_entry_rate")) for x in unique if x.get("pre_pump_first_entry_rate") is not None]
+    proof_rate_for_score = sum(proof_rates) / len(proof_rates) if proof_rates else 0.0
+    bonus += min(5.0, proof_rate_for_score / 20.0)
     bonus -= min(5.0, exit_pressure / 20.0)
 
     result["wallet_conviction_score"] = round(max(0.0, min(30.0, bonus)), 1)
