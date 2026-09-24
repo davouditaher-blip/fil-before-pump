@@ -289,12 +289,8 @@ def run_integrated_scanner() -> None:
         if layer:
             q = int(layer.get("quality_wallet_count", 0) or 0)
             p = int(layer.get("proven_quality_wallet_count", 0) or 0)
-            if q:
-                result["score"] = round(result["score"] + min(10, 3 * q), 1)
-                result["reasons"].append(f"quality wallets accumulating: {q}")
-            if p:
-                result["score"] = round(result["score"] + min(12, 4 * p), 1)
-                result["reasons"].append(f"proven pre-pump wallets: {p}")
+            # Quality evidence is scored centrally by scanner.wallet_conviction_signals()
+            # to prevent the same wallet being rewarded again by Radar/Clustering.
             result["quality_wallet_count"] = q
             result["proven_quality_wallet_count"] = p
             result["quality_wallet_score_avg"] = layer.get("quality_wallet_score_avg")
