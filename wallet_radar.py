@@ -4,6 +4,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from gmgn_layer import GMGN_API_KEY, run_gmgn, run_gmgn_cli, portfolio_activity, analyze_wallet_activity
 OUT=Path('wallet_radar.json'); THRESHOLD=5000.0; CHAINS=('sol','bsc','base','eth')
+
+# Radar is observational: it must never be used as an execution signal by itself.
+STATUS_HOLDING='holding'; STATUS_TRIMMED='trimmed'; STATUS_EXITED='exited'; STATUS_UNKNOWN='unknown'
 def num(*v):
     for x in v:
         try:
