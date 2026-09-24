@@ -1,6 +1,15 @@
 name: Fil Before Pump Scanner
 
 on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - "volume_history.json"
+      - "wallet_history.json"
+      - "wallet_events.json"
+      - "futures_volume_history.json"
+      - "gmgn_wallet_history.json"
   workflow_dispatch:
     inputs:
       rank_range:
