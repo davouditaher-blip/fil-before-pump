@@ -63,23 +63,59 @@ def main():
     for asset, row in result.items():
         for w in row["wallets"]:
             by_wallet[w["wallet"]].append(asset)
-    pairs = defaultdict(lambda: {"wallet_count": 0, "wallets": []})
-    for wallet, asset_list in by_wallet.items():
-        asset_list = sorted(set(asset_list))
+    # Pair clusters: only count a common wallet when it is still holding
+    # both assets. This is the actionable shared-wallet signal requested by
+    # Fil Before Pump; exited wallets remain visible in asset-level history.
+    pairs = defaultdict(lambda: {
+        "wallet_count": 0,
+        "holding_wallet_count": 0,
+        "proven_holding_wallet_count": 0,
+        "wallets": [],
+        "holding_wallets": [],
+        "proven_holding_wallets": [],
+        "qualified_buy_usd": 0.0,
+    })
+    wallet_asset_rows = defaultdict(dict)
+    for asset, row in result.items():
+        for w in row["wallets"]:
+            wallet_asset_rows[w["wallet"]][asset] = w
+
+    for wallet, asset_map in wallet_asset_rows.items():
+        asset_list = sorted(asset_map)
         for i, a in enumerate(asset_list):
             for b in asset_list[i + 1:]:
+                wa, wb = asset_map[a], asset_map[b]
                 key = f"{a}|{b}"
-                pairs[key]["wallet_count"] += 1
-                pairs[key]["wallets"].append(wallet)
+                row = pairs[key]
+                row["wallet_count"] += 1
+                row["wallets"].append(wallet)
+                row["qualified_buy_usd"] += float(wa.get("qualified_buy_usd") or 0)
+                row["qualified_buy_usd"] += float(wb.get("qualified_buy_usd") or 0)
+                if wa.get("status") == "holding" and wb.get("status") == "holding":
+                    row["holding_wallet_count"] += 1
+                    row["holding_wallets"].append(wallet)
+                    if wa.get("proven_pre_pump_wallet") and wb.get("proven_pre_pump_wallet"):
+                        row["proven_holding_wallet_count"] += 1
+                        row["proven_holding_wallets"].append(wallet)
+
     pair_rows = [
         {"assets": k.split("|"), **v}
-        for k, v in pairs.items() if v["wallet_count"] >= 2
+        for k, v in pairs.items()
+        if v["holding_wallet_count"] >= 2
     ]
-    pair_rows.sort(key=lambda x: x["wallet_count"], reverse=True)
+    pair_rows.sort(
+        key=lambda x: (
+            x["proven_holding_wallet_count"],
+            x["holding_wallet_count"],
+            x["wallet_count"],
+            x["qualified_buy_usd"],
+        ),
+        reverse=True,
+    )
 
     OUTPUT.write_text(json.dumps({
         "assets": result,
-        "pairs": pair_rows[:500],
+        "pairs": pair_rows[:500],\n        "shared_holding_wallets": sorted(\n            {w for row in pair_rows for w in row["holding_wallets"]}\n        ),
     }, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
     print(f"wallet clusters: {len(result)} assets | {len(pair_rows)} pairs with >=2 common wallets")
 
