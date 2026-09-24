@@ -12,6 +12,9 @@ class WalletEvent:
     token_address: str = ""
     source: str = ""
     chain: str = ""
+    token_amount: Optional[float] = None
+    price_usd: Optional[float] = None
+    confidence: float = 1.0
 
 @dataclass
 class WalletStats:
@@ -57,7 +60,6 @@ class Candidate:
     def score(self) -> float:
         if self.safety_blocked:
             return 0.0
-        # Wallet is intentionally dominant; technical is contextual only.
         return round(max(0.0, min(100.0,
             self.wallet_score * .40 + self.project_score * .18 +
             self.volume_score * .16 + self.market_score * .10 +
