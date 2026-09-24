@@ -82,14 +82,36 @@ jobs:
 
       - name: Save scanner history safely
         run: |
+          set -e
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
           git add volume_history.json wallet_history.json wallet_events.json futures_volume_history.json gmgn_wallet_history.json
           if git diff --cached --quiet; then
             echo "No history changes to commit."
             exit 0
           fi
+
           git commit -m "Update scanner history"
-          git fetch origin main
-          git rebase origin/main
-          git push origin HEAD:main
+
+          # Other scheduled jobs can update main while this scan is running.
+          # Rebase with the scanner commit's history files winning conflicts,
+          # then retry the push so concurrent history writers do not break the run.
+          for attempt in 1 2 3 4 5; do
+            echo "History push attempt $attempt/5"
+            git fetch origin main
+            if git rebase -X theirs origin/main; then
+              if git push origin HEAD:main; then
+                echo "History push succeeded."
+                exit 0
+              fi
+              echo "Push raced with another writer; retrying."
+            else
+              echo "Rebase conflict; aborting rebase before retry."
+              git rebase --abort || true
+            fi
+            sleep 10
+          done
+
+          echo "Unable to push scanner history after 5 attempts."
+          exit 1
