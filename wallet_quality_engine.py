@@ -364,6 +364,9 @@ def run_integrated_scanner() -> None:
                     "quality_tier": profile.get("quality_tier"),
                     "proven_pre_pump_wallet": bool(profile.get("proven_pre_pump_wallet")),
                     "forward_14d_hit_rate": profile.get("forward_14d_hit_rate"),
+                    "pre_pump_first_entry_rate": profile.get("pre_pump_first_entry_rate"),
+                    "pre_pump_24h_10pct_rate": profile.get("pre_pump_24h_10pct_rate"),
+                    "pre_pump_proof_attempts": (profile.get("pre_pump_proof") or {}).get("attempts", 0),
                     "qualified_buy_usd": profile.get("qualified_buy_usd"),
                     "active_assets": profile.get("active_assets", []),
                 }
