@@ -70,8 +70,8 @@ jobs:
               echo "Automatically retrying failed run $run_id ($workflow)"
               gh run rerun "$run_id" --failed --repo "$GITHUB_REPOSITORY" || true
               if [ -n "${TELEGRAM_BOT_TOKEN:-}" ] && [ -n "${TELEGRAM_CHAT_ID:-}" ]; then
-                curl -sS -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \\
-                  -d "chat_id=${TELEGRAM_CHAT_ID}" \\
+                curl -sS -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+                  -d "chat_id=${TELEGRAM_CHAT_ID}" \
                   --data-urlencode "text=🛠 Fil Before Pump: failed $workflow run $run_id automatically retried." >/dev/null || true
               fi
             fi
@@ -144,3 +144,29 @@ jobs:
 
           echo "Unable to push scanner history after 5 attempts."
           exit 1
+
+  health:
+    if: ${{ always() }}
+    needs: scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Check Render health
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          set +e
+          code="$(curl -L --max-time 20 -sS -o /tmp/render_body -w "%{http_code}" "https://fil-before-pump.onrender.com/")"
+          status=$?
+          echo "Render HTTP status: $code"
+          if [ "$status" -ne 0 ] || [ "$code" -lt 200 ] || [ "$code" -ge 500 ]; then
+            echo "Render health check failed."
+            if [ -n "${TELEGRAM_BOT_TOKEN:-}" ] && [ -n "${TELEGRAM_CHAT_ID:-}" ]; then
+              curl -sS -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+                -d "chat_id=${TELEGRAM_CHAT_ID}" \
+                --data-urlencode "text=⚠️ Fil Before Pump Render health check failed. HTTP=${code:-no-response}" >/dev/null || true
+            fi
+            exit 1
+          fi
+          echo "Render service is reachable."
