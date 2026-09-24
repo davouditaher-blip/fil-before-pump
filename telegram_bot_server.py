@@ -4,7 +4,7 @@ import requests
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
-GITHUB_TOKEN = os.environ["GITHUB_TOKEN"]
+GITHUB_TOKEN = os.environ.get("GITHUB_PAT") or os.environ.get("GITHUB_TOKEN", "")
 REPO = os.environ.get("GITHUB_REPOSITORY", "davouditaher-blip/fil-before-pump")
 WORKFLOW_FILE = "fil-before-pump.yml"
 API = f"https://api.telegram.org/bot{BOT_TOKEN}"
