@@ -49,4 +49,24 @@ jobs:
             exit 0
           fi
           git commit -m "Update GMGN smart-money history"
-          git push
+
+          # Another scheduled writer may have advanced main while this job ran.
+          # Rebase onto the latest main and retry the push instead of failing the run.
+          for attempt in 1 2 3 4 5; do
+            echo "GMGN history push attempt $attempt/5"
+            git fetch origin main
+            if git rebase -X theirs origin/main; then
+              if git push origin HEAD:main; then
+                echo "GMGN history push succeeded."
+                exit 0
+              fi
+              echo "Push raced with another writer; retrying."
+            else
+              echo "Rebase conflict; aborting rebase before retry."
+              git rebase --abort || true
+            fi
+            sleep 10
+          done
+
+          echo "Unable to push GMGN history after 5 attempts."
+          exit 1
