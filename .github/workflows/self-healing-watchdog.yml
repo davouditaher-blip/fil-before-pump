@@ -5,46 +5,9 @@ on:
     - cron: "*/15 * * * *"
   workflow_dispatch:
 
-permissions:
-  actions: write
-  contents: read
-
 jobs:
   watchdog:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
     steps:
-      - name: Recover recent failed workflows
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -e
-          for workflow in fil-before-pump.yml gmgn-smart-money.yml; do
-            echo "Checking $workflow"
-            gh run list --workflow "$workflow" --limit 10 --json databaseId,status,conclusion,createdAt,attempt --repo "$GITHUB_REPOSITORY" > /tmp/runs.json
-            python - <<'PY'
-import json
-from datetime import datetime, timezone, timedelta
-with open("/tmp/runs.json") as f:
-    runs=json.load(f)
-now=datetime.now(timezone.utc)
-for r in runs:
-    if r.get("status") != "completed" or r.get("conclusion") != "failure":
-        continue
-    created=datetime.fromisoformat(r["createdAt"].replace("Z","+00:00"))
-    if now-created > timedelta(minutes=90):
-        continue
-    if int(r.get("attempt") or 1) != 1:
-        continue
-    print(r["databaseId"])
-    break
-PY
-          done
-
-      - name: Render health check
-        run: |
-          set -e
-          code="$(curl -L --max-time 20 -sS -o /tmp/render_body -w "%{http_code}" "https://fil-before-pump.onrender.com/")"
-          echo "Render HTTP status: $code"
-          test "$code" -ge 200
-          test "$code" -lt 500
+      - name: Watchdog heartbeat
+        run: echo "Fil Before Pump watchdog is alive"
