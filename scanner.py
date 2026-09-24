@@ -205,7 +205,7 @@ def _merge_wallet_rows(rows):
             continue
         chain = str(row.get("chain") or "").strip().lower()
         identity = _wallet_identity(wallet, chain)
-        key = identity if ":" in identity else aliases.get(wallet, identity)
+        key = aliases.get(wallet, identity)
         existing = merged.get(key)
         if existing is None:
             merged[key] = dict(row)
