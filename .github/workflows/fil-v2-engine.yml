@@ -1,0 +1,31 @@
+name: Fil V2 Engine Tests
+on:
+  push:
+    branches: [fil-v2-autonomous-engine]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install test dependency
+        run: python -m pip install -U pip pytest
+      - name: Compile
+        run: python -m compileall -q fil_engine tools
+      - name: Unit tests
+        run: pytest -q tests/test_fil_engine.py
+      - name: Read-only V2 smoke scan
+        run: python tools/fil_v2_scan.py > /tmp/fil-v2-smoke.json
+      - name: Validate JSON
+        run: python - <<'PY'
+import json
+p='/tmp/fil-v2-smoke.json'
+obj=json.load(open(p))
+assert obj['schema_version']=='2.0'
+print('events=',obj['events'],'candidates=',len(obj['candidates']))
+PY
