@@ -228,6 +228,8 @@ def run_gmgn_cli(args, timeout=60):
 
 
 def portfolio_activity(chain, wallet, limit=200):
+    if chain not in CHAINS or not wallet:
+        return []
     obj = run_gmgn_cli([
         "portfolio", "activity", "--chain", chain, "--wallet", wallet,
         "--limit", str(limit), "--type", "buy", "--type", "sell"
@@ -237,7 +239,7 @@ def portfolio_activity(chain, wallet, limit=200):
 
 
 def token_kline(chain, address, start_ts, end_ts):
-    if not address or not start_ts or not end_ts or end_ts <= start_ts:
+    if chain not in CHAINS or not address or not start_ts or not end_ts or end_ts <= start_ts:
         return []
     obj = run_gmgn_cli([
         "market", "kline", "--chain", chain, "--address", address,
