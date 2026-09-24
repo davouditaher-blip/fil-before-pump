@@ -22,9 +22,32 @@ out = Path("wallet_archive/raw/nansen/historical_balances") / chain
 out.mkdir(parents=True, exist_ok=True)
 path = out / f"{wallet.lower()}.json"
 
+checkpoint_path = out / f"{wallet.lower()}.partial.json"
+
 all_rows = []
 page = 1
 per_page = 100
+
+# Resume from a previous interrupted run without losing already-fetched pages.
+if checkpoint_path.exists():
+    try:
+        checkpoint = json.loads(checkpoint_path.read_text())
+        if (
+            checkpoint.get("wallet", "").lower() == wallet.lower()
+            and checkpoint.get("chain") == chain
+            and (checkpoint.get("coverage") or {}).get("from") == date_from
+            and (checkpoint.get("coverage") or {}).get("to") == date_to
+        ):
+            saved_rows = checkpoint.get("records", [])
+            if isinstance(saved_rows, list):
+                all_rows = saved_rows
+                page = int(checkpoint.get("next_page", 1))
+                print(
+                    f"RESUME page={page} saved_rows={len(all_rows)} "
+                    f"checkpoint={checkpoint_path}"
+                )
+    except Exception as exc:
+        print(f"CHECKPOINT_READ_WARNING={exc}")
 
 while True:
     body = {
@@ -44,8 +67,13 @@ while True:
         timeout=60,
     )
     print(f"page={page} http={r.status_code}")
+
     if r.status_code < 200 or r.status_code >= 300:
         print(r.text[:2000])
+        print(
+            f"PARTIAL_ARCHIVE={checkpoint_path} "
+            f"RECORDS_SAVED={len(all_rows)} NEXT_PAGE={page}"
+        )
         r.raise_for_status()
 
     obj = r.json()
@@ -56,6 +84,22 @@ while True:
     all_rows.extend(data)
     pagination = obj.get("pagination") or {}
     print(f"page={page} rows={len(data)} total_rows={len(all_rows)}")
+
+    # Checkpoint immediately after every successful page.
+    checkpoint_payload = {
+        "schema_version": 1,
+        "source": "nansen",
+        "endpoint": "profiler/address/historical-balances",
+        "wallet": wallet,
+        "chain": chain,
+        "coverage": {"from": date_from, "to": date_to},
+        "fetched_at": int(time.time()),
+        "next_page": page + 1,
+        "records": all_rows,
+    }
+    checkpoint_path.write_text(
+        json.dumps(checkpoint_payload, ensure_ascii=False, indent=2) + "\\n"
+    )
 
     if pagination.get("is_last_page") is True or not data:
         break
@@ -76,6 +120,8 @@ payload = {
     "records": all_rows,
 }
 
-path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
+path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\\n")
+checkpoint_path.unlink(missing_ok=True)
+
 print(f"ARCHIVE={path}")
 print(f"RECORDS={len(all_rows)}")
