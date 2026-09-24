@@ -111,8 +111,8 @@ PY
         run: |
           set +e
           for attempt in 1 2 3; do
-            echo "Scanner attempt $attempt/3"
-            python wallet_quality_engine.py
+            echo "Wallet quality build attempt $attempt/3"
+            WALLET_QUALITY_ONLY=1 python wallet_quality_engine.py
             status=$?
             if [ "$status" -eq 0 ]; then
               exit 0
@@ -129,9 +129,27 @@ PY
           python wallet_clustering.py
 
       - name: Build $5K Wallet Radar
+        env:
+          GMGN_API_KEY: ${{ secrets.GMGN_API_KEY }}
         run: |
           set -e
           python wallet_radar.py
+
+      - name: Run integrated Fil Before Pump scanner
+        env:
+          CMC_API_KEY: ${{ secrets.CMC_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          SOLSCAN_API_KEY: ${{ secrets.SOLSCAN_API_KEY }}
+          GOLDRUSH_API_KEY: ${{ secrets.GOLDRUSH_API_KEY }}
+          COINGLASS_API_KEY: ${{ secrets.COINGLASS_API_KEY }}
+          GMGN_API_KEY: ${{ secrets.GMGN_API_KEY }}
+          NANSEN_API_KEY: ${{ secrets.NANSEN_API_KEY }}
+          BOT_RANK_RANGE: ${{ github.event.inputs.rank_range || 'all' }}
+          BOT_FILTER: ${{ github.event.inputs.filter || 'all' }}
+        run: |
+          set -e
+          python wallet_quality_engine.py
 
       - name: Save scanner history safely
         run: |
