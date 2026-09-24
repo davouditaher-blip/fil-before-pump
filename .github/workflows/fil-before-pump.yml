@@ -55,6 +55,28 @@ jobs:
           python -m pip install requests
           npm install -g gmgn-cli
 
+      - name: Self-heal previous failed workflow runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          set -e
+          for workflow in fil-before-pump.yml gmgn-smart-money.yml; do
+            echo "Checking previous failures for $workflow"
+            gh run list --workflow "$workflow" --limit 10 --json databaseId,status,conclusion,createdAt,attempt --repo "$GITHUB_REPOSITORY" > /tmp/runs.json
+            run_id="$(python -c 'import json,sys; from datetime import datetime,timezone,timedelta; d=json.load(open("/tmp/runs.json")); now=datetime.now(timezone.utc); print(next((str(r["databaseId"]) for r in d if r.get("status")=="completed" and r.get("conclusion")=="failure" and int(r.get("attempt") or 1)==1 and now-datetime.fromisoformat(r["createdAt"].replace("Z","+00:00"))<=timedelta(minutes=90)), "")')"
+            if [ -n "$run_id" ]; then
+              echo "Automatically retrying failed run $run_id ($workflow)"
+              gh run rerun "$run_id" --failed --repo "$GITHUB_REPOSITORY" || true
+              if [ -n "${TELEGRAM_BOT_TOKEN:-}" ] && [ -n "${TELEGRAM_CHAT_ID:-}" ]; then
+                curl -sS -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \\
+                  -d "chat_id=${TELEGRAM_CHAT_ID}" \\
+                  --data-urlencode "text=🛠 Fil Before Pump: failed $workflow run $run_id automatically retried." >/dev/null || true
+              fi
+            fi
+          done
+
       - name: Run Fil Before Pump scanner with retry
         env:
           CMC_API_KEY: ${{ secrets.CMC_API_KEY }}
