@@ -12,13 +12,15 @@ jobs:
     env:
       NANSEN_API_KEY: ${{ secrets.NANSEN_API_KEY }}
     steps:
+      - uses: actions/checkout@v4
+
       - name: Test Nansen historical balances
         shell: bash
         run: |
           set -euo pipefail
 
           if [ -z "${NANSEN_API_KEY:-}" ]; then
-            echo "NANSEN_STATUS=MISSING_SECRET"
+            echo "MISSING_SECRET" > nansen_test_result.txt
             exit 1
           fi
 
@@ -43,29 +45,41 @@ jobs:
             -H "Accept: application/json" \
             --data "$BODY")
 
-          echo "NANSEN_HTTP_STATUS=$HTTP_CODE"
-
-          python3 - "$TMP" <<'PY'
+          python3 - "$TMP" "$HTTP_CODE" <<'PY'
           import json, sys
-          p=sys.argv[1]
+          p, code = sys.argv[1], sys.argv[2]
+          out = [f"HTTP_STATUS={code}"]
           try:
               obj=json.load(open(p))
               if isinstance(obj, dict):
-                  print("NANSEN_RESPONSE_KEYS=" + ",".join(sorted(obj.keys())))
+                  out.append("RESPONSE_KEYS=" + ",".join(sorted(obj.keys())))
                   data=obj.get("data")
                   if isinstance(data, list):
-                      print("NANSEN_DATA_COUNT=" + str(len(data)))
+                      out.append("DATA_COUNT=" + str(len(data)))
                   pagination=obj.get("pagination")
                   if isinstance(pagination, dict):
-                      print("NANSEN_IS_LAST_PAGE=" + str(pagination.get("is_last_page")))
+                      out.append("IS_LAST_PAGE=" + str(pagination.get("is_last_page")))
                   if "error" in obj:
-                      print("NANSEN_ERROR_PRESENT=true")
-              else:
-                  print("NANSEN_RESPONSE_TYPE=" + type(obj).__name__)
+                      out.append("ERROR_PRESENT=true")
           except Exception as e:
-              print("NANSEN_JSON_PARSE_ERROR=" + type(e).__name__)
+              out.append("JSON_PARSE_ERROR=" + type(e).__name__)
+          open("nansen_test_result.txt","w").write("\n".join(out)+"\n")
+          print("\n".join(out))
           PY
 
           rm -f "$TMP"
-
           test "$HTTP_CODE" = "200"
+
+      - name: Persist sanitized result
+        if: always()
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add nansen_test_result.txt
+          if git diff --cached --quiet; then
+            echo "No result changes."
+            exit 0
+          fi
+          git commit -m "Record Nansen API test result"
+          git push
