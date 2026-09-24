@@ -1,0 +1,43 @@
+name: Nansen Historical Backfill v1
+
+on:
+  push:
+    paths:
+      - ".github/workflows/nansen-backfill.yml"
+      - "nansen_backfill.py"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Nansen historical balances backfill
+        env:
+          NANSEN_API_KEY: ${{ secrets.NANSEN_API_KEY }}
+          NANSEN_WALLET: "0x28c6c06298d514db089934071355e5743bf21d60"
+          NANSEN_CHAIN: "ethereum"
+          NANSEN_FROM: "2026-08-25T00:00:00Z"
+          NANSEN_TO: "2026-09-24T23:59:59Z"
+        run: python3 nansen_backfill.py
+
+      - name: Save historical archive
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add wallet_archive/raw/nansen/historical_balances
+          if git diff --cached --quiet; then
+            echo "No archive changes."
+            exit 0
+          fi
+          git commit -m "Add Nansen historical wallet archive"
+          git fetch origin main
+          git rebase origin/main
+          git push origin HEAD:main
