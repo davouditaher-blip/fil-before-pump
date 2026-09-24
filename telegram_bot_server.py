@@ -10,6 +10,9 @@ WORKFLOW_FILE = "fil-before-pump.yml"
 API = f"https://api.telegram.org/bot{BOT_TOKEN}"
 GH_API = f"https://api.github.com/repos/{REPO}/actions/workflows/{WORKFLOW_FILE}/dispatches"
 
+# Telegram-trigger queue; GitHub Actions polls it and consumes requests.
+PENDING_SCAN_REQUESTS = []
+
 RANKS = {
     "top100": "🥇 رتبه 1–100",
     "101_200": "🥈 رتبه 101–200",
@@ -83,15 +86,8 @@ def send_menu(chat_id, rank="all", filters=None, message_id=None):
         tg("sendMessage", data=data)
 
 def dispatch(rank, filters):
-    headers = {
-        "Accept": "application/vnd.github+json",
-        "Authorization": f"Bearer {GITHUB_TOKEN}",
-        "X-GitHub-Api-Version": "2022-11-28",
-    }
-    payload = {"ref": "main", "inputs": {"rank_range": rank, "filter": filters or "all"}}
-    r = requests.post(GH_API, headers=headers, json=payload, timeout=30)
-    if r.status_code not in (200, 201, 204):
-        raise RuntimeError(f"GitHub workflow dispatch failed: HTTP {r.status_code} {r.text[:500]}")
+    PENDING_SCAN_REQUESTS.append({"rank_range": rank or "all", "filter": filters or "all"})
+    del PENDING_SCAN_REQUESTS[:-10]
 
 def process(update):
     if "message" in update:
@@ -175,6 +171,16 @@ def set_webhook():
 
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
+        if self.path == "/scan-request":
+            request = PENDING_SCAN_REQUESTS.pop(0) if PENDING_SCAN_REQUESTS else None
+            body = json.dumps({"pending": bool(request), "request": request}, ensure_ascii=False).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
         if self.path == "/github-check":
             result = github_token_check()
             body = json.dumps(result, ensure_ascii=False).encode("utf-8")
