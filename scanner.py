@@ -101,24 +101,29 @@ def load_wallet_radar():
         return {}
 
 
-def apply_wallet_radar_signals(result, radar):
-    """Fuse the >=$5K wallet radar into candidate scoring.
+def _wallet_identity(wallet, chain=None):
+    """Return a stable wallet identity while preserving chain when known."""
+    wallet = str(wallet or "").strip().lower()
+    chain = str(chain or "").strip().lower()
+    return f"{chain}:{wallet}" if wallet and chain else wallet
 
-    Radar is observational/read-only. It rewards active capital, proven
-    pre-pump history and shared active wallets, while exits reduce confidence
-    but never hard-reject a candidate on their own.
+
+def apply_wallet_radar_signals(result, radar):
+    """Attach >=$5K radar evidence without scoring it separately.
+
+    Scoring is centralized later in wallet_conviction_signals() so the same
+    wallet is not rewarded repeatedly by Radar, Quality and Clustering.
     """
     symbol = str(result.get("symbol") or "").upper()
     if not symbol or not radar:
         return
-
     active_states = {"holding", "trimmed", "holding_unknown_balance"}
     matching = []
     for key, row in radar.items():
         if not isinstance(row, dict) or not row.get("wallet"):
             continue
         assets = row.get("assets") or {}
-        if symbol not in assets:
+        if symbol not in {str(x).upper() for x in assets}:
             continue
         state = str((row.get("position_states") or {}).get(symbol) or "unknown")
         performance = row.get("performance") or {}
@@ -132,6 +137,7 @@ def apply_wallet_radar_signals(result, radar):
         matching.append({
             "wallet": str(row.get("wallet")),
             "chain": row.get("chain"),
+            "identity": _wallet_identity(row.get("wallet"), row.get("chain")),
             "state": state,
             "active": state in active_states,
             "proven": proven,
@@ -140,16 +146,13 @@ def apply_wallet_radar_signals(result, radar):
             "pre_pump_win_rate": rate_num,
             "assets_bought": sorted(str(x).upper() for x in assets),
         })
-
     if not matching:
         return
-
     active = [x for x in matching if x["active"]]
     proven = [x for x in active if x["proven"]]
     shared = [x for x in active if len(x["assets_bought"]) >= 2]
     exited = [x for x in matching if x["state"] == "exited"]
     trimmed = [x for x in matching if x["state"] == "trimmed"]
-
     result["radar_wallet_count"] = len(matching)
     result["radar_active_wallet_count"] = len(active)
     result["radar_proven_holding_wallet_count"] = len(proven)
@@ -160,23 +163,7 @@ def apply_wallet_radar_signals(result, radar):
     result["radar_proven_wallets"] = proven[:25]
     result["radar_shared_wallets"] = shared[:25]
 
-    score = float(result.get("score") or 0)
-    reasons = result.setdefault("reasons", [])
-    bonus = min(12, 3 * len(active))
-    bonus += min(10, 5 * len(proven))
-    bonus += min(8, 2 * len(shared))
-    if exited and not active:
-        bonus -= min(6, 2 * len(exited))
-    if bonus:
-        result["score"] = round(score + bonus, 1)
-    if active:
-        reasons.append(f"رادار ولت فعال >=$5K: {len(active)}")
-    if proven:
-        reasons.append(f"سابقه پیش‌پامپ معتبر رادار: {len(proven)}")
-    if shared:
-        reasons.append(f"ولت مشترک فعال رادار: {len(shared)}")
-    if exited and not active:
-        reasons.append(f"رادار: {len(exited)} ولت در وضعیت خروج")
+
 
 WALLET_CLUSTERS_FILE = Path("wallet_clusters.json")
 
@@ -191,22 +178,118 @@ def load_wallet_clusters():
         return {"assets": {}, "pairs": []}
 
 def apply_wallet_cluster_signals(result, clusters):
+    """Attach shared-wallet cluster evidence; final scoring is centralized."""
     symbol = str(result.get("symbol") or "").upper()
     row = (clusters.get("assets") or {}).get(symbol) or {}
     wallets = row.get("wallets") or []
-    holding = [w for w in wallets if w.get("status") == "holding"]
+    holding = [dict(w) for w in wallets if w.get("status") == "holding"]
     proven = [w for w in holding if w.get("proven_pre_pump_wallet")]
+    for item in holding:
+        item["identity"] = _wallet_identity(item.get("wallet"), item.get("chain"))
+    for item in proven:
+        item["identity"] = _wallet_identity(item.get("wallet"), item.get("chain"))
     result["cluster_wallet_count"] = int(row.get("wallet_count", 0) or 0)
     result["cluster_holding_wallet_count"] = len(holding)
     result["cluster_proven_holding_wallet_count"] = len(proven)
     result["cluster_holding_wallets"] = holding[:25]
     result["cluster_proven_holding_wallets"] = proven[:25]
-    bonus = min(10, 2 * len(holding)) + min(6, 3 * len(proven))
+
+
+def _merge_wallet_rows(rows):
+    """Deduplicate wallet evidence across layers, preferring chain-aware IDs."""
+    merged = {}
+    aliases = {}
+    for row in rows:
+        wallet = str(row.get("wallet") or "").strip().lower()
+        if not wallet:
+            continue
+        chain = str(row.get("chain") or "").strip().lower()
+        identity = _wallet_identity(wallet, chain)
+        key = identity if ":" in identity else aliases.get(wallet, identity)
+        existing = merged.get(key)
+        if existing is None:
+            merged[key] = dict(row)
+            aliases[wallet] = key
+        else:
+            existing["active"] = bool(existing.get("active")) or bool(row.get("active"))
+            existing["proven"] = bool(existing.get("proven")) or bool(row.get("proven"))
+            existing["shared"] = bool(existing.get("shared")) or bool(row.get("shared"))
+            existing["exited"] = bool(existing.get("exited")) or bool(row.get("exited"))
+            existing["sources"] = sorted(set(existing.get("sources", [])) | set(row.get("sources", [])))
+    return list(merged.values())
+
+
+def wallet_conviction_signals(result):
+    """Create one capped wallet conviction score from unique wallet evidence."""
+    rows = []
+
+    def add(items, source, active_default=False, proven_default=False, shared_default=False):
+        for item in items or []:
+            wallet = item.get("wallet")
+            if not wallet:
+                continue
+            rows.append({
+                "wallet": wallet,
+                "chain": item.get("chain"),
+                "active": bool(item.get("active", active_default)),
+                "proven": bool(item.get("proven", proven_default)),
+                "shared": bool(item.get("shared", shared_default)),
+                "exited": bool(item.get("exited", False)),
+                "sources": [source],
+            })
+
+    for item in (result.get("radar_wallets") or []):
+        add([item], "radar")
+    for item in (result.get("cluster_holding_wallets") or []):
+        add([dict(item, active=True, proven=bool(item.get("proven_pre_pump_wallet")), shared=True)], "cluster")
+    for item in (result.get("quality_wallets") or []):
+        add([dict(item, active=True, proven=bool(item.get("proven_pre_pump_wallet")))], "quality")
+    for item in ((result.get("gmgn") or {}).get("wallets") or []):
+        if isinstance(item, dict):
+            add([dict(item, active=True, proven=bool(item.get("proven_pre_pump_wallet") or item.get("proven")))], "gmgn")
+        else:
+            add([{"wallet": item, "active": True}], "gmgn")
+    for item in (result.get("radar_wallets") or []):
+        if item.get("state") == "exited":
+            add([dict(item, active=False, exited=True)], "radar_exit")
+
+    unique = _merge_wallet_rows(rows)
+    active = [x for x in unique if x.get("active")]
+    proven = [x for x in active if x.get("proven")]
+    shared = [x for x in active if x.get("shared")]
+    exited = [x for x in unique if x.get("exited")]
+    exit_pressure = round(len(exited) / max(1, len(unique)) * 100.0, 1)
+    try:
+        qavg = float(result.get("quality_wallet_score_avg") or 0)
+    except (TypeError, ValueError):
+        qavg = 0.0
+
+    bonus = min(10.0, 2.0 * len(active))
+    bonus += min(8.0, 4.0 * len(proven))
+    bonus += min(6.0, 3.0 * len(shared))
+    bonus += min(4.0, qavg / 25.0)
+    bonus -= min(5.0, exit_pressure / 20.0)
+
+    result["wallet_conviction_score"] = round(max(0.0, min(30.0, bonus)), 1)
+    result["wallet_unique_active_count"] = len(active)
+    result["wallet_unique_proven_count"] = len(proven)
+    result["wallet_unique_shared_count"] = len(shared)
+    result["wallet_exit_pressure"] = exit_pressure
+    result["wallet_signal_quality"] = round(qavg, 1)
+    result["wallet_conviction_wallets"] = unique[:30]
     if bonus:
-        result["score"] = round(result.get("score", 0) + bonus, 1)
-        result.setdefault("reasons", []).append(f"ولت‌های مشترک فعال: {len(holding)}")
+        result["score"] = round(float(result.get("score") or 0) + result["wallet_conviction_score"], 1)
+    reasons = result.setdefault("reasons", [])
+    if active:
+        reasons.append(f"اعتماد ولت یکپارچه: {len(active)} فعال")
     if proven:
-        result.setdefault("reasons", []).append(f"ولت معتبرِ فعال: {len(proven)}")
+        reasons.append(f"ولت معتبر یکتا: {len(proven)}")
+    if shared:
+        reasons.append(f"ولت مشترک یکتا: {len(shared)}")
+    if exit_pressure > 0:
+        reasons.append(f"فشار خروج ولت: {exit_pressure:.1f}%")
+
+
 
 
 
@@ -1584,6 +1667,7 @@ def format_coin(x):
         f"🐋 حجم ۷روز و ۱۴روز در تحلیل داخلی حفظ شده و فقط نمایش داده نمی‌شود.\n"        f"ولت: {wallet_status} | ارائه‌دهنده: {x.get('wallet_provider','N/A')} | همپوشانی: {x.get('wallet_overlap', 0)}\n"
         f"🔗 ولت مشترک فعال: {x.get('cluster_holding_wallet_count', 0)} | ولت معتبرِ فعال: {x.get('cluster_proven_holding_wallet_count', 0)}\n"
         f"📡 رادار >=$5K: فعال {x.get('radar_active_wallet_count', 0)} | معتبر {x.get('radar_proven_holding_wallet_count', 0)} | مشترک {x.get('radar_shared_holding_wallet_count', 0)} | خروج {x.get('radar_exited_wallet_count', 0)}\n"
+        f"🧠 Wallet Conviction: {x.get('wallet_conviction_score', 0):.1f}/30 | یکتا فعال {x.get('wallet_unique_active_count', 0)} | معتبر {x.get('wallet_unique_proven_count', 0)} | مشترک {x.get('wallet_unique_shared_count', 0)} | فشار خروج {x.get('wallet_exit_pressure', 0):.1f}%\n"
         f"{format_gmgn(x)}\n"
 
         f"دلایل: {', '.join(x['reasons'][:10])}\n"
@@ -1917,6 +2001,10 @@ def main():
     for result in results:
         apply_wallet_cluster_signals(result, wallet_clusters)
 
+    # Unified wallet conviction: deduplicate the same wallet across GMGN, Quality, Radar and Clustering.
+    for result in results:
+        wallet_conviction_signals(result)
+
     # لایه تکنیکال در این نسخه اجرا نمی‌شود؛ فیلتر اصلی ولت‌محور است.
     save_history(history)
 
@@ -1977,11 +2065,12 @@ def main():
     # Smart Money evidence lead the candidate list. Volume remains an important
     # supporting signal, but technical strength is intentionally not used here.
     results.sort(key=lambda x: (
+        float(x.get("wallet_conviction_score", 0) or 0),
+        int(x.get("wallet_unique_proven_count", 0) or 0),
+        int(x.get("wallet_unique_shared_count", 0) or 0),
+        int(x.get("wallet_unique_active_count", 0) or 0),
         int(x.get("radar_proven_holding_wallet_count", 0) or 0),
-        int(x.get("radar_shared_holding_wallet_count", 0) or 0),
-        int(x.get("radar_active_wallet_count", 0) or 0),
         int(x.get("cluster_proven_holding_wallet_count", 0) or 0),
-        int(x.get("cluster_holding_wallet_count", 0) or 0),
         int(x.get("wallet_accumulation", 0) or 0),
         int(x.get("smart_wallet_overlap", 0) or 0),
         1 if x.get("wallet") else 0,
