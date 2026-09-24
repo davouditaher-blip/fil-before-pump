@@ -1691,7 +1691,8 @@ def format_coin(x):
         f"🐋 حجم ۷روز و ۱۴روز در تحلیل داخلی حفظ شده و فقط نمایش داده نمی‌شود.\n"        f"ولت: {wallet_status} | ارائه‌دهنده: {x.get('wallet_provider','N/A')} | همپوشانی: {x.get('wallet_overlap', 0)}\n"
         f"🔗 ولت مشترک فعال: {x.get('cluster_holding_wallet_count', 0)} | ولت معتبرِ فعال: {x.get('cluster_proven_holding_wallet_count', 0)}\n"
         f"📡 رادار >=$5K: فعال {x.get('radar_active_wallet_count', 0)} | معتبر {x.get('radar_proven_holding_wallet_count', 0)} | مشترک {x.get('radar_shared_holding_wallet_count', 0)} | خروج {x.get('radar_exited_wallet_count', 0)}\n"
-        f"🧠 Wallet Conviction: {x.get('wallet_conviction_score', 0):.1f}/30 | یکتا فعال {x.get('wallet_unique_active_count', 0)} | معتبر {x.get('wallet_unique_proven_count', 0)} | مشترک {x.get('wallet_unique_shared_count', 0)} | فشار خروج {x.get('wallet_exit_pressure', 0):.1f}%\n"\n        f"🎯 Fil Confluence: {x.get('fil_confluence_score', 0):.1f}/100 | پروژه {x.get('project_intelligence_score', 0):.1f} | حجم {x.get('volume_intelligence_score', 0):.1f} | بازار {x.get('market_context_score', 0):.1f} | ایمنی عملیاتی {x.get('safety_context_score', 0):.1f}\n"
+        f"🧠 Wallet Conviction: {x.get('wallet_conviction_score', 0):.1f}/30 | یکتا فعال {x.get('wallet_unique_active_count', 0)} | معتبر {x.get('wallet_unique_proven_count', 0)} | مشترک {x.get('wallet_unique_shared_count', 0)} | فشار خروج {x.get('wallet_exit_pressure', 0):.1f}%\n"
+        f"🎯 Fil Confluence: {x.get('fil_confluence_score', 0):.1f}/100 | پروژه {x.get('project_intelligence_score', 0):.1f} | حجم {x.get('volume_intelligence_score', 0):.1f} | بازار {x.get('market_context_score', 0):.1f} | ایمنی عملیاتی {x.get('safety_context_score', 0):.1f}\n"
         f"{format_gmgn(x)}\n"
 
         f"دلایل: {', '.join(x['reasons'][:10])}\n"
@@ -2033,11 +2034,14 @@ def main():
         wallet_conviction_signals(result)
 
     # Final wallet-first confluence: no duplicate wallet scoring and no technical gate.
+    market_map = {str(c.get("symbol") or "").upper(): c for c in coins}
+    btc = market_map.get("BTC", {}).get("quote", {}).get("USD", {})
+    eth = market_map.get("ETH", {}).get("quote", {}).get("USD", {})
     market_context = {
-        "btc24": float((market_map.get("BTC", {}).get("quote", {}).get("USD", {}) or {}).get("percent_change_24h") or 0),
-        "eth24": float((market_map.get("ETH", {}).get("quote", {}).get("USD", {}) or {}).get("percent_change_24h") or 0),
-        "btc7": float((market_map.get("BTC", {}).get("quote", {}).get("USD", {}) or {}).get("percent_change_7d") or 0),
-        "eth7": float((market_map.get("ETH", {}).get("quote", {}).get("USD", {}) or {}).get("percent_change_7d") or 0),
+        "btc24": float(btc.get("percent_change_24h") or 0),
+        "eth24": float(eth.get("percent_change_24h") or 0),
+        "btc7": float(btc.get("percent_change_7d") or 0),
+        "eth7": float(eth.get("percent_change_7d") or 0),
     }
     for result in results:
         build_confluence(result, market_context)
