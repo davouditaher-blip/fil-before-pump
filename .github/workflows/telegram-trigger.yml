@@ -19,9 +19,11 @@ jobs:
     steps:
       - name: Poll Render for Telegram scan request
         id: request
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         run: |
           set -e
-          curl -L --max-time 25 -sS "https://fil-before-pump.onrender.com/scan-request" -o /tmp/request.json
+          curl -L --max-time 25 -sS -H "X-Scan-Token: $TELEGRAM_BOT_TOKEN" "https://fil-before-pump.onrender.com/scan-request" -o /tmp/request.json
           cat /tmp/request.json
           python - <<'PY'
 import json
