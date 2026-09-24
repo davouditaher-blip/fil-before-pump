@@ -1,12 +1,9 @@
 name: Fil V2 Historical Backtest
 
 on:
+  push:
+    branches: [fil-v2-autonomous-engine]
   workflow_dispatch:
-    inputs:
-      windows:
-        description: "Requested windows"
-        required: false
-        default: "30,90,180"
 
 jobs:
   backtest:
