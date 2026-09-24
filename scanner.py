@@ -87,6 +87,97 @@ def load_history():
         return {}
 
 
+WALLET_RADAR_FILE = Path("wallet_radar.json")
+
+
+def load_wallet_radar():
+    if not WALLET_RADAR_FILE.exists():
+        return {}
+    try:
+        data = json.loads(WALLET_RADAR_FILE.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except Exception as e:
+        print(f"wallet radar load warning: {e}")
+        return {}
+
+
+def apply_wallet_radar_signals(result, radar):
+    """Fuse the >=$5K wallet radar into candidate scoring.
+
+    Radar is observational/read-only. It rewards active capital, proven
+    pre-pump history and shared active wallets, while exits reduce confidence
+    but never hard-reject a candidate on their own.
+    """
+    symbol = str(result.get("symbol") or "").upper()
+    if not symbol or not radar:
+        return
+
+    active_states = {"holding", "trimmed", "holding_unknown_balance"}
+    matching = []
+    for key, row in radar.items():
+        if not isinstance(row, dict) or not row.get("wallet"):
+            continue
+        assets = row.get("assets") or {}
+        if symbol not in assets:
+            continue
+        state = str((row.get("position_states") or {}).get(symbol) or "unknown")
+        performance = row.get("performance") or {}
+        observed = int(performance.get("observed_opportunities") or 0)
+        rate = performance.get("pre_pump_win_rate")
+        try:
+            rate_num = float(rate) if rate is not None else None
+        except (TypeError, ValueError):
+            rate_num = None
+        proven = observed >= 3 and rate_num is not None and rate_num >= 60.0
+        matching.append({
+            "wallet": str(row.get("wallet")),
+            "chain": row.get("chain"),
+            "state": state,
+            "active": state in active_states,
+            "proven": proven,
+            "qualified_buy_usd": float(row.get("qualified_buy_usd") or 0),
+            "observed_opportunities": observed,
+            "pre_pump_win_rate": rate_num,
+            "assets_bought": sorted(str(x).upper() for x in assets),
+        })
+
+    if not matching:
+        return
+
+    active = [x for x in matching if x["active"]]
+    proven = [x for x in active if x["proven"]]
+    shared = [x for x in active if len(x["assets_bought"]) >= 2]
+    exited = [x for x in matching if x["state"] == "exited"]
+    trimmed = [x for x in matching if x["state"] == "trimmed"]
+
+    result["radar_wallet_count"] = len(matching)
+    result["radar_active_wallet_count"] = len(active)
+    result["radar_proven_holding_wallet_count"] = len(proven)
+    result["radar_shared_holding_wallet_count"] = len(shared)
+    result["radar_exited_wallet_count"] = len(exited)
+    result["radar_trimmed_wallet_count"] = len(trimmed)
+    result["radar_wallets"] = matching[:25]
+    result["radar_proven_wallets"] = proven[:25]
+    result["radar_shared_wallets"] = shared[:25]
+
+    score = float(result.get("score") or 0)
+    reasons = result.setdefault("reasons", [])
+    bonus = min(12, 3 * len(active))
+    bonus += min(10, 5 * len(proven))
+    bonus += min(8, 2 * len(shared))
+    if exited and not active:
+        bonus -= min(6, 2 * len(exited))
+    if bonus:
+        result["score"] = round(score + bonus, 1)
+    if active:
+        reasons.append(f"رادار ولت فعال >=$5K: {len(active)}")
+    if proven:
+        reasons.append(f"سابقه پیش‌پامپ معتبر رادار: {len(proven)}")
+    if shared:
+        reasons.append(f"ولت مشترک فعال رادار: {len(shared)}")
+    if exited and not active:
+        reasons.append(f"رادار: {len(exited)} ولت در وضعیت خروج")
+
 WALLET_CLUSTERS_FILE = Path("wallet_clusters.json")
 
 def load_wallet_clusters():
@@ -1492,6 +1583,7 @@ def format_coin(x):
         f"حجم ۲روز قبل: {f('2d')} | حجم ۳روز قبل: {f('3d')}\n"
         f"🐋 حجم ۷روز و ۱۴روز در تحلیل داخلی حفظ شده و فقط نمایش داده نمی‌شود.\n"        f"ولت: {wallet_status} | ارائه‌دهنده: {x.get('wallet_provider','N/A')} | همپوشانی: {x.get('wallet_overlap', 0)}\n"
         f"🔗 ولت مشترک فعال: {x.get('cluster_holding_wallet_count', 0)} | ولت معتبرِ فعال: {x.get('cluster_proven_holding_wallet_count', 0)}\n"
+        f"📡 رادار >=$5K: فعال {x.get('radar_active_wallet_count', 0)} | معتبر {x.get('radar_proven_holding_wallet_count', 0)} | مشترک {x.get('radar_shared_holding_wallet_count', 0)} | خروج {x.get('radar_exited_wallet_count', 0)}\n"
         f"{format_gmgn(x)}\n"
 
         f"دلایل: {', '.join(x['reasons'][:10])}\n"
@@ -1810,6 +1902,12 @@ def main():
                 result["score"] = round(result["score"] + min(10, 4 * result["wallet_overlap"]), 1)
                 result["reasons"].append(f"همپوشانی ولت: {result['wallet_overlap']}")
 
+    # $5K Wallet Radar: active capital + proven pre-pump history + shared wallets.
+    # This is additive/read-only; exits never become an automatic hard rejection.
+    wallet_radar = load_wallet_radar()
+    for result in results:
+        apply_wallet_radar_signals(result, wallet_radar)
+
     # Cross-wallet clustering: active shared wallets are additive and read-only.
     wallet_clusters = load_wallet_clusters()
     for result in results:
@@ -1875,6 +1973,9 @@ def main():
     # Smart Money evidence lead the candidate list. Volume remains an important
     # supporting signal, but technical strength is intentionally not used here.
     results.sort(key=lambda x: (
+        int(x.get("radar_proven_holding_wallet_count", 0) or 0),
+        int(x.get("radar_shared_holding_wallet_count", 0) or 0),
+        int(x.get("radar_active_wallet_count", 0) or 0),
         int(x.get("cluster_proven_holding_wallet_count", 0) or 0),
         int(x.get("cluster_holding_wallet_count", 0) or 0),
         int(x.get("wallet_accumulation", 0) or 0),
