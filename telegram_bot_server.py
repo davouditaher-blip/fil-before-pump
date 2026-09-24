@@ -172,6 +172,14 @@ def set_webhook():
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/scan-request":
+            # Only GitHub Actions holding the existing Telegram bot secret may
+            # consume the queue. The token is never returned or logged.
+            if self.headers.get("X-Scan-Token", "") != BOT_TOKEN:
+                self.send_response(401)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(b'{"error":"unauthorized"}')
+                return
             request = PENDING_SCAN_REQUESTS.pop(0) if PENDING_SCAN_REQUESTS else None
             body = json.dumps({"pending": bool(request), "request": request}, ensure_ascii=False).encode("utf-8")
             self.send_response(200)
