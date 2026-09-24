@@ -3,7 +3,7 @@
 Read-only intelligence layer. It profiles provider-labelled GMGN observations
 and never places trades. "Forward hit rate" is explicitly an observational
 metric: it measures whether a qualified buy was followed by a >=10% observed
-price expansion within 14 days, not a realized trading PnL claim.
+price expansion within 14 days on the same asset, not a realized trading PnL claim.
 """
 from __future__ import annotations
 
@@ -53,7 +53,8 @@ def _side(row: dict[str, Any]) -> str:
 
 
 def _ts(row: dict[str, Any]) -> int:
-    return _int(row.get("timestamp") or row.get("time") or row.get("ts"))
+    value = _int(row.get("timestamp") or row.get("time") or row.get("ts"))
+    return value // 1000 if value > 10**12 else value
 
 
 def _price(row: dict[str, Any]) -> float:
@@ -66,7 +67,8 @@ def _usd(row: dict[str, Any]) -> float:
         or row.get("usd")
         or row.get("value_usd")
         or row.get("valueUsd")
-        or row.get("amount")
+        or row.get("quote_usd")
+        or row.get("quoteUsd")
     )
 
 
@@ -85,15 +87,21 @@ def _pnl(row: dict[str, Any]) -> float | None:
 
 def _forward_hit_rate(buys: list[dict[str, Any]], rows: list[dict[str, Any]]) -> tuple[int, int]:
     attempts = hits = 0
-    ordered = sorted(rows, key=_ts)
+    by_symbol: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        symbol = str(row.get("symbol") or "").upper()
+        if symbol:
+            by_symbol.setdefault(symbol, []).append(row)
+
     for buy in buys:
+        symbol = str(buy.get("symbol") or "").upper()
         entry = _price(buy)
         t0 = _ts(buy)
-        if entry <= 0 or t0 <= 0:
+        if not symbol or entry <= 0 or t0 <= 0:
             continue
         future = [
             _price(r)
-            for r in ordered
+            for r in by_symbol.get(symbol, [])
             if _ts(r) > t0 and _ts(r) - t0 <= LOOKAHEAD_SECONDS and _price(r) > 0
         ]
         if not future:
