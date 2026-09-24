@@ -1,0 +1,55 @@
+name: GMGN Wallet Trade Backfill Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      wallet:
+        description: "Wallet address to backfill"
+        required: true
+        default: "0x7bf30399dba8051c2bf191afe2cd07ea4e064625"
+      limit:
+        description: "Maximum GMGN activity rows per chain"
+        required: true
+        default: "200"
+
+permissions:
+  contents: write
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node and Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install GMGN CLI
+        run: npm install -g gmgn-cli
+
+      - name: Run GMGN wallet activity backfill
+        env:
+          GMGN_API_KEY: ${{ secrets.GMGN_API_KEY }}
+          BACKFILL_WALLET: ${{ github.event.inputs.wallet }}
+          GMGN_ACTIVITY_LIMIT: ${{ github.event.inputs.limit }}
+        run: python3 wallet_trade_backfill.py
+
+      - name: Save GMGN historical archive
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A wallet_archive/raw/gmgn/activity
+          if git diff --cached --quiet; then
+            echo "No GMGN archive changes."
+            exit 0
+          fi
+          git commit -m "Add GMGN wallet trade backfill"
+          git fetch origin main
+          git rebase origin/main
+          git push origin HEAD:main
