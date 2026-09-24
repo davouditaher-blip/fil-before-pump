@@ -1,0 +1,26 @@
+name: Fil V2 GMGN Historical Backfill
+
+on:
+  workflow_dispatch:
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GMGN_API_KEY: ${{ secrets.GMGN_API_KEY }}
+      GMGN_BACKFILL_WALLETS: "25"
+      GMGN_BACKFILL_LIMIT: "1000"
+      GMGN_BACKFILL_WORKERS: "4"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fil-v2-autonomous-engine
+          fetch-depth: 1
+      - name: GMGN historical backfill
+        run: python tools/backfill_gmgn_history.py
+      - name: Upload GMGN backfill
+        uses: actions/upload-artifact@v4
+        with:
+          name: fil-v2-gmgn-backfill
+          path: gmgn_backfill_history.json
