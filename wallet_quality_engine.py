@@ -8,6 +8,7 @@ price expansion within 14 days on the same asset, not a realized trading PnL cla
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -317,4 +318,9 @@ def run_integrated_scanner() -> None:
 
 
 if __name__ == "__main__":
-    run_integrated_scanner()
+    profiles = build_profiles_from_disk()
+    if os.environ.get("WALLET_QUALITY_ONLY") == "1":
+        proven = sum(1 for p in profiles.values() if p.get("proven_pre_pump_wallet"))
+        print(f"wallet quality build-only: {len(profiles)} profiles | proven pre-pump: {proven}")
+    else:
+        run_integrated_scanner()
