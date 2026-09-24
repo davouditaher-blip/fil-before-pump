@@ -20,7 +20,7 @@ jobs:
       - name: Unit tests
         run: PYTHONPATH=. pytest -q tests/test_fil_engine.py
       - name: Read-only V2 smoke scan
-        run: python tools/fil_v2_scan.py > /tmp/fil-v2-smoke.json
+        run: PYTHONPATH=. python tools/fil_v2_scan.py > /tmp/fil-v2-smoke.json
       - name: Validate JSON
         run: python - <<'PY'
 import json
