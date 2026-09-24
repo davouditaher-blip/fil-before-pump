@@ -51,6 +51,7 @@ jobs:
           GOLDRUSH_API_KEY: ${{ secrets.GOLDRUSH_API_KEY }}
           COINGLASS_API_KEY: ${{ secrets.COINGLASS_API_KEY }}
           GMGN_API_KEY: ${{ secrets.GMGN_API_KEY }}
+          NANSEN_API_KEY: ${{ secrets.NANSEN_API_KEY }}
           BOT_RANK_RANGE: ${{ github.event.inputs.rank_range || 'all' }}
           BOT_FILTER: ${{ github.event.inputs.filter || 'all' }}
         run: python wallet_enhancement.py
