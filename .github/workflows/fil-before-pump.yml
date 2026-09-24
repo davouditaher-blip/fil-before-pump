@@ -65,7 +65,25 @@ jobs:
           for workflow in fil-before-pump.yml gmgn-smart-money.yml; do
             echo "Checking previous failures for $workflow"
             gh run list --workflow "$workflow" --limit 10 --json databaseId,status,conclusion,createdAt,attempt --repo "$GITHUB_REPOSITORY" > /tmp/runs.json
-            run_id="$(python -c 'import json,sys; from datetime import datetime,timezone,timedelta; d=json.load(open("/tmp/runs.json")); now=datetime.now(timezone.utc); print(next((str(r["databaseId"]) for r in d if r.get("status")=="completed" and r.get("conclusion")=="failure" and int(r.get("attempt") or 1)==1 and now-datetime.fromisoformat(r["createdAt"].replace("Z","+00:00"))<=timedelta(minutes=90)), "")')"
+            run_id="$(python - <<'PY'
+import json
+from datetime import datetime, timezone, timedelta
+
+runs = json.load(open("/tmp/runs.json"))
+now = datetime.now(timezone.utc)
+run_id = ""
+for r in runs:
+    if r.get("status") != "completed" or r.get("conclusion") != "failure":
+        continue
+    if int(r.get("attempt") or 1) != 1:
+        continue
+    created = datetime.fromisoformat(r["createdAt"].replace("Z", "+00:00"))
+    if now - created <= timedelta(minutes=90):
+        run_id = str(r["databaseId"])
+        break
+print(run_id)
+PY
+)"
             if [ -n "$run_id" ]; then
               echo "Automatically retrying failed run $run_id ($workflow)"
               gh run rerun "$run_id" --failed --repo "$GITHUB_REPOSITORY" || true
