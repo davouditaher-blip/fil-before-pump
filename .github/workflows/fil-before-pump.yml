@@ -127,13 +127,18 @@ PY
           set -e
           python wallet_clustering.py
 
+      - name: Build $5K Wallet Radar
+        run: |
+          set -e
+          python wallet_radar.py
+
       - name: Save scanner history safely
         run: |
           set -e
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          git add volume_history.json wallet_history.json wallet_events.json futures_volume_history.json gmgn_wallet_history.json wallet_quality.json wallet_clusters.json
+          git add volume_history.json wallet_history.json wallet_events.json futures_volume_history.json gmgn_wallet_history.json wallet_quality.json wallet_clusters.json wallet_radar.json
           if git diff --cached --quiet; then
             echo "No history changes to commit."
             exit 0
