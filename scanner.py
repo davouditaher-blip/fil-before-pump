@@ -1033,20 +1033,44 @@ def goldrush_wallet_layer(coin):
 
 
 def update_wallet_history(layer_results):
+    """Persist a compact wallet history without growing the repo indefinitely.
+
+    Holder scans can contain hundreds of wallets per asset every 30m. Storing
+    every unchanged snapshot makes the history exceed GitHub's 100 MiB limit.
+    Keep the top 25 holders per asset and record a new snapshot for the same
+    wallet/asset at most once every 2 hours. Older rows remain capped at 200.
+    """
     try:
         history = json.loads(WALLET_HISTORY_FILE.read_text()) if WALLET_HISTORY_FILE.exists() else {}
     except Exception:
         history = {}
 
     now = int(datetime.now(timezone.utc).timestamp())
+    min_interval = 2 * 3600
+    max_holders_per_asset = 25
+
     for result in layer_results:
-        for holder in result.get("holders", []):
-            wallet = holder["wallet"]
-            history.setdefault(wallet, [])
-            history[wallet].append({
+        for holder in result.get("holders", [])[:max_holders_per_asset]:
+            wallet = holder.get("wallet")
+            symbol = result.get("symbol")
+            mint = result.get("mint")
+            if not wallet or not symbol:
+                continue
+
+            rows = history.setdefault(wallet, [])
+            recent = None
+            for row in reversed(rows):
+                if row.get("symbol") == symbol and (not mint or row.get("mint") == mint):
+                    recent = row
+                    break
+
+            if recent and now - int(recent.get("timestamp", 0) or 0) < min_interval:
+                continue
+
+            rows.append({
                 "timestamp": now,
-                "symbol": result["symbol"],
-                "mint": result["mint"],
+                "symbol": symbol,
+                "mint": mint,
                 "rank": holder.get("rank"),
                 "percentage": holder.get("percentage"),
                 "balance": holder.get("balance"),
@@ -1055,11 +1079,10 @@ def update_wallet_history(layer_results):
                 "chain": holder.get("chain") or result.get("chain"),
                 "price_usd": result.get("price_usd"),
             })
-            history[wallet] = history[wallet][-200:]
+            history[wallet] = rows[-200:]
 
-    WALLET_HISTORY_FILE.write_text(json.dumps(history, indent=2))
+    WALLET_HISTORY_FILE.write_text(json.dumps(history, separators=(",", ":")))
     return history
-
 
 def wallet_overlap(history, symbol):
     matches = []
