@@ -27,6 +27,8 @@ on:
         required: false
         type: string
         default: "all"
+  repository_dispatch:
+    types: [telegram_scan]
   schedule:
     - cron: "*/30 * * * *"
 
