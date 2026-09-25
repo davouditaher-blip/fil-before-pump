@@ -92,12 +92,7 @@ def send_menu(chat_id, rank="all", filters=None, message_id=None):
         tg("sendMessage", data=data)
 
 def dispatch(rank, filters):
-    """
-    Start the scanner from Telegram through GitHub repository_dispatch.
-    repository_dispatch avoids GitHub's workflow_dispatch registration/cache
-    edge case that was returning HTTP 422 even though workflow_dispatch exists
-    in the YAML on main.
-    """
+    """Start the scanner from Telegram through the registered workflow_dispatch trigger."""
     if not GITHUB_TOKEN.strip():
         raise RuntimeError("GITHUB_PAT is not configured on Render")
 
@@ -107,16 +102,14 @@ def dispatch(rank, filters):
         "X-GitHub-Api-Version": "2022-11-28",
     }
     payload = {
-        "event_type": "telegram_scan",
-        "client_payload": {
+        "ref": "main",
+        "inputs": {
             "rank_range": rank or "all",
             "filter": filters or "all",
-            "source": "telegram",
         },
     }
 
-    dispatch_url = f"https://api.github.com/repos/{REPO}/dispatches"
-    r = requests.post(dispatch_url, headers=headers, json=payload, timeout=20)
+    r = requests.post(GH_API, headers=headers, json=payload, timeout=20)
 
     if r.status_code not in (200, 201, 204):
         try:
@@ -128,11 +121,11 @@ def dispatch(rank, filters):
         except Exception:
             detail = r.text
         raise RuntimeError(
-            f"GitHub repository dispatch failed ({r.status_code}): {str(detail)[:300]}"
+            f"GitHub workflow dispatch failed ({r.status_code}): {str(detail)[:300]}"
         )
 
     print(
-        "GitHub repository_dispatch accepted:",
+        "GitHub workflow_dispatch accepted:",
         f"rank={rank or 'all'} filter={filters or 'all'}"
     )
     return True
