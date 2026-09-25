@@ -62,12 +62,19 @@ def main() -> None:
     plans = readiness.get("plans", [])
     if not isinstance(plans, list):
         errors.append("trade readiness plans is not a list")
+    ready_count = 0
     for plan in plans:
         if not isinstance(plan, dict):
             errors.append("invalid paper plan object")
             continue
-        if plan.get("state") != "PAPER_READY":
-            errors.append(f"non-ready plan leaked through risk gate: {plan.get('symbol')}")
+        state = str(plan.get("state") or "")
+        if state not in {"PAPER_READY", "WATCH_HIGH_CONVICTION", "WATCH"}:
+            errors.append(f"invalid readiness state for {plan.get('symbol')}: {state}")
+            continue
+        # Watch candidates are expected in readiness and are not executable.
+        if state != "PAPER_READY":
+            continue
+        ready_count += 1
         risk = plan.get("risk") or {}
         if float(risk.get("max_account_risk_pct") or 0) <= 0 or float(risk.get("max_account_risk_pct") or 0) > 1:
             errors.append(f"invalid account risk for {plan.get('symbol')}")
@@ -95,7 +102,8 @@ def main() -> None:
     print("FINAL INTEGRATION GATE: PASS")
     print(f"modules: {len(REQUIRED_CODE)}")
     print(f"validated artifacts: {len(data)}")
-    print(f"risk-approved paper plans: {len(plans)}")
+    print(f"readiness plans: {len(plans)}")
+    print(f"risk-approved paper plans: {ready_count}")
     print("live exchange execution: DISABLED")
 
 if __name__ == "__main__":
