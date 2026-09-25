@@ -31,6 +31,7 @@ REQUIRED_ARTIFACTS = [
     "trade_readiness.json",
     "paper_trades.json",
     "paper_performance.json",
+    "wallet_performance_memory.json",
     "wallet_paper_feedback.json",
 ]
 
@@ -86,6 +87,16 @@ def main() -> None:
         errors.append("paper trading mode is not PAPER_ONLY")
     if (paper.get("summary") or {}).get("orders_enabled") is not False:
         errors.append("paper trading orders_enabled is not false")
+
+    memory = data.get("wallet_performance_memory.json", {})
+    if memory.get("mode") != "PAPER_ONLY":
+        errors.append("wallet performance memory mode is not PAPER_ONLY")
+    if memory.get("orders_enabled") is not False:
+        errors.append("wallet performance memory orders_enabled is not false")
+    if not isinstance(memory.get("memory"), list):
+        errors.append("wallet performance memory is not a list")
+    if float(memory.get("max_calibration_bonus") or 0) > 5 or float(memory.get("max_calibration_bonus") or 0) < 0:
+        errors.append("wallet performance memory calibration cap is invalid")
 
     feedback = data.get("wallet_paper_feedback.json", {})
     if feedback.get("mode") != "PAPER_ONLY":
