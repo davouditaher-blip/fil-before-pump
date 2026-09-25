@@ -714,7 +714,6 @@ def main():
                 if x.get("historical_data_available")
                 else "💡 سابقه تاریخی ولت: ⚪ داده کافی برای ارزیابی این ولت‌ها وجود ندارد\n"
             )
-            +
             + (f"👛 {chr(10).join(proven_text)}\n" if proven_text else "")
             + f"Reasons: {', '.join(x['reasons'][:8])}\n"
             + f"Wallets: {wallets}\n"
