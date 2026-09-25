@@ -85,13 +85,24 @@ PY
         if: steps.request.outputs.pending == 'true'
         run: python wallet_clustering.py
 
+      - name: Run deterministic E2E validation
+        if: steps.request.outputs.pending == 'true'
+        run: |
+          set -e
+          python smoke_test.py
+          python e2e_validate.py
+
+      - name: Build paper performance feedback
+        if: steps.request.outputs.pending == 'true'
+        run: python paper_performance.py
+
       - name: Save scanner history safely
         if: steps.request.outputs.pending == 'true'
         run: |
           set -e
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add volume_history.json wallet_history.json wallet_events.json futures_volume_history.json gmgn_wallet_history.json wallet_quality.json wallet_clusters.json
+          git add volume_history.json wallet_history.json wallet_events.json futures_volume_history.json gmgn_wallet_history.json wallet_quality.json wallet_clusters.json wallet_radar.json trade_readiness.json paper_trades.json paper_performance.json
           if git diff --cached --quiet; then echo "No history changes to commit."; exit 0; fi
           git commit -m "Update scanner history from Telegram request"
           for attempt in 1 2 3 4 5; do
