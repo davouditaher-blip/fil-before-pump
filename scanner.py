@@ -8,6 +8,7 @@ import requests
 
 from confluence_engine import build_confluence
 from trade_readiness import build as build_trade_readiness
+from risk_engine import evaluate as evaluate_risk, filter_plans as filter_risk_plans
 from paper_trading import update as update_paper_trading
 
 CMC_API_KEY = os.environ["CMC_API_KEY"]
@@ -2132,13 +2133,38 @@ def main():
     # Build the next-stage paper-trading plan automatically. This remains
     # strictly read-only: no exchange order or API credential is used.
     trade_readiness = build_trade_readiness(results)
+    raw_plans = trade_readiness.get("plans", [])
+    approved_plans = filter_risk_plans(raw_plans)
+    rejected_plans = []
+    for plan in raw_plans:
+        decision = evaluate_risk(plan)
+        if not decision["approved"]:
+            rejected_plans.append({
+                "symbol": plan.get("symbol"),
+                "state": plan.get("state"),
+                "blockers": decision["blockers"],
+                "mode": decision["mode"],
+            })
+    trade_readiness["risk_gate"] = {
+        "mode": "PAPER_ONLY",
+        "orders_enabled": False,
+        "input_plan_count": len(raw_plans),
+        "approved_plan_count": len(approved_plans),
+        "rejected_plan_count": len(rejected_plans),
+        "rejected_plans": rejected_plans[:50],
+    }
+    trade_readiness["plans_before_risk_gate"] = raw_plans[:50]
+    trade_readiness["plans"] = approved_plans
+    trade_readiness["paper_ready_count"] = len(approved_plans)
     print(
-        f"Trade readiness: {trade_readiness.get('paper_ready_count', 0)} paper-ready | "
-        f"{trade_readiness.get('high_conviction_count', 0)} high-conviction watch"
+        f"Trade readiness: {len(raw_plans)} candidates | "
+        f"{len(approved_plans)} risk-approved | "
+        f"{len(rejected_plans)} risk-rejected"
     )
 
-    # Advance the exchange-free paper book on every scan. Real orders remain disabled.
-    paper_state = update_paper_trading(trade_readiness.get("plans", []))
+    # Advance the exchange-free paper book only with risk-approved plans.
+    # Real exchange orders remain disabled.
+    paper_state = update_paper_trading(approved_plans)
     print(
         f"Paper trading: {paper_state.get('summary', {}).get('open_count', 0)} open | "
         f"{paper_state.get('summary', {}).get('closed_count', 0)} closed | "
