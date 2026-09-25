@@ -108,8 +108,8 @@ PY
           COINGLASS_API_KEY: ${{ secrets.COINGLASS_API_KEY }}
           GMGN_API_KEY: ${{ secrets.GMGN_API_KEY }}
           NANSEN_API_KEY: ${{ secrets.NANSEN_API_KEY }}
-          BOT_RANK_RANGE: ${{ github.event.inputs.rank_range || 'all' }}
-          BOT_FILTER: ${{ github.event.inputs.filter || 'all' }}
+          BOT_RANK_RANGE: ${{ github.event.inputs.rank_range || github.event.client_payload.rank_range || 'all' }}
+          BOT_FILTER: ${{ github.event.inputs.filter || github.event.client_payload.filter || 'all' }}
         run: |
           set +e
           for attempt in 1 2 3; do
@@ -147,8 +147,8 @@ PY
           COINGLASS_API_KEY: ${{ secrets.COINGLASS_API_KEY }}
           GMGN_API_KEY: ${{ secrets.GMGN_API_KEY }}
           NANSEN_API_KEY: ${{ secrets.NANSEN_API_KEY }}
-          BOT_RANK_RANGE: ${{ github.event.inputs.rank_range || 'all' }}
-          BOT_FILTER: ${{ github.event.inputs.filter || 'all' }}
+          BOT_RANK_RANGE: ${{ github.event.inputs.rank_range || github.event.client_payload.rank_range || 'all' }}
+          BOT_FILTER: ${{ github.event.inputs.filter || github.event.client_payload.filter || 'all' }}
         run: |
           set -e
           python wallet_quality_engine.py
