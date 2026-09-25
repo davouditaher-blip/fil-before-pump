@@ -31,6 +31,21 @@ def test_trade_plan_is_deterministic_and_paper_only():
     assert plan["risk"]["leverage_cap"] == 3
 
 
+def test_watch_plans_never_enter_paper_execution():
+    watch = build_trade_plan({
+        "symbol": "TEST", "price_usd": 10,
+        "quote": {"market_cap": 1_000_000_000, "volume_24h": 20_000_000},
+        "current_volume": 20_000_000,
+        "wallet_conviction_score": 18, "wallet_unique_active_count": 2,
+        "wallet_unique_proven_count": 0, "wallet_unique_shared_count": 1,
+        "wallet_exit_pressure": 10, "fil_confluence_score": 65,
+        "ch24": 3, "vol_changes": {"1d": 5, "2d": 2},
+    })
+    assert watch["state"] == "WATCH_HIGH_CONVICTION"
+    assert not evaluate(watch)["approved"]
+    assert filter_plans([watch]) == []
+
+
 def test_risk_gate_blocks_unsafe_paper_plan():
     safe = build_trade_plan({
         "symbol": "LINK", "price_usd": 10,
