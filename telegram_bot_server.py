@@ -8,7 +8,7 @@ GITHUB_TOKEN = os.environ.get("GITHUB_PAT") or os.environ.get("GITHUB_TOKEN", ""
 REPO = os.environ.get("GITHUB_REPOSITORY", "davouditaher-blip/fil-before-pump")
 WORKFLOW_FILE = "fil-before-pump.yml"
 API = f"https://api.telegram.org/bot{BOT_TOKEN}"
-GH_API = f"https://api.github.com/repos/{REPO}/dispatches"
+GH_API = f"https://api.github.com/repos/{REPO}/actions/workflows/{WORKFLOW_FILE}/dispatches"
 
 # Telegram-trigger queue; GitHub Actions polls it and consumes requests.
 PENDING_SCAN_REQUESTS = []
@@ -100,8 +100,8 @@ def dispatch(rank, filters):
         "X-GitHub-Api-Version": "2022-11-28",
     }
     payload = {
-        "event_type": "telegram_scan",
-        "client_payload": {
+        "ref": "main",
+        "inputs": {
             "rank_range": rank or "all",
             "filter": filters or "all",
         },
