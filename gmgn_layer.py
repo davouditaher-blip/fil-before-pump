@@ -514,6 +514,30 @@ def main():
     update_history(trades, history)
     cmc = get_cmc()
 
+    # Exclude non-crypto assets before Smart Money scoring. GMGN can return
+    # tokenized stocks, gold-backed assets and stablecoins outside the CMC
+    # futures universe used by Fil Before Pump.
+    stable_symbols = {
+        "USDT", "USDC", "DAI", "FDUSD", "USDE", "USD1", "TUSD", "USDD",
+        "PYUSD", "FRAX", "LUSD", "USDP", "GUSD", "EURC", "EURT", "RLUSD",
+    }
+    non_crypto_symbols = {"USDG", "U", "EUSX", "USDSUI", "FIDD", "EURCV", "PAXG", "XAUT", "KAU", "DGX"}
+    tokenized_markers = (
+        "tokenized", "tokenised", "bstock", "bstocks", "xstock",
+        "etf token", "wrapped stock", "stock token", "gold-backed",
+        "gold backed", "tokenized gold", "tokenised commodity",
+        "commodity-backed", "commodity backed",
+    )
+    signals = [
+        x for x in signals
+        if str(x.get("symbol") or "").upper() not in stable_symbols
+        and str(x.get("symbol") or "").upper() not in non_crypto_symbols
+        and not any(
+            marker in str((cmc.get(str(x.get("symbol") or "").upper()) or {}).get("name") or "").lower()
+            for marker in tokenized_markers
+        )
+    ]
+
     tracked_signals = []
     for x in signals:
         overlaps = cross_asset_wallets(history, x["address"], x["chain"])
@@ -546,8 +570,11 @@ def main():
         x["proven_wallets"] = proven_wallets
         x["proven_wallet_count"] = len(proven_wallets)
         x["wallet_track_signal"] = bool(proven_wallets)
-        x["historical_activity_count"] = sum(int(p.get("opportunities", 0) or 0) for p in activity_profiles)
+        x["historical_activity_count"] = sum(int(p.get("observed_opportunities", 0) or 0) for p in activity_profiles)
         x["historical_unknown_count"] = sum(int(p.get("unknown_opportunities", 0) or 0) for p in activity_profiles)
+        x["historical_data_available"] = bool(
+            x["historical_activity_count"] or x["historical_unknown_count"]
+        )
         x["activity_profiles"] = activity_profiles
 
         # Separate shared-wallet historical evidence from current buying.
@@ -586,7 +613,7 @@ def main():
 
         if x["overlap"] >= 2:
             x["score"] += min(12, x["overlap"] * 3)
-            x["reasons"].append(f"wallet overlap {x['overlap']}")
+            x["reasons"].append(f"historical wallet overlap {x['overlap']}")
 
         if x["proven_wallet_count"] >= 2:
             x["score"] += min(20, 10 + 5 * x["proven_wallet_count"])
@@ -641,10 +668,12 @@ def main():
         wallets = ", ".join(w[:8] + "…" for w in x["wallets"][:4])
         proven_text = []
         for w in x.get("activity_profiles", [])[:4]:
-            if w.get("pre_pump_win_rate") is not None:
+            if not int(w.get("opportunities", 0) or 0):
+                status = "سابقه کافی نیست"
+            elif w.get("pre_pump_win_rate") is not None:
                 status = f"موفق {w['successful_pre_pump_entries']}/{w['observed_opportunities']} ({w['pre_pump_win_rate']:.0f}%)"
             else:
-                status = f"سابقه {w['opportunities']} | قابل‌اثبات {w['observed_opportunities']} | نامشخص {w['unknown_opportunities']}"
+                status = f"بررسی‌شده {w['observed_opportunities']} | نامشخص {w['unknown_opportunities']}"
             examples = ", ".join(
                 f"{e['symbol']} {e['peak_multiple']:.1f}x"
                 for e in w.get("recent_examples", [])[:3]
@@ -678,7 +707,14 @@ def main():
             f"🔹 {x['symbol']} [{x['chain']}] {rank}\n"
             f"{track} | Score {x['score']} | SM buys {x['buy_count']} | wallets {len(x['wallets'])} | "
             f"buy volume {x['buy_usd']:,.0f}{move}\n"
-            f"💡 ورود قبلیِ قابل‌اثبات: {x.get('proven_wallet_count', 0)} | فرصت‌های بررسی‌شده: {x.get('historical_activity_count', 0)} | نامشخص: {x.get('historical_unknown_count', 0)}\n"
+            + (
+                f"💡 ورود قبلیِ قابل‌اثبات: {x.get('proven_wallet_count', 0)} | "
+                f"بررسی تاریخی: {x.get('historical_activity_count', 0)} | "
+                f"نامشخص: {x.get('historical_unknown_count', 0)}\n"
+                if x.get("historical_data_available")
+                else "💡 سابقه تاریخی ولت: ⚪ داده کافی برای ارزیابی این ولت‌ها وجود ندارد\n"
+            )
+            +
             + (f"👛 {chr(10).join(proven_text)}\n" if proven_text else "")
             + f"Reasons: {', '.join(x['reasons'][:8])}\n"
             + f"Wallets: {wallets}\n"
