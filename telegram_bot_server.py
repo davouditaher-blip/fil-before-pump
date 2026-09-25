@@ -107,13 +107,28 @@ def dispatch(rank, filters):
         },
     }
     r = requests.post(GH_API, headers=headers, json=payload, timeout=20)
-    if r.status_code not in (201, 204):
+    # GitHub's current REST API returns 200 when run details are returned;
+    # some GitHub Enterprise/API variants return 204 with no body.
+    if r.status_code not in (200, 201, 204):
         try:
-            detail = r.json().get("message", r.text)
+            data = r.json()
+            detail = data.get("message", r.text)
+            errors = data.get("errors")
+            if errors:
+                detail = f"{detail}; errors={errors}"
         except Exception:
             detail = r.text
-        raise RuntimeError(f"GitHub Actions dispatch failed ({r.status_code}): {detail[:200]}")
+        raise RuntimeError(f"GitHub Actions dispatch failed ({r.status_code}): {str(detail)[:300]}")
 
+    # Keep Telegram independent of whether GitHub returns run details.
+    if r.status_code == 200:
+        try:
+            result = r.json()
+            print("GitHub Actions dispatch accepted:", result.get("workflow_run_id", "run-id-not-returned"))
+        except Exception:
+            print("GitHub Actions dispatch accepted with HTTP 200.")
+    else:
+        print(f"GitHub Actions dispatch accepted with HTTP {r.status_code}.")
     return True
 
 def process(update):
