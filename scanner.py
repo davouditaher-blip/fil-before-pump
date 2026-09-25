@@ -11,7 +11,7 @@ from trade_readiness import build as build_trade_readiness
 from risk_engine import evaluate as evaluate_risk, filter_plans as filter_risk_plans
 from paper_trading import update as update_paper_trading
 
-CMC_API_KEY = os.environ["CMC_API_KEY"]
+CMC_API_KEY = os.environ.get("CMC_API_KEY", "")
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 
