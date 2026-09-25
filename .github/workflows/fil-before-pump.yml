@@ -2,8 +2,7 @@ name: Fil Before Pump Scanner
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
     paths-ignore:
       - "volume_history.json"
       - "wallet_history.json"
@@ -15,6 +14,7 @@ on:
       - "wallet_radar.json"
       - "trade_readiness.json"
       - "paper_trades.json"
+      - "paper_performance.json"
       - "wallet_paper_feedback.json"
       - "wallet_performance_memory.json"
   workflow_dispatch:
@@ -36,7 +36,6 @@ on:
 
 permissions:
   contents: write
-  actions: write
 
 concurrency:
   group: scanner-history-writer
@@ -45,7 +44,18 @@ concurrency:
 jobs:
   scan:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
+    env:
+      CMC_API_KEY: ${{ secrets.CMC_API_KEY }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      SOLSCAN_API_KEY: ${{ secrets.SOLSCAN_API_KEY }}
+      GOLDRUSH_API_KEY: ${{ secrets.GOLDRUSH_API_KEY }}
+      COINGLASS_API_KEY: ${{ secrets.COINGLASS_API_KEY }}
+      GMGN_API_KEY: ${{ secrets.GMGN_API_KEY }}
+      NANSEN_API_KEY: ${{ secrets.NANSEN_API_KEY }}
+      BOT_RANK_RANGE: ${{ github.event.inputs.rank_range || github.event.client_payload.rank_range || 'all' }}
+      BOT_FILTER: ${{ github.event.inputs.filter || github.event.client_payload.filter || 'all' }}
 
     steps:
       - name: Checkout repository
@@ -64,163 +74,73 @@ jobs:
           python -m pip install requests
           npm install -g gmgn-cli
 
-      - name: Validate repository integration gate module
+      - name: Validate Python modules
         run: |
-          python -m py_compile final_integration_gate.py
+          python -m py_compile scanner.py gmgn_layer.py wallet_quality_engine.py
+          python -m py_compile wallet_clustering.py wallet_radar.py wallet_performance_memory.py
+          python -m py_compile trade_readiness.py risk_engine.py paper_trading.py
+          python -m py_compile paper_performance.py wallet_paper_feedback.py
+          python -m py_compile e2e_validate.py final_integration_gate.py
 
-      - name: Self-heal previous failed workflow runs
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      - name: Build wallet quality
         run: |
           set -e
-          for workflow in fil-before-pump.yml gmgn-smart-money.yml; do
-            echo "Checking previous failures for $workflow"
-            gh run list --workflow "$workflow" --limit 10 --json databaseId,status,conclusion,createdAt,attempt --repo "$GITHUB_REPOSITORY" > /tmp/runs.json
-            run_id="$(python - <<'PY'
-import json
-from datetime import datetime, timezone, timedelta
-
-runs = json.load(open("/tmp/runs.json"))
-now = datetime.now(timezone.utc)
-run_id = ""
-for r in runs:
-    if r.get("status") != "completed" or r.get("conclusion") != "failure":
-        continue
-    if int(r.get("attempt") or 1) != 1:
-        continue
-    created = datetime.fromisoformat(r["createdAt"].replace("Z", "+00:00"))
-    if now - created <= timedelta(minutes=90):
-        run_id = str(r["databaseId"])
-        break
-print(run_id)
-PY
-)"
-            if [ -n "$run_id" ]; then
-              echo "Automatically retrying failed run $run_id ($workflow)"
-              gh run rerun "$run_id" --failed --repo "$GITHUB_REPOSITORY" || true
-              if [ -n "${TELEGRAM_BOT_TOKEN:-}" ] && [ -n "${TELEGRAM_CHAT_ID:-}" ]; then
-                curl -sS -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-                  -d "chat_id=${TELEGRAM_CHAT_ID}" \
-                  --data-urlencode "text=🛠 Fil Before Pump: failed $workflow run $run_id automatically retried." >/dev/null || true
-              fi
-            fi
-          done
-
-      - name: Run Fil Before Pump scanner with retry
-        env:
-          CMC_API_KEY: ${{ secrets.CMC_API_KEY }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          SOLSCAN_API_KEY: ${{ secrets.SOLSCAN_API_KEY }}
-          GOLDRUSH_API_KEY: ${{ secrets.GOLDRUSH_API_KEY }}
-          COINGLASS_API_KEY: ${{ secrets.COINGLASS_API_KEY }}
-          GMGN_API_KEY: ${{ secrets.GMGN_API_KEY }}
-          NANSEN_API_KEY: ${{ secrets.NANSEN_API_KEY }}
-          BOT_RANK_RANGE: ${{ github.event.inputs.rank_range || 'all' }}
-          BOT_FILTER: ${{ github.event.inputs.filter || 'all' }}
-        run: |
-          set +e
           for attempt in 1 2 3; do
-            echo "Wallet quality build attempt $attempt/3"
-            WALLET_QUALITY_ONLY=1 python wallet_quality_engine.py
-            status=$?
-            if [ "$status" -eq 0 ]; then
-              exit 0
+            echo "Wallet quality attempt $attempt/3"
+            if WALLET_QUALITY_ONLY=1 python wallet_quality_engine.py; then
+              break
             fi
-            if [ "$attempt" -lt 3 ]; then
-              sleep 20
-            fi
+            if [ "$attempt" -eq 3 ]; then exit 1; fi
+            sleep 20
           done
-          exit "$status"
 
       - name: Build cross-wallet clusters
-        run: |
-          set -e
-          python wallet_clustering.py
+        run: python wallet_clustering.py
 
-      - name: Build $5K Wallet Radar
-        env:
-          GMGN_API_KEY: ${{ secrets.GMGN_API_KEY }}
-        run: |
-          set -e
-          python wallet_radar.py
+      - name: Build $5K wallet radar
+        run: python wallet_radar.py
 
-      - name: Build wallet performance memory
-        run: python wallet_performance_memory.py
+      - name: Run integrated scanner
+        run: python wallet_quality_engine.py
 
-      - name: Run integrated Fil Before Pump scanner
-        env:
-          CMC_API_KEY: ${{ secrets.CMC_API_KEY }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          SOLSCAN_API_KEY: ${{ secrets.SOLSCAN_API_KEY }}
-          GOLDRUSH_API_KEY: ${{ secrets.GOLDRUSH_API_KEY }}
-          COINGLASS_API_KEY: ${{ secrets.COINGLASS_API_KEY }}
-          GMGN_API_KEY: ${{ secrets.GMGN_API_KEY }}
-          NANSEN_API_KEY: ${{ secrets.NANSEN_API_KEY }}
-          BOT_RANK_RANGE: ${{ github.event.inputs.rank_range || github.event.client_payload.rank_range || 'all' }}
-          BOT_FILTER: ${{ github.event.inputs.filter || github.event.client_payload.filter || 'all' }}
+      - name: Validate scanner artifacts
         run: |
-          set -e
-          python wallet_quality_engine.py
-
-      - name: Run deterministic E2E validation
-        run: |
-          set -e
           python smoke_test.py
           python e2e_validate.py
 
-      - name: Build paper performance feedback
+      - name: Build paper performance
         run: python paper_performance.py
 
       - name: Build wallet paper feedback
         run: python wallet_paper_feedback.py
 
-      - name: Build wallet performance memory
+      - name: Rebuild wallet performance memory from latest feedback
         run: python wallet_performance_memory.py
 
-      - name: Run final integration safety gate
-        run: |
-          set -e
-          python -m py_compile final_integration_gate.py
-          python final_integration_gate.py
+      - name: Final integration safety gate
+        run: python final_integration_gate.py
 
-      - name: Save scanner history safely
+      - name: Persist scanner history
         run: |
           set -e
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
           git add volume_history.json wallet_history.json wallet_events.json futures_volume_history.json gmgn_wallet_history.json wallet_quality.json wallet_clusters.json wallet_radar.json trade_readiness.json paper_trades.json paper_performance.json wallet_paper_feedback.json wallet_performance_memory.json
           if git diff --cached --quiet; then
             echo "No history changes to commit."
             exit 0
           fi
-
           git commit -m "Update scanner wallet intelligence"
-
-          # Other scheduled jobs can update main while this scan is running.
-          # Rebase with the scanner commit's history files winning conflicts,
-          # then retry the push so concurrent history writers do not break the run.
           for attempt in 1 2 3 4 5; do
             echo "History push attempt $attempt/5"
             git fetch origin main
-            if git rebase -X theirs origin/main; then
-              if git push origin HEAD:main; then
-                echo "History push succeeded."
-                exit 0
-              fi
-              echo "Push raced with another writer; retrying."
-            else
-              echo "Rebase conflict; aborting rebase before retry."
-              git rebase --abort || true
+            if git rebase -X theirs origin/main && git push origin HEAD:main; then
+              echo "History push succeeded."
+              exit 0
             fi
+            git rebase --abort || true
             sleep 10
           done
-
-          echo "Unable to push scanner history after 5 attempts."
           exit 1
 
   health:
@@ -241,9 +161,7 @@ PY
           if [ "$status" -ne 0 ] || [ "$code" -lt 200 ] || [ "$code" -ge 500 ]; then
             echo "Render health check failed."
             if [ -n "${TELEGRAM_BOT_TOKEN:-}" ] && [ -n "${TELEGRAM_CHAT_ID:-}" ]; then
-              curl -sS -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-                -d "chat_id=${TELEGRAM_CHAT_ID}" \
-                --data-urlencode "text=⚠️ Fil Before Pump Render health check failed. HTTP=${code:-no-response}" >/dev/null || true
+              curl -sS -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage"                 -d "chat_id=${TELEGRAM_CHAT_ID}"                 --data-urlencode "text=⚠️ Fil Before Pump Render health check failed. HTTP=${code:-no-response}" >/dev/null || true
             fi
             exit 1
           fi
