@@ -15,6 +15,7 @@ REQUIRED = {
     "wallet_radar.json": dict,
     "trade_readiness.json": dict,
     "paper_trades.json": dict,
+    "wallet_performance_memory.json": dict,
 }
 
 OPTIONAL = {
@@ -117,6 +118,17 @@ def main() -> None:
                 if state == "PAPER_READY" and float(plan.get("price_usd") or 0) <= 0:
                     errors.append("trade_readiness.json: PAPER_READY plan has invalid price")
                     break
+
+    memory = data_by_name.get("wallet_performance_memory.json")
+    if isinstance(memory, dict):
+        if memory.get("mode") != "PAPER_ONLY":
+            errors.append("wallet_performance_memory.json: mode must be PAPER_ONLY")
+        if memory.get("orders_enabled") is not False:
+            errors.append("wallet_performance_memory.json: orders_enabled must be false")
+        if not isinstance(memory.get("memory"), list):
+            errors.append("wallet_performance_memory.json: memory must be a list")
+        if float(memory.get("max_calibration_bonus") or 0) > 5 or float(memory.get("max_calibration_bonus") or 0) < 0:
+            errors.append("wallet_performance_memory.json: invalid calibration cap")
 
     feedback = data_by_name.get("wallet_paper_feedback.json")
     if isinstance(feedback, dict):
