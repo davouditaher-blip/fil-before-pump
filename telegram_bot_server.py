@@ -106,7 +106,56 @@ def dispatch(rank, filters):
             "filter": filters or "all",
         },
     }
-    r = requests.post(GH_API, headers=headers, json=payload, timeout=20)
+
+    # Resolve the workflow by its registered GitHub Actions ID first.
+    # This avoids the 422 "Workflow does not have workflow_dispatch trigger"
+    # edge case that can occur when GitHub's filename lookup is stale.
+    workflows_url = f"https://api.github.com/repos/{REPO}/actions/workflows"
+    wr = requests.get(
+        workflows_url,
+        headers=headers,
+        params={"per_page": 100},
+        timeout=20,
+    )
+    if wr.status_code != 200:
+        try:
+            detail = wr.json().get("message", wr.text)
+        except Exception:
+            detail = wr.text
+        raise RuntimeError(
+            f"GitHub workflow lookup failed ({wr.status_code}): {str(detail)[:300]}"
+        )
+
+    workflows = wr.json().get("workflows", [])
+    workflow = next(
+        (w for w in workflows if w.get("path") == f".github/workflows/{WORKFLOW_FILE}"),
+        None,
+    )
+    if not workflow:
+        workflow = next(
+            (w for w in workflows if w.get("name") == "Fil Before Pump Scanner"),
+            None,
+        )
+    if not workflow:
+        available = ", ".join(
+            f"{w.get('name')} [{w.get('path')}]"
+            for w in workflows[:20]
+        )
+        raise RuntimeError(
+            "GitHub workflow was not found in registered Actions workflows"
+            + (f": {available}" if available else "")
+        )
+    if workflow.get("state") != "active":
+        raise RuntimeError(
+            f"GitHub workflow is not active (state={workflow.get('state')})"
+        )
+
+    workflow_id = workflow.get("id")
+    dispatch_url = (
+        f"https://api.github.com/repos/{REPO}/actions/workflows/"
+        f"{workflow_id}/dispatches"
+    )
+    r = requests.post(dispatch_url, headers=headers, json=payload, timeout=20)
     # GitHub's current REST API returns 200 when run details are returned;
     # some GitHub Enterprise/API variants return 204 with no body.
     if r.status_code not in (200, 201, 204):
