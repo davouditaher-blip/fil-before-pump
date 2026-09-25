@@ -157,13 +157,22 @@ PY
           set -e
           python wallet_quality_engine.py
 
+      - name: Run deterministic E2E validation
+        run: |
+          set -e
+          python smoke_test.py
+          python e2e_validate.py
+
+      - name: Build paper performance feedback
+        run: python paper_performance.py
+
       - name: Save scanner history safely
         run: |
           set -e
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          git add volume_history.json wallet_history.json wallet_events.json futures_volume_history.json gmgn_wallet_history.json wallet_quality.json wallet_clusters.json wallet_radar.json trade_readiness.json paper_trades.json
+          git add volume_history.json wallet_history.json wallet_events.json futures_volume_history.json gmgn_wallet_history.json wallet_quality.json wallet_clusters.json wallet_radar.json trade_readiness.json paper_trades.json paper_performance.json
           if git diff --cached --quiet; then
             echo "No history changes to commit."
             exit 0
