@@ -109,10 +109,12 @@ def main() -> None:
                 if not isinstance(plan, dict):
                     errors.append("trade_readiness.json: invalid plan")
                     break
-                if str(plan.get("state")) != "PAPER_READY":
-                    errors.append("trade_readiness.json: risk-approved plan is not PAPER_READY")
+                state = str(plan.get("state") or "")
+                if state not in {"PAPER_READY", "WATCH_HIGH_CONVICTION", "WATCH"}:
+                    errors.append(f"trade_readiness.json: invalid state {state}")
                     break
-                if float(plan.get("price_usd") or 0) <= 0:
+                # Watch candidates are expected and deliberately excluded from paper execution.
+                if state == "PAPER_READY" and float(plan.get("price_usd") or 0) <= 0:
                     errors.append("trade_readiness.json: PAPER_READY plan has invalid price")
                     break
 
