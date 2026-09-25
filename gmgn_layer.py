@@ -640,6 +640,16 @@ def main():
 
     save_history(history)
 
+    # Persistent GMGN history counters. These are intentionally based on the
+    # stored wallet keys/records, not only the current 30-minute feed, so the
+    # Telegram report shows the true historical coverage of the bot.
+    history_unique_wallets = len(history)
+    history_total_records = sum(len(rows) for rows in history.values())
+    history_wallets_with_buys = sum(
+        1 for rows in history.values()
+        if any(str(r.get("side") or "").lower() == "buy" for r in rows)
+    )
+
     # The wallet-track layer is primary. Fall back to the broader Smart Money
     # feed only when no proven-wallet early entries are available, so the bot
     # never goes silent during a cold-start history period.
@@ -667,6 +677,10 @@ def main():
         "Priority: Smart Money / whale activity before technical confirmation.",
         "Source: GMGN Smart Money feed (read-only).",
         "No trade execution is enabled.",
+        "",
+        f"📚 GMGN History: {history_unique_wallets:,} unique wallets | "
+        f"{history_total_records:,} stored records | {history_wallets_with_buys:,} wallets with buys",
+        f"🏆 Proven wallets (current historical test): {sum(1 for x in signals if x.get('proven_wallet_count', 0)):,}",
         ""
     ]
 
