@@ -178,6 +178,15 @@ PY
       - name: Build wallet paper feedback
         run: python wallet_paper_feedback.py
 
+      - name: Build wallet performance memory
+        run: python wallet_performance_memory.py
+
+      - name: Run final integration safety gate
+        run: |
+          set -e
+          python -m py_compile final_integration_gate.py
+          python final_integration_gate.py
+
       - name: Save scanner history safely
         run: |
           set -e
