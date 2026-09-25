@@ -93,9 +93,10 @@ def send_menu(chat_id, rank="all", filters=None, message_id=None):
 
 def dispatch(rank, filters):
     """
-    Start the scanner immediately from Telegram by dispatching the GitHub
-    Actions workflow. The old in-memory queue was never consumed by Actions,
-    so Telegram requests could appear accepted while no scan actually ran.
+    Start the scanner from Telegram through GitHub repository_dispatch.
+    repository_dispatch avoids GitHub's workflow_dispatch registration/cache
+    edge case that was returning HTTP 422 even though workflow_dispatch exists
+    in the YAML on main.
     """
     if not GITHUB_TOKEN.strip():
         raise RuntimeError("GITHUB_PAT is not configured on Render")
@@ -106,64 +107,17 @@ def dispatch(rank, filters):
         "X-GitHub-Api-Version": "2022-11-28",
     }
     payload = {
-        "ref": "main",
-        "inputs": {
+        "event_type": "telegram_scan",
+        "client_payload": {
             "rank_range": rank or "all",
             "filter": filters or "all",
+            "source": "telegram",
         },
     }
 
-    # Resolve the workflow by its registered GitHub Actions ID first.
-    # This avoids the 422 "Workflow does not have workflow_dispatch trigger"
-    # edge case that can occur when GitHub's filename lookup is stale.
-    workflows_url = f"https://api.github.com/repos/{REPO}/actions/workflows"
-    wr = requests.get(
-        workflows_url,
-        headers=headers,
-        params={"per_page": 100},
-        timeout=20,
-    )
-    if wr.status_code != 200:
-        try:
-            detail = wr.json().get("message", wr.text)
-        except Exception:
-            detail = wr.text
-        raise RuntimeError(
-            f"GitHub workflow lookup failed ({wr.status_code}): {str(detail)[:300]}"
-        )
-
-    workflows = wr.json().get("workflows", [])
-    workflow = next(
-        (w for w in workflows if w.get("path") == f".github/workflows/{WORKFLOW_FILE}"),
-        None,
-    )
-    if not workflow:
-        workflow = next(
-            (w for w in workflows if w.get("name") == "Fil Before Pump Scanner"),
-            None,
-        )
-    if not workflow:
-        available = ", ".join(
-            f"{w.get('name')} [{w.get('path')}]"
-            for w in workflows[:20]
-        )
-        raise RuntimeError(
-            "GitHub workflow was not found in registered Actions workflows"
-            + (f": {available}" if available else "")
-        )
-    if workflow.get("state") != "active":
-        raise RuntimeError(
-            f"GitHub workflow is not active (state={workflow.get('state')})"
-        )
-
-    workflow_id = workflow.get("id")
-    dispatch_url = (
-        f"https://api.github.com/repos/{REPO}/actions/workflows/"
-        f"{workflow_id}/dispatches"
-    )
+    dispatch_url = f"https://api.github.com/repos/{REPO}/dispatches"
     r = requests.post(dispatch_url, headers=headers, json=payload, timeout=20)
-    # GitHub's current REST API returns 200 when run details are returned;
-    # some GitHub Enterprise/API variants return 204 with no body.
+
     if r.status_code not in (200, 201, 204):
         try:
             data = r.json()
@@ -173,17 +127,14 @@ def dispatch(rank, filters):
                 detail = f"{detail}; errors={errors}"
         except Exception:
             detail = r.text
-        raise RuntimeError(f"GitHub Actions dispatch failed ({r.status_code}): {str(detail)[:300]}")
+        raise RuntimeError(
+            f"GitHub repository dispatch failed ({r.status_code}): {str(detail)[:300]}"
+        )
 
-    # Keep Telegram independent of whether GitHub returns run details.
-    if r.status_code == 200:
-        try:
-            result = r.json()
-            print("GitHub Actions dispatch accepted:", result.get("workflow_run_id", "run-id-not-returned"))
-        except Exception:
-            print("GitHub Actions dispatch accepted with HTTP 200.")
-    else:
-        print(f"GitHub Actions dispatch accepted with HTTP {r.status_code}.")
+    print(
+        "GitHub repository_dispatch accepted:",
+        f"rank={rank or 'all'} filter={filters or 'all'}"
+    )
     return True
 
 def process(update):
