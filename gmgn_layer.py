@@ -650,6 +650,14 @@ def main():
         if any(str(r.get("side") or "").lower() == "buy" for r in rows)
     )
 
+    # Count unique currently-proven wallets separately from candidate count.
+    current_proven_wallets = {
+        str(wallet.get("wallet") or "")
+        for candidate in signals
+        for wallet in (candidate.get("proven_wallets") or [])
+        if wallet.get("wallet")
+    }
+
     # The wallet-track layer is primary. Fall back to the broader Smart Money
     # feed only when no proven-wallet early entries are available, so the bot
     # never goes silent during a cold-start history period.
@@ -680,7 +688,7 @@ def main():
         "",
         f"📚 GMGN History: {history_unique_wallets:,} unique wallets | "
         f"{history_total_records:,} stored records | {history_wallets_with_buys:,} wallets with buys",
-        f"🏆 Proven wallets (current historical test): {sum(1 for x in signals if x.get('proven_wallet_count', 0)):,}",
+        f"🏆 Proven wallets (current historical test): {len(current_proven_wallets):,}",
         ""
     ]
 
