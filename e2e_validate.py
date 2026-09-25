@@ -1,7 +1,8 @@
 """End-to-end artifact validation for Fil Before Pump.
 
-This guard checks that the wallet-first pipeline produced structurally valid
-artifacts before GitHub Actions persists scanner history. It never places trades.
+This guard checks that the wallet-first -> readiness -> paper loop produced
+structurally valid artifacts before GitHub Actions persists scanner history.
+It never places trades.
 """
 from __future__ import annotations
 
@@ -12,12 +13,15 @@ REQUIRED = {
     "wallet_quality.json": dict,
     "wallet_clusters.json": dict,
     "wallet_radar.json": dict,
+    "trade_readiness.json": dict,
+    "paper_trades.json": dict,
 }
 
 OPTIONAL = {
     "paper_performance.json": (dict, list),
     "gmgn_wallet_history.json": dict,
 }
+
 
 def load_json(path: Path):
     try:
@@ -27,12 +31,16 @@ def load_json(path: Path):
     except json.JSONDecodeError as exc:
         raise AssertionError(f"invalid JSON in {path}: {exc}")
 
+
 def main() -> None:
     errors = []
+    data_by_name = {}
+
     for name, expected in REQUIRED.items():
         path = Path(name)
         try:
             data = load_json(path)
+            data_by_name[name] = data
             if not isinstance(data, expected):
                 errors.append(f"{name}: unexpected root type {type(data).__name__}")
         except AssertionError as exc:
@@ -44,17 +52,13 @@ def main() -> None:
             continue
         try:
             data = load_json(path)
+            data_by_name[name] = data
             if not isinstance(data, expected):
                 errors.append(f"{name}: unexpected root type {type(data).__name__}")
         except AssertionError as exc:
             errors.append(str(exc))
 
-    quality = None
-    if Path("wallet_quality.json").exists():
-        try:
-            quality = load_json(Path("wallet_quality.json"))
-        except AssertionError:
-            pass
+    quality = data_by_name.get("wallet_quality.json")
     if isinstance(quality, dict):
         for wallet, profile in quality.items():
             if not isinstance(wallet, str) or not isinstance(profile, dict):
@@ -65,20 +69,60 @@ def main() -> None:
                     errors.append(f"wallet_quality.json: profile missing {key}")
                     break
 
-    clusters = None
-    if Path("wallet_clusters.json").exists():
-        try:
-            clusters = load_json(Path("wallet_clusters.json"))
-        except AssertionError:
-            pass
+    clusters = data_by_name.get("wallet_clusters.json")
     if isinstance(clusters, dict):
-        for asset, row in clusters.items():
-            if not isinstance(asset, str) or not isinstance(row, dict):
-                errors.append("wallet_clusters.json: invalid asset row")
+        assets = clusters.get("assets")
+        pairs = clusters.get("pairs")
+        if not isinstance(assets, dict):
+            errors.append("wallet_clusters.json: missing assets map")
+        else:
+            for asset, row in assets.items():
+                if not isinstance(asset, str) or not isinstance(row, dict):
+                    errors.append("wallet_clusters.json: invalid asset row")
+                    break
+                for key in ("holding_wallet_count", "wallets"):
+                    if key not in row:
+                        errors.append(f"wallet_clusters.json: {asset} missing {key}")
+                        break
+        if pairs is not None and not isinstance(pairs, list):
+            errors.append("wallet_clusters.json: pairs must be a list")
+
+    radar = data_by_name.get("wallet_radar.json")
+    if isinstance(radar, dict):
+        for key, row in radar.items():
+            if not isinstance(row, dict):
+                errors.append(f"wallet_radar.json: invalid row {key}")
                 break
-            if "holding_wallet_count" not in row:
-                errors.append(f"wallet_clusters.json: {asset} missing holding_wallet_count")
-                break
+
+    readiness = data_by_name.get("trade_readiness.json")
+    if isinstance(readiness, dict):
+        if readiness.get("mode") != "READ_ONLY_PAPER":
+            errors.append("trade_readiness.json: mode must be READ_ONLY_PAPER")
+        if readiness.get("orders_enabled") is not False:
+            errors.append("trade_readiness.json: orders_enabled must be false")
+        plans = readiness.get("plans")
+        if not isinstance(plans, list):
+            errors.append("trade_readiness.json: plans must be a list")
+        else:
+            for plan in plans:
+                if not isinstance(plan, dict):
+                    errors.append("trade_readiness.json: invalid plan")
+                    break
+                if str(plan.get("state")) != "PAPER_READY":
+                    errors.append("trade_readiness.json: risk-approved plan is not PAPER_READY")
+                    break
+                if float(plan.get("price_usd") or 0) <= 0:
+                    errors.append("trade_readiness.json: PAPER_READY plan has invalid price")
+                    break
+
+    paper = data_by_name.get("paper_trades.json")
+    if isinstance(paper, dict):
+        if paper.get("mode") != "PAPER_ONLY":
+            errors.append("paper_trades.json: mode must be PAPER_ONLY")
+        if paper.get("summary", {}).get("orders_enabled") is not False:
+            errors.append("paper_trades.json: orders_enabled must be false")
+        if not isinstance(paper.get("open"), list) or not isinstance(paper.get("closed"), list):
+            errors.append("paper_trades.json: open/closed must be lists")
 
     if errors:
         print("E2E validation: FAIL")
@@ -88,7 +132,10 @@ def main() -> None:
 
     print("E2E validation: PASS")
     print(f"wallet_quality profiles: {len(quality or {})}")
-    print(f"wallet_clusters assets: {len(clusters or {})}")
+    print(f"wallet_clusters assets: {len((clusters or {}).get('assets', {}))}")
+    print(f"trade_readiness plans: {len((readiness or {}).get('plans', []))}")
+    print(f"paper open: {len((paper or {}).get('open', []))} | closed: {len((paper or {}).get('closed', []))}")
+
 
 if __name__ == "__main__":
     main()
