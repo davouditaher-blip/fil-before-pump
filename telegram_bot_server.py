@@ -7,7 +7,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 GITHUB_TOKEN = os.environ.get("GITHUB_PAT") or os.environ.get("GITHUB_TOKEN", "")
 REPO = os.environ.get("GITHUB_REPOSITORY", "davouditaher-blip/fil-before-pump")
-WORKFLOW_FILE = "fil-before-pump.yml"
+WORKFLOW_FILE = "telegram-scan.yml"
 API = f"https://api.telegram.org/bot{BOT_TOKEN}"
 GH_API = f"https://api.github.com/repos/{REPO}/actions/workflows/{WORKFLOW_FILE}/dispatches"
 
@@ -92,7 +92,7 @@ def send_menu(chat_id, rank="all", filters=None, message_id=None):
         tg("sendMessage", data=data)
 
 def dispatch(rank, filters):
-    """Start the scanner from Telegram through the registered workflow_dispatch trigger."""
+    """Start the scanner from Telegram through the dedicated workflow_dispatch trigger."""
     if not GITHUB_TOKEN.strip():
         raise RuntimeError("GITHUB_PAT is not configured on Render")
 
