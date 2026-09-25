@@ -15,6 +15,7 @@ on:
       - "wallet_radar.json"
       - "trade_readiness.json"
       - "paper_trades.json"
+      - "wallet_paper_feedback.json"
   workflow_dispatch:
     inputs:
       rank_range:
@@ -166,13 +167,16 @@ PY
       - name: Build paper performance feedback
         run: python paper_performance.py
 
+      - name: Build wallet paper feedback
+        run: python wallet_paper_feedback.py
+
       - name: Save scanner history safely
         run: |
           set -e
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          git add volume_history.json wallet_history.json wallet_events.json futures_volume_history.json gmgn_wallet_history.json wallet_quality.json wallet_clusters.json wallet_radar.json trade_readiness.json paper_trades.json paper_performance.json
+          git add volume_history.json wallet_history.json wallet_events.json futures_volume_history.json gmgn_wallet_history.json wallet_quality.json wallet_clusters.json wallet_radar.json trade_readiness.json paper_trades.json paper_performance.json wallet_paper_feedback.json
           if git diff --cached --quiet; then
             echo "No history changes to commit."
             exit 0
