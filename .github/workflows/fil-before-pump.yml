@@ -64,6 +64,10 @@ jobs:
           python -m pip install requests
           npm install -g gmgn-cli
 
+      - name: Validate repository integration gate module
+        run: |
+          python -m py_compile final_integration_gate.py
+
       - name: Self-heal previous failed workflow runs
         env:
           GH_TOKEN: ${{ github.token }}
