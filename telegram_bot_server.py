@@ -1,7 +1,8 @@
 import json
 import os
 import requests
-from http.server import BaseHTTPRequestHandler, HTTPServer
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 GITHUB_TOKEN = os.environ.get("GITHUB_PAT") or os.environ.get("GITHUB_TOKEN", "")
@@ -28,7 +29,12 @@ FILTERS = {
 
 def tg(method, **kwargs):
     r = requests.post(f"{API}/{method}", timeout=30, **kwargs)
-    r.raise_for_status()
+    if not r.ok:
+        try:
+            detail = r.json()
+        except Exception:
+            detail = r.text
+        raise RuntimeError(f"Telegram API {method} failed ({r.status_code}): {str(detail)[:500]}")
     return r.json()
 
 def menu(rank="all", filters=None):
@@ -310,7 +316,14 @@ class Handler(BaseHTTPRequestHandler):
             length = int(self.headers.get("Content-Length", "0"))
             payload = self.rfile.read(length)
             update = json.loads(payload.decode("utf-8"))
-            process(update)
+            # Telegram webhooks must be acknowledged quickly. GitHub Actions
+            # dispatch and Telegram API calls can take longer than Telegram's
+            # webhook timeout, so process every update in a background thread.
+            threading.Thread(
+                target=process,
+                args=(update,),
+                daemon=True,
+            ).start()
             self.send_response(200)
             self.end_headers()
             self.wfile.write(b"OK")
@@ -327,4 +340,4 @@ if __name__ == "__main__":
     set_webhook()
     port = int(os.environ.get("PORT", "10000"))
     print(f"Telegram bot server listening on :{port}")
-    HTTPServer(("0.0.0.0", port), Handler).serve_forever()
+    ThreadingHTTPServer(("0.0.0.0", port), Handler).serve_forever()
