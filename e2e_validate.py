@@ -20,6 +20,7 @@ REQUIRED = {
 OPTIONAL = {
     "paper_performance.json": (dict, list),
     "gmgn_wallet_history.json": dict,
+    "wallet_paper_feedback.json": dict,
 }
 
 
@@ -115,6 +116,15 @@ def main() -> None:
                     errors.append("trade_readiness.json: PAPER_READY plan has invalid price")
                     break
 
+    feedback = data_by_name.get("wallet_paper_feedback.json")
+    if isinstance(feedback, dict):
+        if feedback.get("mode") != "PAPER_ONLY":
+            errors.append("wallet_paper_feedback.json: mode must be PAPER_ONLY")
+        if feedback.get("orders_enabled") is not False:
+            errors.append("wallet_paper_feedback.json: orders_enabled must be false")
+        if not isinstance(feedback.get("groups"), list):
+            errors.append("wallet_paper_feedback.json: groups must be a list")
+
     paper = data_by_name.get("paper_trades.json")
     if isinstance(paper, dict):
         if paper.get("mode") != "PAPER_ONLY":
@@ -135,6 +145,7 @@ def main() -> None:
     print(f"wallet_clusters assets: {len((clusters or {}).get('assets', {}))}")
     print(f"trade_readiness plans: {len((readiness or {}).get('plans', []))}")
     print(f"paper open: {len((paper or {}).get('open', []))} | closed: {len((paper or {}).get('closed', []))}")
+    print(f"paper feedback groups: {len((feedback or {}).get('groups', []))}")
 
 
 if __name__ == "__main__":
