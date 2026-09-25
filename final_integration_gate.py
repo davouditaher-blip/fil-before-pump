@@ -63,6 +63,9 @@ def main() -> None:
     if not isinstance(plans, list):
         errors.append("trade readiness plans is not a list")
     for plan in plans:
+        if not isinstance(plan, dict):
+            errors.append("invalid paper plan object")
+            continue
         if plan.get("state") != "PAPER_READY":
             errors.append(f"non-ready plan leaked through risk gate: {plan.get('symbol')}")
         risk = plan.get("risk") or {}
