@@ -528,9 +528,17 @@ def main():
         "gold backed", "tokenized gold", "tokenised commodity",
         "commodity-backed", "commodity backed",
     )
+    # Keep the standalone GMGN layer on the same top-300 universe as the
+    # main scanner. This prevents cold-start noise (unranked/long-tail tokens)
+    # from appearing as first-class Fil candidates before futures validation.
+    top300_symbols = {
+        symbol for symbol, meta in cmc.items()
+        if meta.get("cmc_rank") is not None and int(meta.get("cmc_rank")) <= 300
+    }
     signals = [
         x for x in signals
-        if str(x.get("symbol") or "").upper() not in stable_symbols
+        if str(x.get("symbol") or "").upper() in top300_symbols
+        and str(x.get("symbol") or "").upper() not in stable_symbols
         and str(x.get("symbol") or "").upper() not in non_crypto_symbols
         and not any(
             marker in str((cmc.get(str(x.get("symbol") or "").upper()) or {}).get("name") or "").lower()
