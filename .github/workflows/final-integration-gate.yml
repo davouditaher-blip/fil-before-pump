@@ -5,6 +5,8 @@ on:
     workflows: ["Fil Before Pump Scanner"]
     types: [completed]
     branches: [main]
+  schedule:
+    - cron: "5,35 * * * *"
   workflow_dispatch:
 
 permissions:
@@ -12,31 +14,23 @@ permissions:
 
 jobs:
   gate:
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-
       - name: Run final integration safety gate
-        run: |
-          set -e
-          python final_integration_gate.py
-
+        run: python final_integration_gate.py
       - name: Confirm live execution remains disabled
         run: |
           python - <<'PY'
 import json
-from pathlib import Path
-
-p = Path("trade_readiness.json")
-data = json.loads(p.read_text(encoding="utf-8"))
+data=json.load(open("trade_readiness.json",encoding="utf-8"))
 assert data.get("mode") == "READ_ONLY_PAPER", data.get("mode")
 assert data.get("orders_enabled") is False, data.get("orders_enabled")
 print("LIVE EXECUTION: DISABLED")
