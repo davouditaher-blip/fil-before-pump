@@ -26,37 +26,31 @@ jobs:
           curl -L --max-time 25 -sS -H "X-Scan-Token: $TELEGRAM_BOT_TOKEN" "https://fil-before-pump.onrender.com/scan-request" -o /tmp/request.json
           cat /tmp/request.json
           python - <<'PY'
-import json
-import os
-
-data = json.load(open("/tmp/request.json"))
-request = data.get("request") or {}
-with open(os.environ["GITHUB_OUTPUT"], "a") as out:
+import json, os
+data=json.load(open("/tmp/request.json"))
+request=data.get("request") or {}
+with open(os.environ["GITHUB_OUTPUT"],"a") as out:
     out.write(f"pending={str(bool(data.get('pending'))).lower()}\n")
     out.write(f"rank_range={request.get('rank_range') or 'all'}\n")
     out.write(f"filter={request.get('filter') or 'all'}\n")
 print(data)
 PY
-
       - name: Checkout repository
         if: steps.request.outputs.pending == 'true'
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
       - name: Setup Python
         if: steps.request.outputs.pending == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-
       - name: Install dependencies
         if: steps.request.outputs.pending == 'true'
         run: |
           python -m pip install --upgrade pip
           python -m pip install requests
           npm install -g gmgn-cli
-
       - name: Run requested Fil Before Pump scan
         if: steps.request.outputs.pending == 'true'
         env:
@@ -71,39 +65,35 @@ PY
           BOT_RANK_RANGE: ${{ steps.request.outputs.rank_range }}
           BOT_FILTER: ${{ steps.request.outputs.filter }}
         run: |
-          set +e
-          for attempt in 1 2 3; do
-            echo "Requested scanner attempt $attempt/3"
-            python wallet_quality_engine.py
-            status=$?
-            if [ "$status" -eq 0 ]; then exit 0; fi
-            if [ "$attempt" -lt 3 ]; then sleep 20; fi
-          done
-          exit "$status"
-
+          set -e
+          python wallet_quality_engine.py
       - name: Build cross-wallet clusters
         if: steps.request.outputs.pending == 'true'
         run: python wallet_clustering.py
-
-      - name: Run deterministic E2E validation
+      - name: Build wallet radar
         if: steps.request.outputs.pending == 'true'
+        run: python wallet_radar.py
+      - name: Validate and feedback
+        if: steps.request.outputs.pending == 'true'
+        env:
+          CMC_API_KEY: ${{ secrets.CMC_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          set -e
           python smoke_test.py
           python e2e_validate.py
-
-      - name: Build paper performance feedback
-        if: steps.request.outputs.pending == 'true'
-        run: python paper_performance.py
-
+          python paper_performance.py
+          python wallet_paper_feedback.py
+          python wallet_performance_memory.py
+          python final_integration_gate.py
       - name: Save scanner history safely
         if: steps.request.outputs.pending == 'true'
         run: |
           set -e
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add volume_history.json wallet_history.json wallet_events.json futures_volume_history.json gmgn_wallet_history.json wallet_quality.json wallet_clusters.json wallet_radar.json trade_readiness.json paper_trades.json paper_performance.json
-          if git diff --cached --quiet; then echo "No history changes to commit."; exit 0; fi
+          git add volume_history.json wallet_history.json wallet_events.json futures_volume_history.json gmgn_wallet_history.json wallet_quality.json wallet_clusters.json wallet_radar.json trade_readiness.json paper_trades.json paper_performance.json wallet_paper_feedback.json wallet_performance_memory.json
+          if git diff --cached --quiet; then exit 0; fi
           git commit -m "Update scanner history from Telegram request"
           for attempt in 1 2 3 4 5; do
             git fetch origin main
