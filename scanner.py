@@ -7,6 +7,7 @@ from pathlib import Path
 import requests
 
 from confluence_engine import build_confluence
+from trade_readiness import build as build_trade_readiness
 
 CMC_API_KEY = os.environ["CMC_API_KEY"]
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
@@ -2126,6 +2127,14 @@ def main():
 
     # Apply the selection made from the Telegram control panel.
     results = apply_bot_filters(results)
+
+    # Build the next-stage paper-trading plan automatically. This remains
+    # strictly read-only: no exchange order or API credential is used.
+    trade_readiness = build_trade_readiness(results)
+    print(
+        f"Trade readiness: {trade_readiness.get('paper_ready_count', 0)} paper-ready | "
+        f"{trade_readiness.get('high_conviction_count', 0)} high-conviction watch"
+    )
 
     market_map = {str(c.get("symbol") or "").upper(): c for c in coins}
     btc = market_map.get("BTC", {}).get("quote", {}).get("USD", {})
