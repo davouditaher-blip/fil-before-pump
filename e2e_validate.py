@@ -12,8 +12,6 @@ REQUIRED = {
     "wallet_quality.json": dict,
     "wallet_clusters.json": dict,
     "wallet_radar.json": dict,
-    "trade_readiness.json": (dict, list),
-    "paper_trades.json": (dict, list),
 }
 
 OPTIONAL = {
