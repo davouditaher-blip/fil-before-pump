@@ -8,6 +8,7 @@ import requests
 
 from confluence_engine import build_confluence
 from trade_readiness import build as build_trade_readiness
+from paper_trading import update as update_paper_trading
 
 CMC_API_KEY = os.environ["CMC_API_KEY"]
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
@@ -2134,6 +2135,14 @@ def main():
     print(
         f"Trade readiness: {trade_readiness.get('paper_ready_count', 0)} paper-ready | "
         f"{trade_readiness.get('high_conviction_count', 0)} high-conviction watch"
+    )
+
+    # Advance the exchange-free paper book on every scan. Real orders remain disabled.
+    paper_state = update_paper_trading(trade_readiness.get("plans", []))
+    print(
+        f"Paper trading: {paper_state.get('summary', {}).get('open_count', 0)} open | "
+        f"{paper_state.get('summary', {}).get('closed_count', 0)} closed | "
+        f"{paper_state.get('summary', {}).get('win_count', 0)} wins"
     )
 
     market_map = {str(c.get("symbol") or "").upper(): c for c in coins}
