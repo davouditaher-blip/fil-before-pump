@@ -7,7 +7,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 GITHUB_TOKEN = os.environ.get("GITHUB_PAT") or os.environ.get("GITHUB_TOKEN", "")
 REPO = os.environ.get("GITHUB_REPOSITORY", "davouditaher-blip/fil-before-pump")
-WORKFLOW_FILE = "telegram-scan.yml"
+WORKFLOW_FILE = "fil-before-pump.yml"
 API = f"https://api.telegram.org/bot{BOT_TOKEN}"
 GH_API = f"https://api.github.com/repos/{REPO}/actions/workflows/{WORKFLOW_FILE}/dispatches"
 
