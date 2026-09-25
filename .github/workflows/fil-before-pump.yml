@@ -13,6 +13,8 @@ on:
       - "wallet_quality.json"
       - "wallet_clusters.json"
       - "wallet_radar.json"
+  repository_dispatch:
+    types: [telegram_scan]
   workflow_dispatch:
     inputs:
       rank_range:
