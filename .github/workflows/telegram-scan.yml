@@ -85,6 +85,9 @@ jobs:
           BOT_FILTER: ${{ inputs.filter || 'all' }}
         run: python wallet_quality_engine.py
 
+      - name: Build paper performance feedback
+        run: python paper_performance.py
+
       - name: Save scanner history safely
         run: |
           set -e
