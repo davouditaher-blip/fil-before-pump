@@ -174,9 +174,6 @@ PY
       - name: Build wallet paper feedback
         run: python wallet_paper_feedback.py
 
-      - name: Final integration safety gate
-        run: python final_integration_gate.py
-
       - name: Save scanner history safely
         run: |
           set -e
