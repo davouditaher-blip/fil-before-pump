@@ -42,6 +42,9 @@ jobs:
           python -m pip install requests
           npm install -g gmgn-cli
 
+      - name: Run deterministic smoke tests
+        run: python smoke_test.py
+
       - name: Build wallet quality
         env:
           CMC_API_KEY: ${{ secrets.CMC_API_KEY }}
