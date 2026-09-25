@@ -86,8 +86,35 @@ def send_menu(chat_id, rank="all", filters=None, message_id=None):
         tg("sendMessage", data=data)
 
 def dispatch(rank, filters):
-    PENDING_SCAN_REQUESTS.append({"rank_range": rank or "all", "filter": filters or "all"})
-    del PENDING_SCAN_REQUESTS[:-10]
+    """
+    Start the scanner immediately from Telegram by dispatching the GitHub
+    Actions workflow. The old in-memory queue was never consumed by Actions,
+    so Telegram requests could appear accepted while no scan actually ran.
+    """
+    if not GITHUB_TOKEN.strip():
+        raise RuntimeError("GITHUB_PAT is not configured on Render")
+
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "Authorization": f"Bearer {GITHUB_TOKEN}",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    payload = {
+        "ref": "main",
+        "inputs": {
+            "rank_range": rank or "all",
+            "filter": filters or "all",
+        },
+    }
+    r = requests.post(GH_API, headers=headers, json=payload, timeout=20)
+    if r.status_code not in (201, 204):
+        try:
+            detail = r.json().get("message", r.text)
+        except Exception:
+            detail = r.text
+        raise RuntimeError(f"GitHub Actions dispatch failed ({r.status_code}): {detail[:200]}")
+
+    return True
 
 def process(update):
     if "message" in update:
@@ -120,9 +147,10 @@ def process(update):
     elif action == "run":
         try:
             dispatch(rank, ",".join(filters) if filters else "all")
-            text = "⏳ بررسی انتخابی ارسال شد. نتیجه بعد از اجرای اسکن در همین چت می‌آید."
+            text = "⏳ اسکن فیل کامل شروع شد. نتیجه پس از پایان اجرای GitHub Actions در همین چت ارسال می‌شود."
         except Exception as exc:
-            text = f"❌ خطا در اجرای اسکن: {exc}"
+            print("Scanner dispatch error:", exc)
+            text = f"❌ اجرای اسکن شروع نشد: {exc}"
         tg("editMessageText", data={
             "chat_id": chat_id,
             "message_id": message_id,
