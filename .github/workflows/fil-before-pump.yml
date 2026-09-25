@@ -1,6 +1,6 @@
 name: Fil Before Pump Scanner
 
-on:
+"on":
   push:
     branches:
       - main
@@ -18,10 +18,12 @@ on:
       rank_range:
         description: "Telegram rank range"
         required: false
+        type: string
         default: "all"
       filter:
         description: "Telegram filter"
         required: false
+        type: string
         default: "all"
   schedule:
     - cron: "*/30 * * * *"
