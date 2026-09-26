@@ -145,6 +145,7 @@ def update(plans: list[dict[str, Any]]) -> dict[str, Any]:
             "wallet_active": plan.get("wallet_active"),
             "wallet_proven": plan.get("wallet_proven"),
             "wallet_shared": plan.get("wallet_shared"),
+            "signal_wallets": plan.get("signal_wallets") or [],
             "wallet_exit_pressure": plan.get("wallet_exit_pressure"),
             "fil_confluence_score": plan.get("fil_confluence_score"),
             "leverage_cap": risk.get("leverage_cap", 3),
