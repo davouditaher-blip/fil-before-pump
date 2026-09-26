@@ -50,7 +50,9 @@ def _key(signature: dict[str, Any]) -> str:
 def build() -> dict[str, Any]:
     feedback = _load()
     groups = feedback.get("groups") or []
+    wallet_rows = feedback.get("wallets") or []
     memory = []
+    wallet_memory = []
 
     for row in groups:
         if not isinstance(row, dict):
@@ -84,7 +86,30 @@ def build() -> dict[str, Any]:
             "calibration_bonus": bonus,
         })
 
+    for row in wallet_rows:
+        if not isinstance(row, dict):
+            continue
+        n = int(_num(row.get("closed_trades")))
+        win_rate = row.get("win_rate_pct")
+        avg_pnl = row.get("avg_pnl_pct")
+        measurable = n >= MIN_SAMPLE and win_rate is not None
+        raw_bonus = 0.0
+        if measurable:
+            raw_bonus = (float(win_rate) - 50.0) / 10.0
+            if avg_pnl is not None:
+                raw_bonus += max(-1.0, min(1.0, float(avg_pnl) / 5.0))
+        bonus = round(max(MIN_BONUS, min(MAX_BONUS, raw_bonus)), 2) if measurable else 0.0
+        wallet_memory.append({
+            "wallet": str(row.get("wallet") or ""),
+            "closed_trades": n,
+            "win_rate_pct": win_rate,
+            "avg_pnl_pct": avg_pnl,
+            "sample_status": "MEASURABLE" if measurable else "INSUFFICIENT_SAMPLE",
+            "calibration_bonus": bonus,
+        })
+
     memory.sort(key=lambda x: (x["sample_status"] == "MEASURABLE", x["closed_trades"]), reverse=True)
+    wallet_memory.sort(key=lambda x: (x["sample_status"] == "MEASURABLE", x["closed_trades"]), reverse=True)
     result = {
         "mode": "PAPER_ONLY",
         "orders_enabled": False,
@@ -92,7 +117,8 @@ def build() -> dict[str, Any]:
         "minimum_sample": MIN_SAMPLE,
         "max_calibration_bonus": MAX_BONUS,
         "memory": memory,
-        "note": "Paper outcomes calibrate evidence signatures only after the minimum sample; live wallet evidence remains primary.",
+        "wallet_memory": wallet_memory,
+        "note": "Paper outcomes calibrate evidence signatures and sufficiently sampled individual signal-wallet histories; live wallet evidence remains primary.",
     }
     OUT.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
     return result
