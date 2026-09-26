@@ -125,6 +125,7 @@ def build_trade_plan(x: dict[str, Any]) -> dict[str, Any]:
         "wallet_active": active,
         "wallet_proven": proven,
         "wallet_shared": shared,
+        "signal_wallets": [dict(w) for w in (x.get("wallet_conviction_wallets") or []) if isinstance(w, dict)][:30],
         "wallet_exit_pressure": round(exit_pressure, 1),
         "fresh_volume": _fresh_volume(x),
         "volume_market_cap": round(vol_mcap, 6) if vol_mcap else None,
