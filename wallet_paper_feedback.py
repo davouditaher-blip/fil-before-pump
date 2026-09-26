@@ -37,19 +37,28 @@ def main():
     closed = closed if isinstance(closed, list) else []
 
     groups = defaultdict(list)
+    wallet_groups = defaultdict(list)
+
     for trade in closed:
         if not isinstance(trade, dict):
             continue
         symbol = str(trade.get("symbol") or "").upper()
         if not symbol:
             continue
-        # Wallet evidence is deliberately kept separate from price outcome.
         signature = (
             int(trade.get("wallet_proven") or 0) > 0,
             int(trade.get("wallet_shared") or 0) > 0,
             num(trade.get("wallet_conviction_score")) >= 18,
         )
         groups[signature].append(trade)
+
+        for wallet in trade.get("signal_wallets") or []:
+            if isinstance(wallet, dict):
+                identity = str(wallet.get("identity") or wallet.get("wallet") or "").strip().lower()
+            else:
+                identity = str(wallet or "").strip().lower()
+            if identity:
+                wallet_groups[identity].append(trade)
 
     rows = []
     for signature, trades in groups.items():
@@ -70,15 +79,34 @@ def main():
             "sample_status": "MEASURABLE" if n >= MIN_SAMPLE else "INSUFFICIENT_SAMPLE",
         })
 
+    wallet_rows = []
+    for identity, trades in wallet_groups.items():
+        pnls = [num(t.get("pnl_pct")) for t in trades]
+        wins = sum(p > 0 for p in pnls)
+        n = len(pnls)
+        wallet_rows.append({
+            "wallet": identity,
+            "closed_trades": n,
+            "wins": wins,
+            "losses": n - wins,
+            "win_rate_pct": round(wins / n * 100.0, 2) if n else None,
+            "avg_pnl_pct": round(sum(pnls) / n, 4) if n else None,
+            "sample_status": "MEASURABLE" if n >= MIN_SAMPLE else "INSUFFICIENT_SAMPLE",
+        })
+
     rows.sort(key=lambda x: x["closed_trades"], reverse=True)
+    wallet_rows.sort(key=lambda x: x["closed_trades"], reverse=True)
+
     result = {
         "mode": "PAPER_ONLY",
         "orders_enabled": False,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "closed_trade_count": len(closed),
         "groups": rows,
+        "wallets": wallet_rows,
         "minimum_group_sample": MIN_SAMPLE,
-        "note": "Feedback is descriptive; it does not automatically modify wallet scores.",
+        "minimum_wallet_sample": MIN_SAMPLE,
+        "note": "Wallet-level feedback is observational. It records which identified signal wallets were present at entry; it does not automatically alter wallet scores.",
     }
     OUT.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
     print(json.dumps(result, ensure_ascii=False, indent=2))
