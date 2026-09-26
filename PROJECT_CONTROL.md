@@ -1,19 +1,31 @@
 # Fil Before Pump — Autonomous Project Control
 
 ## Authority
-ChatGPT is the project architect/manager. The coding agent (AndCode/OpenCode) is the execution engineer. GitHub main is the shared source of truth.
+ChatGPT is the project architect/manager. AndCode/OpenCode is the execution engineer. GitHub main is the shared source of truth.
 
-## Operating loop
-1. Read AGENTS.md and this file before each new task.
-2. Inspect current main and existing implementation before changing anything.
-3. Implement the next coherent stage of the Wallet Intelligence + Pre-Pump engine.
-4. Run compile, smoke, integration, and relevant tests.
-5. Fix failures caused by the implementation.
-6. Preserve historical JSON/data and scheduled workflows.
-7. Never expose secrets.
-8. Never enable live trading.
-9. Commit only coherent, validated changes.
-10. After each completed stage, update the "Current task state" section in this file with: status, commit SHA, tests, blockers, and next recommended task.
+## Autonomous operating loop
+The execution engineer must continue through the next coherent implementation/validation stages without requiring the project owner to manually issue a "next step" after every completed stage.
+
+Before each stage:
+1. Read AGENTS.md and this file.
+2. Inspect current main, recent commits, relevant modules, tests, workflows, and data artifacts.
+3. Identify the highest-priority incomplete stage from the architecture below.
+4. Do not make speculative or destructive architectural changes.
+
+For each stage:
+1. Implement the smallest coherent change that advances the architecture.
+2. Run compile/syntax, smoke, integration, replay/historical, and other relevant tests.
+3. Fix failures caused by the change.
+4. Preserve historical JSON/data and scheduled workflows.
+5. Never expose, print, commit, or request secret/API-key values.
+6. Never enable live trading or live order execution.
+7. Prefer read-only wallet intelligence and paper/replay validation.
+8. Commit only coherent, validated changes with a clear message.
+9. Update this file's Current task state with status, commit SHA, tests, blockers, and next task.
+10. If the next task is safe, clearly defined, and within this architecture, continue to it autonomously rather than waiting for another user message.
+11. Stop and report only when blocked by missing credentials/access, an ambiguous product decision, a destructive/risky operation, or an explicit human approval requirement.
+
+The project owner should not need to manually rediscover repository state or relay routine "continue" instructions. Repository files, commit history, tests, and this control file are the shared handoff mechanism.
 
 ## Architecture priority
 Smart Money -> shared/common wallets -> wallet history -> exit/distribution -> whale -> volume.
@@ -27,10 +39,17 @@ Primary integration target:
 - No live order execution.
 
 ## Current task state
-Status: SYNC/BASELINE HANDOFF
-Instruction: First establish a clean, up-to-date local clone of origin/main. Then inspect the current implementation and identify the highest-priority incomplete integration stage. Do not make speculative architectural changes.
+Status: READY FOR AUTONOMOUS IMPLEMENTATION
+Current stage: Inspect the final decision/scoring gate and trace all wallet-intelligence outputs into it.
+Required sequence:
+1. Audit decision/scoring flow and identify which wallet signals are currently consumed, partially consumed, or disconnected.
+2. Map each relevant Wallet Intelligence output to the scoring/gating path without allowing technical indicators to reject a strong wallet candidate.
+3. Implement the smallest coherent integration.
+4. Run relevant tests and fix implementation-caused failures.
+5. Commit and update this state.
+6. Continue to the next safe validation/integration stage automatically.
 
-After sync, continue autonomously through implementation, validation, and coherent commits until the current integration stage is complete. If blocked by network/provider limitations, document the exact blocker and continue with non-blocked validation work.
+Current commit/state should always be refreshed by the execution engineer after each completed stage.
 
 ## Communication
-Do not require the project owner to rediscover repository state manually. Repository files, commit history, tests, and this control file are the shared handoff mechanism.
+Every completed stage must leave a concise repository-based handoff containing: status, commit SHA, changed files, tests/results, blockers, and next task.
