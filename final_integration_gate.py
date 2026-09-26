@@ -15,6 +15,7 @@ REQUIRED_CODE = [
     "wallet_clustering.py",
     "wallet_radar.py",
     "wallet_performance_memory.py",
+    "wallet_signal_profiles.py",
     "confluence_engine.py",
     "trade_readiness.py",
     "risk_engine.py",
@@ -33,6 +34,7 @@ REQUIRED_ARTIFACTS = [
     "paper_performance.json",
     "wallet_performance_memory.json",
     "wallet_paper_feedback.json",
+    "wallet_signal_profiles.json",
 ]
 
 def load(path: str):
@@ -97,6 +99,14 @@ def main() -> None:
         errors.append("wallet performance memory is not a list")
     if float(memory.get("max_calibration_bonus") or 0) > 5 or float(memory.get("max_calibration_bonus") or 0) < 0:
         errors.append("wallet performance memory calibration cap is invalid")
+
+    profiles = data.get("wallet_signal_profiles.json", {})
+    if profiles.get("mode") != "DESCRIPTIVE_READ_ONLY":
+        errors.append("wallet signal profiles mode is not DESCRIPTIVE_READ_ONLY")
+    if profiles.get("orders_enabled") is not False:
+        errors.append("wallet signal profiles orders_enabled is not false")
+    if not isinstance(profiles.get("profiles"), dict):
+        errors.append("wallet signal profiles is not a dict")
 
     feedback = data.get("wallet_paper_feedback.json", {})
     if feedback.get("mode") != "PAPER_ONLY":
