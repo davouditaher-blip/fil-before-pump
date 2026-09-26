@@ -22,6 +22,7 @@ REQUIRED_CODE = [
     "paper_trading.py",
     "paper_performance.py",
     "wallet_paper_feedback.py",
+    "wallet_intel_gate.py",
     "e2e_validate.py",
 ]
 
@@ -114,6 +115,38 @@ def main() -> None:
     if feedback.get("orders_enabled") is not False:
         errors.append("wallet feedback orders_enabled is not false")
 
+    # Long-term wallet intelligence must actually reach the decision gate.
+    # Plans produced before this wiring existed carry no wallet-intelligence
+    # fields, so the check engages as soon as any plan exposes them.
+    has_wallet_intel = any(
+        isinstance(p, dict) and "wallet_profile_score" in p for p in plans
+    )
+    if has_wallet_intel:
+        for plan in plans:
+            if not isinstance(plan, dict):
+                continue
+            symbol = plan.get("symbol")
+            for field in ("wallet_profile_score", "wallet_calibration_bonus", "wallet_calibration_status", "wallet_longterm_proven", "wallet_conviction_pre_calibration"):
+                if field not in plan:
+                    errors.append(f"missing wallet intelligence field {field} for {symbol}")
+            try:
+                profile_score = float(plan.get("wallet_profile_score") or 0)
+                calibration = float(plan.get("wallet_calibration_bonus") or 0)
+            except (TypeError, ValueError):
+                errors.append(f"invalid wallet intelligence values for {symbol}")
+                continue
+            if profile_score < 0 or profile_score > 12:
+                errors.append(f"wallet profile score out of bounds for {symbol}")
+            if calibration < -5 or calibration > 5:
+                errors.append(f"wallet calibration bonus out of bounds for {symbol}")
+            status = str(plan.get("wallet_calibration_status") or "UNAVAILABLE")
+            if status not in {"MEASURABLE", "INSUFFICIENT_SAMPLE", "NO_HISTORY", "UNAVAILABLE"}:
+                errors.append(f"invalid wallet calibration status for {symbol}: {status}")
+            if status != "MEASURABLE" and calibration != 0:
+                errors.append(f"wallet calibration applied without a measurable sample for {symbol}")
+            if int(plan.get("wallet_longterm_proven") or 0) < 0:
+                errors.append(f"invalid long-term proven wallet count for {symbol}")
+
     if errors:
         print("FINAL INTEGRATION GATE: FAIL")
         for error in errors:
@@ -125,6 +158,7 @@ def main() -> None:
     print(f"validated artifacts: {len(data)}")
     print(f"readiness plans: {len(plans)}")
     print(f"risk-approved paper plans: {ready_count}")
+    print(f"plans with long-term wallet evidence: {sum(1 for p in plans if isinstance(p, dict) and int(p.get('wallet_longterm_proven') or 0) > 0)}")
     print("live exchange execution: DISABLED")
 
 if __name__ == "__main__":

@@ -16,6 +16,7 @@ REQUIRED = {
     "trade_readiness.json": dict,
     "paper_trades.json": dict,
     "wallet_performance_memory.json": dict,
+    "wallet_signal_profiles.json": dict,
 }
 
 OPTIONAL = {
@@ -106,6 +107,9 @@ def main() -> None:
         if not isinstance(plans, list):
             errors.append("trade_readiness.json: plans must be a list")
         else:
+            wallet_intel_present = any(
+                isinstance(p, dict) and "wallet_profile_score" in p for p in plans
+            )
             for plan in plans:
                 if not isinstance(plan, dict):
                     errors.append("trade_readiness.json: invalid plan")
@@ -118,6 +122,39 @@ def main() -> None:
                 if state == "PAPER_READY" and float(plan.get("price_usd") or 0) <= 0:
                     errors.append("trade_readiness.json: PAPER_READY plan has invalid price")
                     break
+                # Long-term wallet intelligence must stay bounded on every plan.
+                # Plans produced before this wiring existed carry no
+                # wallet-intelligence fields; the check engages once any plan
+                # exposes them.
+                if wallet_intel_present:
+                    for field in ("wallet_profile_score", "wallet_calibration_bonus", "wallet_calibration_status", "wallet_conviction_pre_calibration"):
+                        if field not in plan:
+                            errors.append(f"trade_readiness.json: missing {field} for {plan.get('symbol')}")
+                            break
+                    profile_score = float(plan.get("wallet_profile_score") or 0)
+                    calibration = float(plan.get("wallet_calibration_bonus") or 0)
+                    if not 0 <= profile_score <= 12:
+                        errors.append(f"trade_readiness.json: profile score out of bounds for {plan.get('symbol')}")
+                        break
+                    if not -5 <= calibration <= 5:
+                        errors.append(f"trade_readiness.json: calibration bonus out of bounds for {plan.get('symbol')}")
+                        break
+                    status = str(plan.get("wallet_calibration_status") or "UNAVAILABLE")
+                    if status not in {"MEASURABLE", "INSUFFICIENT_SAMPLE", "NO_HISTORY", "UNAVAILABLE"}:
+                        errors.append(f"trade_readiness.json: invalid calibration status for {plan.get('symbol')}")
+                        break
+                    if status != "MEASURABLE" and calibration != 0:
+                        errors.append(f"trade_readiness.json: calibration without measurable sample for {plan.get('symbol')}")
+                        break
+
+    profiles_artifact = data_by_name.get("wallet_signal_profiles.json")
+    if isinstance(profiles_artifact, dict):
+        if profiles_artifact.get("mode") != "DESCRIPTIVE_READ_ONLY":
+            errors.append("wallet_signal_profiles.json: mode must be DESCRIPTIVE_READ_ONLY")
+        if profiles_artifact.get("orders_enabled") is not False:
+            errors.append("wallet_signal_profiles.json: orders_enabled must be false")
+        if not isinstance(profiles_artifact.get("profiles"), dict):
+            errors.append("wallet_signal_profiles.json: profiles must be a dict")
 
     memory = data_by_name.get("wallet_performance_memory.json")
     if isinstance(memory, dict):

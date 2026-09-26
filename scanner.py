@@ -10,6 +10,18 @@ from confluence_engine import build_confluence
 from trade_readiness import build as build_trade_readiness
 from risk_engine import evaluate as evaluate_risk, filter_plans as filter_risk_plans
 from paper_trading import update as update_paper_trading
+from wallet_intel_gate import (
+    DISTRIBUTION_STATES,
+    build_profile_index,
+    calibration_signature,
+    load_performance_memory,
+    load_signal_profiles,
+    lookup_calibration,
+    meaningful_wallet_intel,
+    profile_component,
+    rows_for_symbol,
+    wallet_identity,
+)
 
 CMC_API_KEY = os.environ.get("CMC_API_KEY", "")
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
@@ -108,9 +120,7 @@ def load_wallet_radar():
 
 def _wallet_identity(wallet, chain=None):
     """Return a stable wallet identity while preserving chain when known."""
-    wallet = str(wallet or "").strip().lower()
-    chain = str(chain or "").strip().lower()
-    return f"{chain}:{wallet}" if wallet and chain else wallet
+    return wallet_identity(wallet, chain)
 
 
 def apply_wallet_radar_signals(result, radar):
@@ -233,8 +243,18 @@ def _merge_wallet_rows(rows):
     return list(merged.values())
 
 
-def wallet_conviction_signals(result):
-    """Create one capped wallet conviction score from unique wallet evidence."""
+HIGH_CONVICTION_THRESHOLD = 18
+
+
+def wallet_conviction_signals(result, profile_rows=None, memory=None):
+    """Create one capped wallet conviction score from unique wallet evidence.
+
+    ``profile_rows`` carries long-term signal-wallet evidence from
+    ``wallet_signal_profiles.json`` and ``memory`` carries the bounded paper
+    calibration memory. Both are optional: a missing or empty artifact simply
+    contributes nothing. All sources are merged into one deduplicated wallet
+    pool, so a wallet is never rewarded twice.
+    """
     rows = []
 
     def add(items, source, active_default=False, proven_default=False, shared_default=False):
@@ -261,6 +281,9 @@ def wallet_conviction_signals(result):
         add([dict(item, active=True, proven=bool(item.get("proven_pre_pump_wallet")), shared=True)], "cluster")
     for item in (result.get("quality_wallets") or []):
         add([dict(item, active=True, proven=bool(item.get("proven_pre_pump_wallet")))], "quality")
+    for item in (profile_rows or []):
+        if isinstance(item, dict):
+            add([item], "profile")
     for item in ((result.get("gmgn") or {}).get("wallets") or []):
         if isinstance(item, dict):
             add([dict(item, active=True, proven=bool(item.get("proven_pre_pump_wallet") or item.get("proven")))], "gmgn")
@@ -290,7 +313,39 @@ def wallet_conviction_signals(result):
     bonus += min(5.0, proof_rate_for_score / 20.0)
     bonus -= min(5.0, exit_pressure / 20.0)
 
+    # Long-term wallet history: bounded contribution from the descriptive
+    # signal-wallet profile layer. These wallets are already deduplicated into
+    # `unique` above, so this can only add depth, never a second reward.
+    profile_score = profile_component(profile_rows)
+    longterm_proven = [
+        row for row in (profile_rows or [])
+        if isinstance(row, dict)
+        and row.get("long_term_proven")
+        and str(row.get("profile_state") or "") not in DISTRIBUTION_STATES
+    ]
+    bonus += profile_score
+
+    # Paper calibration is advisory and bounded. The signature is built from the
+    # pre-calibration conviction score so the score never calibrates itself.
+    base_conviction = round(max(0.0, min(30.0, bonus)), 1)
+    calibration_bonus, calibration_status = lookup_calibration(
+        memory,
+        calibration_signature(
+            bool(proven),
+            bool(shared),
+            base_conviction >= HIGH_CONVICTION_THRESHOLD,
+        ),
+    )
+    bonus += calibration_bonus
+
     result["wallet_conviction_score"] = round(max(0.0, min(30.0, bonus)), 1)
+    result["wallet_conviction_score_pre_calibration"] = base_conviction
+    result["wallet_profile_score"] = profile_score
+    result["wallet_profile_wallet_count"] = len(profile_rows or [])
+    result["wallet_longterm_proven_count"] = len(longterm_proven)
+    result["wallet_profile_wallets"] = [dict(row) for row in (profile_rows or [])][:25]
+    result["wallet_calibration_bonus"] = calibration_bonus
+    result["wallet_calibration_status"] = calibration_status
     result["wallet_unique_active_count"] = len(active)
     result["wallet_unique_proven_count"] = len(proven)
     result["wallet_unique_shared_count"] = len(shared)
@@ -315,6 +370,12 @@ def wallet_conviction_signals(result):
         reasons.append(f"ولت مشترک یکتا: {len(shared)}")
     if exit_pressure > 0:
         reasons.append(f"فشار خروج ولت: {exit_pressure:.1f}%")
+    if longterm_proven:
+        reasons.append(f"سابقه بلندمدت ولت: {len(longterm_proven)} معتبر")
+    if profile_score:
+        reasons.append(f"امتیاز سابقه بلندمدت: {profile_score:.1f}/12")
+    if calibration_bonus:
+        reasons.append(f"کالیبراسیون کاغذی: {calibration_bonus:+.1f}")
 
 
 
@@ -1695,6 +1756,7 @@ def format_coin(x):
         f"🔗 ولت مشترک فعال: {x.get('cluster_holding_wallet_count', 0)} | ولت معتبرِ فعال: {x.get('cluster_proven_holding_wallet_count', 0)}\n"
         f"📡 رادار >=$5K: فعال {x.get('radar_active_wallet_count', 0)} | معتبر {x.get('radar_proven_holding_wallet_count', 0)} | مشترک {x.get('radar_shared_holding_wallet_count', 0)} | خروج {x.get('radar_exited_wallet_count', 0)}\n"
         f"🧠 Wallet Conviction: {x.get('wallet_conviction_score', 0):.1f}/30 | یکتا فعال {x.get('wallet_unique_active_count', 0)} | معتبر {x.get('wallet_unique_proven_count', 0)} | مشترک {x.get('wallet_unique_shared_count', 0)} | فشار خروج {x.get('wallet_exit_pressure', 0):.1f}%\n"
+        f"📜 سابقه بلندمدت ولت: معتبر {x.get('wallet_longterm_proven_count', 0)} | امتیاز {x.get('wallet_profile_score', 0):.1f}/12 | کالیبراسیون کاغذی {x.get('wallet_calibration_bonus', 0):+.1f} ({x.get('wallet_calibration_status', 'UNAVAILABLE')})\n"
         f"🎯 Fil Confluence: {x.get('fil_confluence_score', 0):.1f}/100 | پروژه {x.get('project_intelligence_score', 0):.1f} | حجم {x.get('volume_intelligence_score', 0):.1f} | بازار {x.get('market_context_score', 0):.1f} | ایمنی عملیاتی {x.get('safety_context_score', 0):.1f}\n"
         f"{format_gmgn(x)}\n"
 
@@ -2033,8 +2095,17 @@ def main():
         apply_wallet_cluster_signals(result, wallet_clusters)
 
     # Unified wallet conviction: deduplicate the same wallet across GMGN, Quality, Radar and Clustering.
+    # Long-term signal-wallet profiles and the bounded paper calibration memory
+    # join the same deduplicated pool, so wallet history now reaches the gate.
+    signal_profiles = load_signal_profiles()
+    profile_index = build_profile_index(signal_profiles)
+    performance_memory = load_performance_memory()
     for result in results:
-        wallet_conviction_signals(result)
+        profile_rows = rows_for_symbol(
+            result.get("symbol"),
+            profile_index.get(str(result.get("symbol") or "").upper()),
+        )
+        wallet_conviction_signals(result, profile_rows, performance_memory)
 
     # Final wallet-first confluence: no duplicate wallet scoring and no technical gate.
     market_map = {str(c.get("symbol") or "").upper(): c for c in coins}
@@ -2072,6 +2143,12 @@ def main():
         if shared_wallets >= 1:
             return True
         if int(g.get("proven_wallet_count", 0) or 0) > 0 and float(result.get("ch24") or 0) <= 8 and float(result.get("ch7") or 0) <= 20:
+            return True
+
+        # Long-term wallet history is priority 3 of the signal priority, so a
+        # proven long-term record protects a candidate here exactly like a
+        # proven GMGN wallet does.
+        if meaningful_wallet_intel(result):
             return True
 
         w = result.get("wallet") or {}
@@ -2113,6 +2190,7 @@ def main():
         float(x.get("fil_confluence_score", 0) or 0),
         float(x.get("wallet_conviction_score", 0) or 0),
         int(x.get("wallet_unique_proven_count", 0) or 0),
+        int(x.get("wallet_longterm_proven_count", 0) or 0),
         int(x.get("wallet_unique_shared_count", 0) or 0),
         int(x.get("wallet_unique_active_count", 0) or 0),
         int(x.get("radar_proven_holding_wallet_count", 0) or 0),
@@ -2232,6 +2310,7 @@ def main():
             int((x.get("gmgn") or {}).get("proven_wallet_count", 0) or 0) > 0
             or int(x.get("radar_proven_holding_wallet_count", 0) or 0) > 0
             or int(x.get("radar_shared_holding_wallet_count", 0) or 0) > 0
+            or int(x.get("wallet_longterm_proven_count", 0) or 0) > 0
         )
     ]
     follow_lines = ["🎯 FOLLOW THE WALLET — ردپای معتبر قبل از پامپ"]
@@ -2251,6 +2330,7 @@ def main():
                 f"📡 Radar فعال: {x.get('radar_active_wallet_count', 0)} | "
                 f"معتبر: {x.get('radar_proven_holding_wallet_count', 0)} | "
                 f"مشترک: {x.get('radar_shared_holding_wallet_count', 0)} | "
+                f"📜 سابقه بلندمدت: {x.get('wallet_longterm_proven_count', 0)} | "
                 f"سابقه موفق: {g.get('reputation_wins', 0)}/{g.get('reputation_attempts', 0)} | "
                 f"ولت‌ها: {', '.join(wallets) if wallets else 'N/A'}"
             )

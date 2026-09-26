@@ -5,6 +5,9 @@ before they can enter the simulator and provides an audit-friendly decision.
 """
 from __future__ import annotations
 
+# Most adverse calibration the bounded paper memory is allowed to publish.
+MAX_ADVERSE_CALIBRATION = -5.0
+
 def evaluate(plan: dict) -> dict:
     risk = plan.get("risk") or {}
     blockers = []
@@ -21,12 +24,30 @@ def evaluate(plan: dict) -> dict:
         blockers.append("leverage_cap_out_of_bounds")
     if float(plan.get("wallet_exit_pressure") or 0) >= 60:
         blockers.append("high_exit_pressure")
+
+    # Long-term wallet history stays advisory in the risk layer, but a fully
+    # measurable and maximally adverse paper calibration is a real rejection
+    # reason rather than a note.
+    calibration_status = str(plan.get("wallet_calibration_status") or "UNAVAILABLE")
+    try:
+        calibration_bonus = float(plan.get("wallet_calibration_bonus") or 0)
+    except (TypeError, ValueError):
+        calibration_bonus = 0.0
+    if calibration_status == "MEASURABLE" and calibration_bonus <= MAX_ADVERSE_CALIBRATION:
+        blockers.append("adverse_paper_calibration")
+
     return {
         "approved": not blockers,
         "blockers": blockers,
         "risk_pct": account_risk,
         "leverage_cap": leverage,
         "mode": "PAPER_ONLY",
+        "wallet_intel": {
+            "long_term_proven": int(plan.get("wallet_longterm_proven") or 0),
+            "profile_score": float(plan.get("wallet_profile_score") or 0),
+            "calibration_bonus": calibration_bonus,
+            "calibration_status": calibration_status,
+        },
     }
 
 def filter_plans(plans: list[dict]) -> list[dict]:

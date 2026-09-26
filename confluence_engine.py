@@ -4,6 +4,11 @@ This module combines independent evidence already collected by scanner.py.
 Wallet evidence is represented only by Wallet Conviction to avoid double
 counting. Technical indicators are context-only and never a hard gate.
 Read-only: this module never places orders.
+
+The wallet bucket is a single capped Wallet Conviction value. Long-term
+signal-wallet profile evidence and the bounded paper calibration memory are
+already folded into that value by scanner.wallet_conviction_signals, so they
+are reported here for auditability and are deliberately not counted twice.
 """
 
 def _num(v, default=0.0):
@@ -121,6 +126,16 @@ def build_confluence(result, market=None):
             "wallet": round(wallet,1), "project": round(project,1),
             "volume": round(volume,1), "market": round(market_score,1),
             "safety": round(safety,1),
+        },
+        "fil_confluence_wallet_intel": {
+            "conviction_score": round(wallet, 1),
+            "conviction_pre_calibration": _num(result.get("wallet_conviction_score_pre_calibration")),
+            "long_term_profile_score": _num(result.get("wallet_profile_score")),
+            "long_term_proven_wallets": int(result.get("wallet_longterm_proven_count") or 0),
+            "profile_wallets": int(result.get("wallet_profile_wallet_count") or 0),
+            "calibration_bonus": _num(result.get("wallet_calibration_bonus")),
+            "calibration_status": str(result.get("wallet_calibration_status") or "UNAVAILABLE"),
+            "note": "Profile and calibration evidence is already included in conviction_score.",
         },
         "fil_confluence_reasons": [f"Wallet Conviction {wallet:.1f}/30"] + project_reasons[:3] + volume_reasons[:3] + market_reasons[:1] + safety_reasons[:2],
     })

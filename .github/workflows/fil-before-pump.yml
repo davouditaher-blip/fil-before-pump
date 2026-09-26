@@ -78,7 +78,7 @@ jobs:
         run: |
           python -m py_compile scanner.py gmgn_layer.py wallet_quality_engine.py
           python -m py_compile wallet_clustering.py wallet_radar.py wallet_performance_memory.py wallet_signal_profiles.py
-          python -m py_compile trade_readiness.py risk_engine.py paper_trading.py
+          python -m py_compile wallet_intel_gate.py trade_readiness.py risk_engine.py paper_trading.py
           python -m py_compile paper_performance.py wallet_paper_feedback.py historical_replay.py test_historical_replay.py
           python -m py_compile e2e_validate.py final_integration_gate.py
 

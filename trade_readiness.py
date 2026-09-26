@@ -43,6 +43,10 @@ def build_trade_plan(x: dict[str, Any]) -> dict[str, Any]:
     active = _int(x.get("wallet_unique_active_count"))
     proven = _int(x.get("wallet_unique_proven_count"))
     shared = _int(x.get("wallet_unique_shared_count"))
+    longterm = _int(x.get("wallet_longterm_proven_count"))
+    profile_score = _num(x.get("wallet_profile_score"))
+    calibration_bonus = _num(x.get("wallet_calibration_bonus"))
+    calibration_status = str(x.get("wallet_calibration_status") or "UNAVAILABLE")
     exit_pressure = _num(x.get("wallet_exit_pressure"))
     confluence = _num(x.get("fil_confluence_score"))
     ch24 = _num(x.get("ch24"))
@@ -64,6 +68,19 @@ def build_trade_plan(x: dict[str, Any]) -> dict[str, Any]:
         reasons.append(f"{proven} proven pre-pump wallet(s)")
     if shared >= 1:
         reasons.append(f"{shared} shared wallet(s)")
+
+    # Long-term wallet history is a first-class part of the wallet gate, so it
+    # is reported on every plan. It reaches the state decision through
+    # wallet_score, which already includes the bounded profile contribution;
+    # it never relaxes a blocker on its own.
+    if longterm >= 1:
+        reasons.append(f"{longterm} long-term proven signal wallet(s)")
+    if profile_score > 0:
+        reasons.append(f"long-term profile score {profile_score:.1f}/12")
+    if calibration_bonus:
+        reasons.append(f"paper calibration {calibration_bonus:+.1f} ({calibration_status})")
+    elif calibration_status not in ("UNAVAILABLE", "NO_HISTORY"):
+        reasons.append(f"paper calibration pending ({calibration_status})")
 
     if _fresh_volume(x):
         reasons.append("fresh 1d/2d futures volume")
@@ -122,9 +139,16 @@ def build_trade_plan(x: dict[str, Any]) -> dict[str, Any]:
         "price_usd": price,
         "fil_confluence_score": round(confluence, 1),
         "wallet_conviction_score": round(wallet_score, 1),
+        "wallet_conviction_pre_calibration": round(
+            _num(x.get("wallet_conviction_score_pre_calibration"), wallet_score), 1
+        ),
         "wallet_active": active,
         "wallet_proven": proven,
         "wallet_shared": shared,
+        "wallet_longterm_proven": longterm,
+        "wallet_profile_score": round(profile_score, 2),
+        "wallet_calibration_bonus": round(calibration_bonus, 2),
+        "wallet_calibration_status": calibration_status,
         "signal_wallets": [dict(w) for w in (x.get("wallet_conviction_wallets") or []) if isinstance(w, dict)][:30],
         "wallet_exit_pressure": round(exit_pressure, 1),
         "fresh_volume": _fresh_volume(x),
@@ -145,6 +169,7 @@ def build(candidates: list[dict[str, Any]]) -> dict[str, Any]:
             p["fil_confluence_score"],
             p["wallet_conviction_score"],
             p["wallet_proven"],
+            p["wallet_longterm_proven"],
             p["wallet_shared"],
         ),
         reverse=True,
