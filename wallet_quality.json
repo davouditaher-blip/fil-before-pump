@@ -1356,15 +1356,15 @@
           "windows": {
             "12": {
               "mae_pct": -0.2,
-              "mfe_pct": -0.2
+              "mfe_pct": -0.11
             },
             "24": {
               "mae_pct": -0.2,
-              "mfe_pct": -0.2
+              "mfe_pct": -0.11
             },
             "6": {
               "mae_pct": -0.2,
-              "mfe_pct": -0.2
+              "mfe_pct": -0.11
             }
           }
         }
@@ -2017,7 +2017,7 @@
             },
             "24": {
               "mae_pct": -2.95,
-              "mfe_pct": -0.35
+              "mfe_pct": -0.31
             },
             "6": {
               "mae_pct": -2.95,
@@ -9941,21 +9941,19 @@
     "wallet": "0x67bdbd574ca9c437a783090dcd86b7212ca9b2fc"
   },
   "0x70d94aa3ad899b5456e8b1199049f98e2ab36a55": {
-    "active_assets": [
-      "SEND"
-    ],
+    "active_assets": [],
     "assets": [
       "CONDO",
       "SEND"
     ],
-    "forward_14d_attempts": 1,
+    "forward_14d_attempts": 2,
     "forward_14d_hit_rate": 100.0,
-    "forward_14d_hits": 1,
+    "forward_14d_hits": 2,
     "pre_pump_24h_10pct_rate": 100.0,
     "pre_pump_first_entry_rate": 100.0,
     "pre_pump_proof": {
-      "attempts": 1,
-      "first_entry_attempts": 1,
+      "attempts": 2,
+      "first_entry_attempts": 2,
       "first_entry_hit_rates": {
         "12": 100.0,
         "24": 100.0,
@@ -9965,17 +9963,17 @@
       "hit_rates": {
         "12": {
           "10": 100.0,
-          "20": 100.0,
+          "20": 50.0,
           "30": 0.0
         },
         "24": {
           "10": 100.0,
-          "20": 100.0,
+          "20": 50.0,
           "30": 0.0
         },
         "6": {
           "10": 100.0,
-          "20": 100.0,
+          "20": 50.0,
           "30": 0.0
         }
       },
@@ -9999,21 +9997,42 @@
               "mfe_pct": 23.96
             }
           }
+        },
+        {
+          "first_qualified_entry": true,
+          "price": 0.0054130302621827504,
+          "symbol": "SEND",
+          "timestamp": 1790440499,
+          "windows": {
+            "12": {
+              "mae_pct": 16.2,
+              "mfe_pct": 19.38
+            },
+            "24": {
+              "mae_pct": 16.2,
+              "mfe_pct": 19.38
+            },
+            "6": {
+              "mae_pct": 16.2,
+              "mfe_pct": 19.38
+            }
+          }
         }
       ]
     },
     "proven_pre_pump_wallet": false,
     "qualified_buy_usd": 18438.56,
     "qualified_buys": 2,
-    "qualified_sell_usd": 6178.85,
-    "qualified_sells": 1,
+    "qualified_sell_usd": 37249.12,
+    "qualified_sells": 5,
     "quality_score": 70.8,
     "quality_tier": "B",
     "realized_sell_observations": 0,
     "realized_win_rate": null,
     "repeat_asset_count": 2,
     "sell_assets": [
-      "CONDO"
+      "CONDO",
+      "SEND"
     ],
     "wallet": "0x70d94aa3ad899b5456e8b1199049f98e2ab36a55"
   },
@@ -10463,11 +10482,11 @@
           "timestamp": 1790419755,
           "windows": {
             "12": {
-              "mae_pct": 0.89,
+              "mae_pct": 0.88,
               "mfe_pct": 1.8
             },
             "24": {
-              "mae_pct": 0.89,
+              "mae_pct": 0.88,
               "mfe_pct": 1.8
             },
             "6": {
@@ -10725,14 +10744,14 @@
       "XAUT",
       "ZAMA"
     ],
-    "forward_14d_attempts": 90,
-    "forward_14d_hit_rate": 11.1,
+    "forward_14d_attempts": 92,
+    "forward_14d_hit_rate": 10.9,
     "forward_14d_hits": 10,
     "pre_pump_24h_10pct_rate": 0.0,
     "pre_pump_first_entry_rate": 0.0,
     "pre_pump_proof": {
-      "attempts": 88,
-      "first_entry_attempts": 10,
+      "attempts": 90,
+      "first_entry_attempts": 11,
       "first_entry_hit_rates": {
         "12": 0.0,
         "24": 0.0,
@@ -10998,7 +11017,7 @@
           }
         },
         {
-          "first_qualified_entry": false,
+          "first_qualified_entry": true,
           "price": 149.15055988349172,
           "symbol": "AAVE",
           "timestamp": 1790160995,
@@ -12484,14 +12503,54 @@
               "mfe_pct": 0.0
             }
           }
+        },
+        {
+          "first_qualified_entry": false,
+          "price": 155.0506175230567,
+          "symbol": "AAVE",
+          "timestamp": 1790444956,
+          "windows": {
+            "12": {
+              "mae_pct": -0.3,
+              "mfe_pct": 0.05
+            },
+            "24": {
+              "mae_pct": -0.3,
+              "mfe_pct": 0.05
+            },
+            "6": {
+              "mae_pct": -0.3,
+              "mfe_pct": 0.05
+            }
+          }
+        },
+        {
+          "first_qualified_entry": false,
+          "price": 155.13581326781235,
+          "symbol": "AAVE",
+          "timestamp": 1790445937,
+          "windows": {
+            "12": {
+              "mae_pct": -0.35,
+              "mfe_pct": -0.35
+            },
+            "24": {
+              "mae_pct": -0.35,
+              "mfe_pct": -0.35
+            },
+            "6": {
+              "mae_pct": -0.35,
+              "mfe_pct": -0.35
+            }
+          }
         }
       ]
     },
     "proven_pre_pump_wallet": false,
-    "qualified_buy_usd": 2343781.71,
-    "qualified_buys": 101,
-    "qualified_sell_usd": 1533965.79,
-    "qualified_sells": 94,
+    "qualified_buy_usd": 2333094.6,
+    "qualified_buys": 100,
+    "qualified_sell_usd": 1534582.3,
+    "qualified_sells": 93,
     "quality_score": 63.3,
     "quality_tier": "C",
     "realized_sell_observations": 0,
@@ -12500,7 +12559,6 @@
     "sell_assets": [
       "AAVE",
       "ENA",
-      "FWWBTC",
       "LINK",
       "LIT",
       "RPL",
@@ -16580,13 +16638,13 @@
       "UNI",
       "WSTETH"
     ],
-    "forward_14d_attempts": 23,
-    "forward_14d_hit_rate": 8.7,
+    "forward_14d_attempts": 24,
+    "forward_14d_hit_rate": 8.3,
     "forward_14d_hits": 2,
     "pre_pump_24h_10pct_rate": 0.0,
     "pre_pump_first_entry_rate": 0.0,
     "pre_pump_proof": {
-      "attempts": 22,
+      "attempts": 23,
       "first_entry_attempts": 4,
       "first_entry_hit_rates": {
         "12": 0.0,
@@ -17035,15 +17093,35 @@
               "mfe_pct": 0.0
             }
           }
+        },
+        {
+          "first_qualified_entry": false,
+          "price": 0.07782399530691103,
+          "symbol": "SKY",
+          "timestamp": 1790445827,
+          "windows": {
+            "12": {
+              "mae_pct": 0.0,
+              "mfe_pct": 0.0
+            },
+            "24": {
+              "mae_pct": 0.0,
+              "mfe_pct": 0.0
+            },
+            "6": {
+              "mae_pct": 0.0,
+              "mfe_pct": 0.0
+            }
+          }
         }
       ]
     },
     "proven_pre_pump_wallet": false,
-    "qualified_buy_usd": 357318.85,
-    "qualified_buys": 31,
+    "qualified_buy_usd": 364841.24,
+    "qualified_buys": 32,
     "qualified_sell_usd": 367604.18,
     "qualified_sells": 24,
-    "quality_score": 62.6,
+    "quality_score": 62.5,
     "quality_tier": "C",
     "realized_sell_observations": 0,
     "realized_win_rate": null,
@@ -17065,7 +17143,6 @@
       "FWWBTC",
       "LINK",
       "LIT",
-      "SKY",
       "WSTETH"
     ],
     "assets": [
@@ -17608,8 +17685,8 @@
     "proven_pre_pump_wallet": false,
     "qualified_buy_usd": 535927.6,
     "qualified_buys": 28,
-    "qualified_sell_usd": 364472.38,
-    "qualified_sells": 21,
+    "qualified_sell_usd": 375309.42,
+    "qualified_sells": 22,
     "quality_score": 68.0,
     "quality_tier": "B",
     "realized_sell_observations": 0,
@@ -18735,8 +18812,8 @@
     "proven_pre_pump_wallet": false,
     "qualified_buy_usd": 541027.17,
     "qualified_buys": 33,
-    "qualified_sell_usd": 318992.6,
-    "qualified_sells": 18,
+    "qualified_sell_usd": 301182.36,
+    "qualified_sells": 16,
     "quality_score": 65.7,
     "quality_tier": "B",
     "realized_sell_observations": 0,
@@ -18745,7 +18822,6 @@
     "sell_assets": [
       "AAVE",
       "CBBTC",
-      "LINK",
       "ONDO",
       "UNI",
       "WSTETH"
@@ -21260,8 +21336,8 @@
       ]
     },
     "proven_pre_pump_wallet": false,
-    "qualified_buy_usd": 746888.77,
-    "qualified_buys": 21,
+    "qualified_buy_usd": 710815.99,
+    "qualified_buys": 20,
     "qualified_sell_usd": 384241.21,
     "qualified_sells": 22,
     "quality_score": 64.3,
@@ -22404,7 +22480,7 @@
     "pre_pump_first_entry_rate": 0.0,
     "pre_pump_proof": {
       "attempts": 37,
-      "first_entry_attempts": 6,
+      "first_entry_attempts": 7,
       "first_entry_hit_rates": {
         "12": 0.0,
         "24": 0.0,
@@ -22810,7 +22886,7 @@
           }
         },
         {
-          "first_qualified_entry": false,
+          "first_qualified_entry": true,
           "price": 84404.29958789781,
           "symbol": "FWWBTC",
           "timestamp": 1790260091,
@@ -23120,8 +23196,8 @@
       ]
     },
     "proven_pre_pump_wallet": false,
-    "qualified_buy_usd": 720650.37,
-    "qualified_buys": 44,
+    "qualified_buy_usd": 713941.54,
+    "qualified_buys": 43,
     "qualified_sell_usd": 326377.37,
     "qualified_sells": 23,
     "quality_score": 64.6,
@@ -23162,13 +23238,13 @@
       "UNI",
       "WSTETH"
     ],
-    "forward_14d_attempts": 27,
-    "forward_14d_hit_rate": 18.5,
+    "forward_14d_attempts": 28,
+    "forward_14d_hit_rate": 17.9,
     "forward_14d_hits": 5,
-    "pre_pump_24h_10pct_rate": 18.5,
+    "pre_pump_24h_10pct_rate": 17.9,
     "pre_pump_first_entry_rate": 12.5,
     "pre_pump_proof": {
-      "attempts": 27,
+      "attempts": 28,
       "first_entry_attempts": 8,
       "first_entry_hit_rates": {
         "12": 0.0,
@@ -23183,7 +23259,7 @@
           "30": 0.0
         },
         "24": {
-          "10": 18.5,
+          "10": 17.9,
           "20": 0.0,
           "30": 0.0
         },
@@ -23645,7 +23721,7 @@
               "mfe_pct": 3.31
             },
             "24": {
-              "mae_pct": 2.54,
+              "mae_pct": 1.05,
               "mfe_pct": 3.31
             },
             "6": {
@@ -23681,16 +23757,32 @@
           "timestamp": 1790420435,
           "windows": {
             "12": {
-              "mae_pct": 0.0,
+              "mae_pct": -2.19,
               "mfe_pct": 0.0
             },
             "24": {
-              "mae_pct": 0.0,
+              "mae_pct": -2.19,
               "mfe_pct": 0.0
             },
             "6": {
               "mae_pct": 0.0,
               "mfe_pct": 0.0
+            }
+          }
+        },
+        {
+          "first_qualified_entry": false,
+          "price": 0.07907218622752411,
+          "symbol": "SKY",
+          "timestamp": 1790421733,
+          "windows": {
+            "12": {
+              "mae_pct": -2.19,
+              "mfe_pct": -2.19
+            },
+            "24": {
+              "mae_pct": -2.19,
+              "mfe_pct": -2.19
             }
           }
         },
@@ -23721,7 +23813,7 @@
     "qualified_buys": 31,
     "qualified_sell_usd": 263631.51,
     "qualified_sells": 23,
-    "quality_score": 67.7,
+    "quality_score": 67.5,
     "quality_tier": "B",
     "realized_sell_observations": 0,
     "realized_win_rate": null,
@@ -25474,13 +25566,13 @@
       "UNI",
       "XAUT"
     ],
-    "forward_14d_attempts": 16,
-    "forward_14d_hit_rate": 43.8,
+    "forward_14d_attempts": 17,
+    "forward_14d_hit_rate": 41.2,
     "forward_14d_hits": 7,
-    "pre_pump_24h_10pct_rate": 25.0,
+    "pre_pump_24h_10pct_rate": 23.5,
     "pre_pump_first_entry_rate": 0.0,
     "pre_pump_proof": {
-      "attempts": 16,
+      "attempts": 17,
       "first_entry_attempts": 6,
       "first_entry_hit_rates": {
         "12": 0.0,
@@ -25495,7 +25587,7 @@
           "30": 0.0
         },
         "24": {
-          "10": 25.0,
+          "10": 23.5,
           "20": 0.0,
           "30": 0.0
         },
@@ -25801,12 +25893,24 @@
               "mfe_pct": 0.63
             },
             "24": {
-              "mae_pct": 0.0,
+              "mae_pct": -0.81,
               "mfe_pct": 0.63
             },
             "6": {
               "mae_pct": 0.0,
               "mfe_pct": 0.63
+            }
+          }
+        },
+        {
+          "first_qualified_entry": false,
+          "price": 0.07774394175321848,
+          "symbol": "SKY",
+          "timestamp": 1790398212,
+          "windows": {
+            "24": {
+              "mae_pct": -0.81,
+              "mfe_pct": -0.81
             }
           }
         }
@@ -25817,7 +25921,7 @@
     "qualified_buys": 18,
     "qualified_sell_usd": 305865.58,
     "qualified_sells": 13,
-    "quality_score": 74.4,
+    "quality_score": 73.5,
     "quality_tier": "B",
     "realized_sell_observations": 0,
     "realized_win_rate": null,
@@ -25851,16 +25955,16 @@
     "forward_14d_hit_rate": 15.4,
     "forward_14d_hits": 4,
     "pre_pump_24h_10pct_rate": 15.4,
-    "pre_pump_first_entry_rate": 25.0,
+    "pre_pump_first_entry_rate": 20.0,
     "pre_pump_proof": {
       "attempts": 26,
-      "first_entry_attempts": 4,
+      "first_entry_attempts": 5,
       "first_entry_hit_rates": {
         "12": 0.0,
-        "24": 25.0,
+        "24": 20.0,
         "6": 0.0
       },
-      "first_entry_rate": 25.0,
+      "first_entry_rate": 20.0,
       "hit_rates": {
         "12": {
           "10": 0.0,
@@ -26176,7 +26280,7 @@
           }
         },
         {
-          "first_qualified_entry": false,
+          "first_qualified_entry": true,
           "price": 83615.96025329483,
           "symbol": "CBBTC",
           "timestamp": 1790355767,
@@ -26374,11 +26478,11 @@
       ]
     },
     "proven_pre_pump_wallet": false,
-    "qualified_buy_usd": 518031.31,
-    "qualified_buys": 31,
+    "qualified_buy_usd": 484442.47,
+    "qualified_buys": 30,
     "qualified_sell_usd": 481729.65,
     "qualified_sells": 28,
-    "quality_score": 67.9,
+    "quality_score": 67.4,
     "quality_tier": "B",
     "realized_sell_observations": 0,
     "realized_win_rate": null,
@@ -27131,7 +27235,7 @@
     "pre_pump_first_entry_rate": 0.0,
     "pre_pump_proof": {
       "attempts": 37,
-      "first_entry_attempts": 8,
+      "first_entry_attempts": 9,
       "first_entry_hit_rates": {
         "12": 0.0,
         "24": 0.0,
@@ -27645,7 +27749,7 @@
           }
         },
         {
-          "first_qualified_entry": false,
+          "first_qualified_entry": true,
           "price": 0.07442611929979757,
           "symbol": "SKY",
           "timestamp": 1790351915,
@@ -27879,8 +27983,8 @@
       ]
     },
     "proven_pre_pump_wallet": false,
-    "qualified_buy_usd": 594781.88,
-    "qualified_buys": 39,
+    "qualified_buy_usd": 588090.38,
+    "qualified_buys": 38,
     "qualified_sell_usd": 357076.24,
     "qualified_sells": 18,
     "quality_score": 61.9,
@@ -30521,8 +30625,8 @@
     "proven_pre_pump_wallet": false,
     "qualified_buy_usd": 996477.22,
     "qualified_buys": 35,
-    "qualified_sell_usd": 504639.29,
-    "qualified_sells": 24,
+    "qualified_sell_usd": 495800.08,
+    "qualified_sells": 23,
     "quality_score": 63.2,
     "quality_tier": "C",
     "realized_sell_observations": 0,
@@ -30636,16 +30740,16 @@
     "forward_14d_hit_rate": 10.3,
     "forward_14d_hits": 3,
     "pre_pump_24h_10pct_rate": 10.3,
-    "pre_pump_first_entry_rate": 20.0,
+    "pre_pump_first_entry_rate": 16.7,
     "pre_pump_proof": {
       "attempts": 29,
-      "first_entry_attempts": 5,
+      "first_entry_attempts": 6,
       "first_entry_hit_rates": {
         "12": 0.0,
-        "24": 20.0,
+        "24": 16.7,
         "6": 0.0
       },
-      "first_entry_rate": 20.0,
+      "first_entry_rate": 16.7,
       "hit_rates": {
         "12": {
           "10": 0.0,
@@ -30665,7 +30769,7 @@
       },
       "observations": [
         {
-          "first_qualified_entry": false,
+          "first_qualified_entry": true,
           "price": 10.339371111209447,
           "symbol": "UNI",
           "timestamp": 1790123309,
@@ -31231,11 +31335,11 @@
       ]
     },
     "proven_pre_pump_wallet": false,
-    "qualified_buy_usd": 365284.63,
-    "qualified_buys": 33,
+    "qualified_buy_usd": 357996.99,
+    "qualified_buys": 32,
     "qualified_sell_usd": 209689.36,
     "qualified_sells": 17,
-    "quality_score": 65.6,
+    "quality_score": 65.3,
     "quality_tier": "B",
     "realized_sell_observations": 0,
     "realized_win_rate": null,
