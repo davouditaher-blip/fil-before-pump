@@ -79,7 +79,7 @@ jobs:
           python -m py_compile scanner.py gmgn_layer.py wallet_quality_engine.py
           python -m py_compile wallet_clustering.py wallet_radar.py wallet_performance_memory.py wallet_signal_profiles.py
           python -m py_compile trade_readiness.py risk_engine.py paper_trading.py
-          python -m py_compile paper_performance.py wallet_paper_feedback.py
+          python -m py_compile paper_performance.py wallet_paper_feedback.py historical_replay.py test_historical_replay.py
           python -m py_compile e2e_validate.py final_integration_gate.py
 
       - name: Build wallet quality
@@ -106,11 +106,17 @@ jobs:
       - name: Build long-term signal wallet profiles
         run: python wallet_signal_profiles.py
 
+      - name: Validate historical replay
+        run: python test_historical_replay.py
+
       - name: Validate scanner artifacts
         run: |
           python smoke_test.py
           python e2e_validate.py
 
+
+      - name: Run historical forward-only replay
+        run: python historical_replay.py
 
       - name: Build paper performance
         run: python paper_performance.py
@@ -129,7 +135,7 @@ jobs:
           set -e
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add volume_history.json wallet_history.json wallet_events.json futures_volume_history.json gmgn_wallet_history.json wallet_quality.json wallet_clusters.json wallet_radar.json wallet_signal_profiles.json trade_readiness.json paper_trades.json paper_performance.json wallet_paper_feedback.json wallet_performance_memory.json
+          git add historical_replay.json volume_history.json wallet_history.json wallet_events.json futures_volume_history.json gmgn_wallet_history.json wallet_quality.json wallet_clusters.json wallet_radar.json wallet_signal_profiles.json trade_readiness.json paper_trades.json paper_performance.json wallet_paper_feedback.json wallet_performance_memory.json
           if git diff --cached --quiet; then
             echo "No history changes to commit."
             exit 0
