@@ -1,32 +1,32 @@
 {
   "mode": "HISTORICAL_FORWARD_ONLY",
   "orders_enabled": false,
-  "generated_at": "2026-09-27T02:07:52.551567+00:00",
+  "generated_at": "2026-09-27T02:42:45.223551+00:00",
   "threshold_usd": 5000.0,
   "observation_count": 1507,
   "wallet_count": 70,
   "statistics": {
     "6": {
-      "observations": 1317,
+      "observations": 1316,
       "hit_rate_pct": {
-        "5": 5.77,
+        "5": 5.78,
         "10": 1.14,
         "20": 0.84,
         "30": 0.68
       },
-      "avg_mfe_pct": 1.557,
-      "avg_mae_pct": -0.589
+      "avg_mfe_pct": 1.544,
+      "avg_mae_pct": -0.597
     },
     "12": {
-      "observations": 1443,
+      "observations": 1442,
       "hit_rate_pct": {
-        "5": 11.16,
+        "5": 11.17,
         "10": 1.11,
         "20": 0.76,
         "30": 0.62
       },
-      "avg_mfe_pct": 1.946,
-      "avg_mae_pct": -1.554
+      "avg_mfe_pct": 1.935,
+      "avg_mae_pct": -1.543
     },
     "24": {
       "observations": 1507,
@@ -36,8 +36,8 @@
         "20": 0.93,
         "30": 0.6
       },
-      "avg_mfe_pct": 2.836,
-      "avg_mae_pct": -2.319
+      "avg_mfe_pct": 2.828,
+      "avg_mae_pct": -2.292
     }
   },
   "observations": [
@@ -1191,6 +1191,45 @@
         "24": {
           "mfe_pct": -0.07,
           "mae_pct": -1.853,
+          "targets_hit": {
+            "5": false,
+            "10": false,
+            "20": false,
+            "30": false
+          }
+        }
+      }
+    },
+    {
+      "wallet": "0x43605d68015b0a4df59e20afc77c9413665eb8dd",
+      "symbol": "COW",
+      "entry_timestamp": 1790469359,
+      "entry_price": 0.17444216710018476,
+      "entry_usd": 5147.1873208252655,
+      "windows": {
+        "6": {
+          "mfe_pct": -3.595,
+          "mae_pct": -3.595,
+          "targets_hit": {
+            "5": false,
+            "10": false,
+            "20": false,
+            "30": false
+          }
+        },
+        "12": {
+          "mfe_pct": -3.595,
+          "mae_pct": -3.595,
+          "targets_hit": {
+            "5": false,
+            "10": false,
+            "20": false,
+            "30": false
+          }
+        },
+        "24": {
+          "mfe_pct": -3.595,
+          "mae_pct": -3.595,
           "targets_hit": {
             "5": false,
             "10": false,
@@ -7303,45 +7342,6 @@
     {
       "wallet": "0x39a50a0fa7e1465e7c0381a4191f8e2dbc6638a5",
       "symbol": "UNI",
-      "entry_timestamp": 1790126558,
-      "entry_price": 10.67278410896159,
-      "entry_usd": 19277.017109777003,
-      "windows": {
-        "6": {
-          "mfe_pct": 0.952,
-          "mae_pct": -2.084,
-          "targets_hit": {
-            "5": false,
-            "10": false,
-            "20": false,
-            "30": false
-          }
-        },
-        "12": {
-          "mfe_pct": 0.952,
-          "mae_pct": -10.364,
-          "targets_hit": {
-            "5": false,
-            "10": false,
-            "20": false,
-            "30": false
-          }
-        },
-        "24": {
-          "mfe_pct": 0.952,
-          "mae_pct": -14.511,
-          "targets_hit": {
-            "5": false,
-            "10": false,
-            "20": false,
-            "30": false
-          }
-        }
-      }
-    },
-    {
-      "wallet": "0x39a50a0fa7e1465e7c0381a4191f8e2dbc6638a5",
-      "symbol": "UNI",
       "entry_timestamp": 1790130695,
       "entry_price": 10.559890841950038,
       "entry_usd": 9554.858225979384,
@@ -8470,6 +8470,25 @@
         "24": {
           "mfe_pct": 2.541,
           "mae_pct": -1.513,
+          "targets_hit": {
+            "5": false,
+            "10": false,
+            "20": false,
+            "30": false
+          }
+        }
+      }
+    },
+    {
+      "wallet": "0x39a50a0fa7e1465e7c0381a4191f8e2dbc6638a5",
+      "symbol": "FWWBTC",
+      "entry_timestamp": 1790413943,
+      "entry_price": 83804.30703116875,
+      "entry_usd": 5134.88096561974,
+      "windows": {
+        "24": {
+          "mfe_pct": 0.875,
+          "mae_pct": 0.875,
           "targets_hit": {
             "5": false,
             "10": false,
@@ -13287,7 +13306,7 @@
           }
         },
         "24": {
-          "mfe_pct": -1.894,
+          "mfe_pct": -1.507,
           "mae_pct": -2.189,
           "targets_hit": {
             "5": false,
@@ -16558,7 +16577,7 @@
           }
         },
         "24": {
-          "mfe_pct": 1.282,
+          "mfe_pct": 1.587,
           "mae_pct": -2.325,
           "targets_hit": {
             "5": false,
@@ -16597,7 +16616,7 @@
           }
         },
         "24": {
-          "mfe_pct": 1.282,
+          "mfe_pct": 1.587,
           "mae_pct": -2.325,
           "targets_hit": {
             "5": false,
@@ -21516,7 +21535,7 @@
           }
         },
         "24": {
-          "mfe_pct": 1.949,
+          "mfe_pct": 2.268,
           "mae_pct": 0.898,
           "targets_hit": {
             "5": false,
@@ -28499,7 +28518,7 @@
           }
         },
         "24": {
-          "mfe_pct": 0.197,
+          "mfe_pct": 1.018,
           "mae_pct": -2.457,
           "targets_hit": {
             "5": false,
@@ -28538,7 +28557,7 @@
           }
         },
         "24": {
-          "mfe_pct": 1.162,
+          "mfe_pct": 1.991,
           "mae_pct": -1.517,
           "targets_hit": {
             "5": false,
@@ -28567,7 +28586,7 @@
           }
         },
         "12": {
-          "mfe_pct": 1.162,
+          "mfe_pct": 1.991,
           "mae_pct": -1.517,
           "targets_hit": {
             "5": false,
@@ -28577,7 +28596,7 @@
           }
         },
         "24": {
-          "mfe_pct": 1.162,
+          "mfe_pct": 1.991,
           "mae_pct": -1.517,
           "targets_hit": {
             "5": false,
@@ -30612,7 +30631,7 @@
       "entry_usd": 8630.683296659094,
       "windows": {
         "6": {
-          "mfe_pct": 2.964,
+          "mfe_pct": 2.989,
           "mae_pct": 2.006,
           "targets_hit": {
             "5": false,
@@ -30622,7 +30641,7 @@
           }
         },
         "12": {
-          "mfe_pct": 2.964,
+          "mfe_pct": 2.989,
           "mae_pct": 2.006,
           "targets_hit": {
             "5": false,
@@ -30632,7 +30651,7 @@
           }
         },
         "24": {
-          "mfe_pct": 2.964,
+          "mfe_pct": 2.989,
           "mae_pct": 2.006,
           "targets_hit": {
             "5": false,
@@ -30651,7 +30670,7 @@
       "entry_usd": 22063.083311625374,
       "windows": {
         "6": {
-          "mfe_pct": 0.804,
+          "mfe_pct": 0.827,
           "mae_pct": -0.134,
           "targets_hit": {
             "5": false,
@@ -30661,7 +30680,7 @@
           }
         },
         "12": {
-          "mfe_pct": 0.804,
+          "mfe_pct": 0.827,
           "mae_pct": -0.134,
           "targets_hit": {
             "5": false,
@@ -30671,7 +30690,7 @@
           }
         },
         "24": {
-          "mfe_pct": 0.804,
+          "mfe_pct": 0.827,
           "mae_pct": -0.134,
           "targets_hit": {
             "5": false,
@@ -31686,45 +31705,6 @@
         "24": {
           "mfe_pct": 0.617,
           "mae_pct": 0.617,
-          "targets_hit": {
-            "5": false,
-            "10": false,
-            "20": false,
-            "30": false
-          }
-        }
-      }
-    },
-    {
-      "wallet": "0xdf825304eabe2bb532c6e580eef8680d7bb67193",
-      "symbol": "UNI",
-      "entry_timestamp": 1790123495,
-      "entry_price": 10.369251489821213,
-      "entry_usd": 9690.470081170593,
-      "windows": {
-        "6": {
-          "mfe_pct": 2.134,
-          "mae_pct": 0.287,
-          "targets_hit": {
-            "5": false,
-            "10": false,
-            "20": false,
-            "30": false
-          }
-        },
-        "12": {
-          "mfe_pct": 2.134,
-          "mae_pct": -6.068,
-          "targets_hit": {
-            "5": false,
-            "10": false,
-            "20": false,
-            "30": false
-          }
-        },
-        "24": {
-          "mfe_pct": 2.134,
-          "mae_pct": -12.269,
           "targets_hit": {
             "5": false,
             "10": false,
@@ -34377,45 +34357,6 @@
     },
     {
       "wallet": "0x90b082dd8a5fbd98f60760e950024f5e8107f8d0",
-      "symbol": "UNI",
-      "entry_timestamp": 1790125559,
-      "entry_price": 10.441320045183424,
-      "entry_usd": 13993.458719178068,
-      "windows": {
-        "6": {
-          "mfe_pct": 2.712,
-          "mae_pct": -0.088,
-          "targets_hit": {
-            "5": false,
-            "10": false,
-            "20": false,
-            "30": false
-          }
-        },
-        "12": {
-          "mfe_pct": 2.712,
-          "mae_pct": -6.754,
-          "targets_hit": {
-            "5": false,
-            "10": false,
-            "20": false,
-            "30": false
-          }
-        },
-        "24": {
-          "mfe_pct": 2.712,
-          "mae_pct": -12.897,
-          "targets_hit": {
-            "5": false,
-            "10": false,
-            "20": false,
-            "30": false
-          }
-        }
-      }
-    },
-    {
-      "wallet": "0x90b082dd8a5fbd98f60760e950024f5e8107f8d0",
       "symbol": "AAVE",
       "entry_timestamp": 1790134715,
       "entry_price": 151.02365802205702,
@@ -35615,45 +35556,6 @@
     {
       "wallet": "0xb53597617f772b8361fca7ad5d3c97199c2e0d18",
       "symbol": "UNI",
-      "entry_timestamp": 1790126558,
-      "entry_price": 10.578059361856218,
-      "entry_usd": 12451.708008991856,
-      "windows": {
-        "6": {
-          "mfe_pct": 0.221,
-          "mae_pct": -1.386,
-          "targets_hit": {
-            "5": false,
-            "10": false,
-            "20": false,
-            "30": false
-          }
-        },
-        "12": {
-          "mfe_pct": 0.221,
-          "mae_pct": -7.973,
-          "targets_hit": {
-            "5": false,
-            "10": false,
-            "20": false,
-            "30": false
-          }
-        },
-        "24": {
-          "mfe_pct": 0.221,
-          "mae_pct": -13.543,
-          "targets_hit": {
-            "5": false,
-            "10": false,
-            "20": false,
-            "30": false
-          }
-        }
-      }
-    },
-    {
-      "wallet": "0xb53597617f772b8361fca7ad5d3c97199c2e0d18",
-      "symbol": "UNI",
       "entry_timestamp": 1790128619,
       "entry_price": 10.47969028552386,
       "entry_usd": 10512.70591767661,
@@ -36498,7 +36400,7 @@
       "windows": {
         "6": {
           "mfe_pct": -0.552,
-          "mae_pct": -0.552,
+          "mae_pct": -0.771,
           "targets_hit": {
             "5": false,
             "10": false,
@@ -36508,7 +36410,7 @@
         },
         "12": {
           "mfe_pct": -0.552,
-          "mae_pct": -0.552,
+          "mae_pct": -0.771,
           "targets_hit": {
             "5": false,
             "10": false,
@@ -36518,7 +36420,7 @@
         },
         "24": {
           "mfe_pct": -0.552,
-          "mae_pct": -0.552,
+          "mae_pct": -0.771,
           "targets_hit": {
             "5": false,
             "10": false,
@@ -37725,7 +37627,7 @@
           }
         },
         "12": {
-          "mfe_pct": 0.698,
+          "mfe_pct": 0.847,
           "mae_pct": 0.0,
           "targets_hit": {
             "5": false,
@@ -37735,7 +37637,7 @@
           }
         },
         "24": {
-          "mfe_pct": 0.698,
+          "mfe_pct": 0.847,
           "mae_pct": 0.0,
           "targets_hit": {
             "5": false,
@@ -37754,7 +37656,7 @@
       "entry_usd": 15303.241431096332,
       "windows": {
         "12": {
-          "mfe_pct": 0.698,
+          "mfe_pct": 0.847,
           "mae_pct": 0.573,
           "targets_hit": {
             "5": false,
@@ -37764,7 +37666,7 @@
           }
         },
         "24": {
-          "mfe_pct": 0.698,
+          "mfe_pct": 0.847,
           "mae_pct": 0.573,
           "targets_hit": {
             "5": false,
@@ -44466,6 +44368,45 @@
       }
     },
     {
+      "wallet": "0x2c1b3240631826cd4f9a894a207c09b6e861dce8",
+      "symbol": "ONDO",
+      "entry_timestamp": 1790474951,
+      "entry_price": 0.5389524529528358,
+      "entry_usd": 5339.124637113508,
+      "windows": {
+        "6": {
+          "mfe_pct": 0.0,
+          "mae_pct": 0.0,
+          "targets_hit": {
+            "5": false,
+            "10": false,
+            "20": false,
+            "30": false
+          }
+        },
+        "12": {
+          "mfe_pct": 0.0,
+          "mae_pct": 0.0,
+          "targets_hit": {
+            "5": false,
+            "10": false,
+            "20": false,
+            "30": false
+          }
+        },
+        "24": {
+          "mfe_pct": 0.0,
+          "mae_pct": 0.0,
+          "targets_hit": {
+            "5": false,
+            "10": false,
+            "20": false,
+            "30": false
+          }
+        }
+      }
+    },
+    {
       "wallet": "0x4ac9d866abde6207a98a0ad8ab3bf7ffe3f6d9ec",
       "symbol": "UNI",
       "entry_timestamp": 1790151491,
@@ -46655,7 +46596,7 @@
           }
         },
         "24": {
-          "mfe_pct": 1.433,
+          "mfe_pct": 2.35,
           "mae_pct": -1.645,
           "targets_hit": {
             "5": false,
@@ -46694,7 +46635,7 @@
           }
         },
         "24": {
-          "mfe_pct": 1.433,
+          "mfe_pct": 2.35,
           "mae_pct": -1.645,
           "targets_hit": {
             "5": false,
@@ -52293,7 +52234,7 @@
       "windows": {
         "6": {
           "mfe_pct": 1.102,
-          "mae_pct": 1.102,
+          "mae_pct": 0.8,
           "targets_hit": {
             "5": false,
             "10": false,
@@ -52303,7 +52244,7 @@
         },
         "12": {
           "mfe_pct": 1.102,
-          "mae_pct": 1.102,
+          "mae_pct": 0.8,
           "targets_hit": {
             "5": false,
             "10": false,
@@ -52313,7 +52254,7 @@
         },
         "24": {
           "mfe_pct": 1.102,
-          "mae_pct": 1.102,
+          "mae_pct": 0.8,
           "targets_hit": {
             "5": false,
             "10": false,
@@ -52906,6 +52847,45 @@
         },
         "24": {
           "mfe_pct": 0.0,
+          "mae_pct": -9.315,
+          "targets_hit": {
+            "5": false,
+            "10": false,
+            "20": false,
+            "30": false
+          }
+        }
+      }
+    },
+    {
+      "wallet": "0x3ee92cd00993a4488ae153ab41ac7947cbcbc1de",
+      "symbol": "QNT",
+      "entry_timestamp": 1790473797,
+      "entry_price": 186.90557322748668,
+      "entry_usd": 40950.87331127704,
+      "windows": {
+        "6": {
+          "mfe_pct": -9.215,
+          "mae_pct": -9.315,
+          "targets_hit": {
+            "5": false,
+            "10": false,
+            "20": false,
+            "30": false
+          }
+        },
+        "12": {
+          "mfe_pct": -9.215,
+          "mae_pct": -9.315,
+          "targets_hit": {
+            "5": false,
+            "10": false,
+            "20": false,
+            "30": false
+          }
+        },
+        "24": {
+          "mfe_pct": -9.215,
           "mae_pct": -9.315,
           "targets_hit": {
             "5": false,
