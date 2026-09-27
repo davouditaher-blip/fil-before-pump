@@ -12,6 +12,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from confluence_engine import PAPER_READY_MIN_CONFLUENCE, SCALE_MAX
+
 OUT = Path("trade_readiness.json")
 
 
@@ -45,6 +47,9 @@ def build_trade_plan(x: dict[str, Any]) -> dict[str, Any]:
     shared = _int(x.get("wallet_unique_shared_count"))
     longterm = _int(x.get("wallet_longterm_proven_count"))
     profile_score = _num(x.get("wallet_profile_score"))
+    scale = x.get("fil_confluence_scale") if isinstance(x.get("fil_confluence_scale"), dict) else {}
+    project_layer_present = scale.get("project_layer_present")
+    evidence_coverage = scale.get("evidence_coverage") if isinstance(scale.get("evidence_coverage"), dict) else {}
     calibration_bonus = _num(x.get("wallet_calibration_bonus"))
     calibration_status = str(x.get("wallet_calibration_status") or "UNAVAILABLE")
     exit_pressure = _num(x.get("wallet_exit_pressure"))
@@ -112,7 +117,9 @@ def build_trade_plan(x: dict[str, Any]) -> dict[str, Any]:
         reasons.append("24h move > 15%: late-entry caution")
 
     # Deterministic paper-trading state. No order is placed.
-    if not blockers and confluence >= 70:
+    # PAPER_READY_MIN_CONFLUENCE and the 100-point scale are owned by
+    # confluence_engine so the gate and the advertised scale cannot drift.
+    if not blockers and confluence >= PAPER_READY_MIN_CONFLUENCE:
         state = "PAPER_READY"
     elif wallet_score >= 12 and active >= 1 and not any(
         b in blockers for b in ("no fresh 1d/2d volume confirmation", "high wallet exit pressure")
@@ -138,6 +145,12 @@ def build_trade_plan(x: dict[str, Any]) -> dict[str, Any]:
         "state": state,
         "price_usd": price,
         "fil_confluence_score": round(confluence, 1),
+        "fil_confluence_max_score": SCALE_MAX,
+        "fil_confluence_paper_ready_threshold": PAPER_READY_MIN_CONFLUENCE,
+        "fil_confluence_fill_pct": _num(scale.get("fill_pct")) if scale else None,
+        "fil_confluence_components": dict(x.get("fil_confluence_components") or {}),
+        "project_layer_present": project_layer_present,
+        "evidence_coverage": dict(evidence_coverage),
         "wallet_conviction_score": round(wallet_score, 1),
         "wallet_conviction_pre_calibration": round(
             _num(x.get("wallet_conviction_score_pre_calibration"), wallet_score), 1

@@ -8,6 +8,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from confluence_engine import BUCKET_CAPS, PAPER_READY_MIN_CONFLUENCE, SCALE_MAX, _caps_reachable
+
 REQUIRED_CODE = [
     "scanner.py",
     "gmgn_layer.py",
@@ -24,6 +26,8 @@ REQUIRED_CODE = [
     "wallet_paper_feedback.py",
     "wallet_intel_gate.py",
     "e2e_validate.py",
+    "historical_replay.py",
+    "test_historical_replay.py",
 ]
 
 REQUIRED_ARTIFACTS = [
@@ -36,13 +40,25 @@ REQUIRED_ARTIFACTS = [
     "wallet_performance_memory.json",
     "wallet_paper_feedback.json",
     "wallet_signal_profiles.json",
+    "historical_replay.json",
 ]
 
 def load(path: str):
     return json.loads(Path(path).read_text(encoding="utf-8"))
 
+def _num(v, default=0.0):
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return default
+
 def main() -> None:
     errors = []
+    # A declared cap that no evidence can reach silently shrinks the advertised
+    # scale and makes the paper-ready threshold unattainable. This is a code
+    # invariant, so it is checked before any artifact is read.
+    if not _caps_reachable():
+        errors.append("a confluence bucket cap is unreachable, so the 100-point scale is not honest")
     for name in REQUIRED_CODE:
         if not Path(name).is_file():
             errors.append(f"missing code module: {name}")
@@ -79,6 +95,15 @@ def main() -> None:
         if state != "PAPER_READY":
             continue
         ready_count += 1
+        # A PAPER_READY plan must sit on the advertised, reachable scale.
+        if "fil_confluence_max_score" in plan and float(plan["fil_confluence_max_score"]) != SCALE_MAX:
+            errors.append(f"confluence scale is not {SCALE_MAX} for {plan.get('symbol')}")
+        if "fil_confluence_paper_ready_threshold" in plan and float(plan["fil_confluence_paper_ready_threshold"]) != PAPER_READY_MIN_CONFLUENCE:
+            errors.append(f"confluence threshold drifted for {plan.get('symbol')}")
+        if float(plan.get("fil_confluence_score") or 0) < PAPER_READY_MIN_CONFLUENCE:
+            errors.append(f"{plan.get('symbol')} is PAPER_READY below the confluence threshold")
+        if (plan.get("blockers") or []):
+            errors.append(f"{plan.get('symbol')} is PAPER_READY with blockers")
         risk = plan.get("risk") or {}
         if float(risk.get("max_account_risk_pct") or 0) <= 0 or float(risk.get("max_account_risk_pct") or 0) > 1:
             errors.append(f"invalid account risk for {plan.get('symbol')}")
@@ -114,6 +139,23 @@ def main() -> None:
         errors.append("wallet feedback mode is not PAPER_ONLY")
     if feedback.get("orders_enabled") is not False:
         errors.append("wallet feedback orders_enabled is not false")
+
+    # Forward-only replay must keep reporting both wallet-history cohorts.
+    replay = data.get("historical_replay.json", {})
+    if replay.get("mode") != "HISTORICAL_FORWARD_ONLY":
+        errors.append("historical replay mode is not HISTORICAL_FORWARD_ONLY")
+    if replay.get("orders_enabled") is not False:
+        errors.append("historical replay orders_enabled is not false")
+    cohorts = replay.get("cohort_statistics")
+    if not isinstance(cohorts, dict) or not cohorts:
+        errors.append("historical replay is missing the forward-only cohort split")
+    else:
+        for cohort, per_window in cohorts.items():
+            if str(cohort) not in replay.get("cohort_definition", {}):
+                errors.append(f"historical replay cohort {cohort} has no definition")
+            for window, stats in (per_window or {}).items():
+                if not isinstance(stats, dict) or "hit_rate_pct" not in stats:
+                    errors.append(f"historical replay cohort {cohort}/{window} is malformed")
 
     # Long-term wallet intelligence must actually reach the decision gate.
     # Plans produced before this wiring existed carry no wallet-intelligence
@@ -156,9 +198,19 @@ def main() -> None:
     print("FINAL INTEGRATION GATE: PASS")
     print(f"modules: {len(REQUIRED_CODE)}")
     print(f"validated artifacts: {len(data)}")
+    print(f"confluence scale: {SCALE_MAX:.0f} (caps reachable: {_caps_reachable()})")
+    print(f"paper-ready threshold: {PAPER_READY_MIN_CONFLUENCE:.0f}")
     print(f"readiness plans: {len(plans)}")
     print(f"risk-approved paper plans: {ready_count}")
     print(f"plans with long-term wallet evidence: {sum(1 for p in plans if isinstance(p, dict) and int(p.get('wallet_longterm_proven') or 0) > 0)}")
+    with_scale = [p for p in plans if isinstance(p, dict) and "evidence_coverage" in p]
+    if with_scale:
+        # The honest test of the reweighting is whether real candidates clear the
+        # threshold, and whether the project provider layer actually covers the
+        # futures universe. Print both so the next run settles it.
+        print(f"plans reporting evidence coverage: {len(with_scale)}")
+        print(f"project layer coverage: {sum(1 for p in with_scale if p.get('project_layer_present'))}/{len(with_scale)}")
+        print(f"confluence fill pct: min {min(_num(p.get('fil_confluence_fill_pct')) for p in with_scale):.1f} / max {max(_num(p.get('fil_confluence_fill_pct')) for p in with_scale):.1f}")
     print("live exchange execution: DISABLED")
 
 if __name__ == "__main__":

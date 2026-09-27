@@ -9,6 +9,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from confluence_engine import BUCKET_CAPS, PAPER_READY_MIN_CONFLUENCE, SCALE_MAX
+
 REQUIRED = {
     "wallet_quality.json": dict,
     "wallet_clusters.json": dict,
@@ -17,6 +19,7 @@ REQUIRED = {
     "paper_trades.json": dict,
     "wallet_performance_memory.json": dict,
     "wallet_signal_profiles.json": dict,
+    "historical_replay.json": dict,
 }
 
 OPTIONAL = {
@@ -145,6 +148,27 @@ def main() -> None:
                         break
                     if status != "MEASURABLE" and calibration != 0:
                         errors.append(f"trade_readiness.json: calibration without measurable sample for {plan.get('symbol')}")
+                        break
+                # The advertised confluence scale must be the real, reachable
+                # scale, and a PAPER_READY plan must actually sit above it.
+                if "fil_confluence_max_score" in plan:
+                    if float(plan["fil_confluence_max_score"]) != SCALE_MAX:
+                        errors.append(f"trade_readiness.json: confluence scale is not {SCALE_MAX} for {plan.get('symbol')}")
+                        break
+                    if float(plan.get("fil_confluence_paper_ready_threshold") or 0) != PAPER_READY_MIN_CONFLUENCE:
+                        errors.append(f"trade_readiness.json: threshold drifted for {plan.get('symbol')}")
+                        break
+                    components = plan.get("fil_confluence_components") or {}
+                    if isinstance(components, dict) and components:
+                        for bucket, cap in BUCKET_CAPS.items():
+                            value = components.get(bucket)
+                            if value is None:
+                                continue
+                            if float(value) < 0 or float(value) > cap:
+                                errors.append(f"trade_readiness.json: {bucket} component {value} exceeds cap {cap} for {plan.get('symbol')}")
+                                break
+                    if state == "PAPER_READY" and float(plan.get("fil_confluence_score") or 0) < PAPER_READY_MIN_CONFLUENCE:
+                        errors.append(f"trade_readiness.json: PAPER_READY below threshold for {plan.get('symbol')}")
                         break
 
     profiles_artifact = data_by_name.get("wallet_signal_profiles.json")

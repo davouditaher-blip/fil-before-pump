@@ -3,6 +3,20 @@ from scanner import is_primary_crypto_asset, wallet_conviction_signals
 from scanner import apply_wallet_radar_signals, apply_wallet_cluster_signals
 from trade_readiness import build_trade_plan
 from risk_engine import evaluate, filter_plans
+from confluence_engine import (
+    BROAD_BUYER_FLOOR,
+    BUCKET_CAPS,
+    FUTURES_VOLUME_FLOOR_USD,
+    MARKET_CAP_FLOOR_USD,
+    PAPER_READY_MIN_CONFLUENCE,
+    SCALE_MAX,
+    _caps_reachable,
+    _market,
+    _project,
+    _safety,
+    _volume,
+    build_confluence,
+)
 import wallet_intel_gate as wig
 
 def test_asset_exclusions():
@@ -187,6 +201,149 @@ def test_conviction_score_stays_inside_its_cap():
     assert result["wallet_conviction_score"] == 30.0
     assert result["wallet_profile_score"] == wig.PROFILE_SCORE_CAP
     assert result["wallet_longterm_proven_count"] == 60
+
+def test_confluence_caps_are_reachable():
+    assert _caps_reachable()
+    best = build_confluence({
+        "wallet_conviction_score": 30.0,
+        "wallet": {
+            "buy_sell_ratio_7d": 1.8,
+            "buyers_7d": 50,
+            "sellers_7d": 10,
+            "top5_holder_pct": 20.0,
+            "top20_holder_pct": 30.0,
+        },
+        "vol_changes": {"1d": 30, "2d": 25, "3d": 5, "7d": 5},
+        "current_volume": FUTURES_VOLUME_FLOOR_USD * 10,
+        "quote": {"market_cap": MARKET_CAP_FLOOR_USD * 10},
+        "ch24": 0.0,
+        "futures_source": "binance",
+    }, {"btc24": 3.0, "eth24": 3.0, "btc7": 4.0, "eth7": 4.0})
+    assert best["fil_confluence_score"] == SCALE_MAX
+    assert best["fil_confluence_scale"]["max_score"] == SCALE_MAX
+    assert best["fil_confluence_scale"]["paper_ready_threshold"] == PAPER_READY_MIN_CONFLUENCE
+    assert best["fil_confluence_components"]["project"] == BUCKET_CAPS["project"]
+    assert best["fil_confluence_components"]["safety"] == BUCKET_CAPS["safety"]
+
+def test_evidence_coverage_is_reported():
+    """A candidate with no project-layer data must be distinguishable from a weak one."""
+    with_layer = build_confluence({
+        "wallet_conviction_score": 20.0,
+        "wallet": {"buy_sell_ratio_7d": 1.6, "buyers_7d": 40, "sellers_7d": 5,
+                   "top5_holder_pct": 20, "top20_holder_pct": 30},
+        "vol_changes": {"1d": 5, "2d": 2}, "current_volume": 5e7,
+        "quote": {"market_cap": 5e9}, "ch24": 2.0,
+    }, {"btc24": 1.0, "eth24": 1.0, "btc7": 1.0, "eth7": 1.0})
+    without_layer = build_confluence({
+        "wallet_conviction_score": 20.0, "wallet": {},
+        "vol_changes": {"1d": 5, "2d": 2}, "current_volume": 5e7,
+        "quote": {"market_cap": 5e9}, "ch24": 2.0,
+    }, {"btc24": 1.0, "eth24": 1.0, "btc7": 1.0, "eth7": 1.0})
+    assert with_layer["fil_confluence_scale"]["project_layer_present"] is True
+    assert without_layer["fil_confluence_scale"]["project_layer_present"] is False
+    assert without_layer["project_intelligence_score"] == 0.0
+    # Equal wallet evidence, so the gap is honest missing data, not a penalty.
+    assert with_layer["fil_confluence_score"] > without_layer["fil_confluence_score"]
+    for result in (with_layer, without_layer):
+        coverage = result["fil_confluence_scale"]["evidence_coverage"]
+        assert set(coverage) == {"wallet", "project", "volume", "market", "safety"}
+
+def test_project_bucket_scores_breadth():
+    score, reasons, _ = _project({
+        "wallet": {
+            "buy_sell_ratio_7d": 1.6, "buyers_7d": BROAD_BUYER_FLOOR, "sellers_7d": 5,
+            "top5_holder_pct": 20, "top20_holder_pct": 30,
+        }
+    })
+    assert score == BUCKET_CAPS["project"]
+    assert any("broad buyer participation" in r for r in reasons)
+
+def test_volume_bucket_scores_fresh_acceleration():
+    accelerating, reasons, evidence = _volume({
+        "vol_changes": {"1d": 8, "2d": 3, "3d": 1, "7d": 1}, "current_volume": 1e8,
+    })
+    fading, fading_reasons, fading_evidence = _volume({
+        "vol_changes": {"1d": 3, "2d": 8, "3d": 1, "7d": 1}, "current_volume": 1e8,
+    })
+    assert accelerating > fading
+    assert evidence["fresh_acceleration"] is True
+    assert fading_evidence["fresh_acceleration"] is False
+    assert any("accelerating" in r for r in reasons)
+    assert not any("accelerating" in r for r in fading_reasons)
+
+def test_market_bucket_requires_breadth_not_just_average():
+    broad, broad_reasons, _ = _market({"btc24": 5.0, "eth24": -4.0, "btc7": 1.0, "eth7": 1.0})
+    both, both_reasons, _ = _market({"btc24": 3.0, "eth24": 3.0, "btc7": 1.0, "eth7": 1.0})
+    # Same positive 24h average, but only the broad pair earns the breadth points.
+    assert broad == 8.0
+    assert both == 10.0
+    assert not any("both positive" in r for r in broad_reasons)
+    assert any("both positive" in r for r in both_reasons)
+
+def test_safety_bucket_scores_execution_floors():
+    deep, _, deep_evidence = _safety({
+        "quote": {"market_cap": MARKET_CAP_FLOOR_USD * 2}, "current_volume": FUTURES_VOLUME_FLOOR_USD * 2,
+        "ch24": 0.0, "futures_source": "binance",
+    })
+    thin, thin_reasons, thin_evidence = _safety({
+        "quote": {"market_cap": MARKET_CAP_FLOOR_USD / 10}, "current_volume": 1000.0, "ch24": 0.0,
+    })
+    assert deep == BUCKET_CAPS["safety"]
+    assert deep_evidence["market_cap_above_execution_floor"] is True
+    assert thin_evidence["market_cap_above_execution_floor"] is False
+    assert any("execution floor" in r for r in thin_reasons)
+
+def test_paper_ready_threshold_is_single_sourced():
+    assert PAPER_READY_MIN_CONFLUENCE == 70.0
+    assert SCALE_MAX == 100.0
+    plan = build_trade_plan({
+        "symbol": "LINK", "price_usd": 10,
+        "quote": {"market_cap": 1_000_000_000, "volume_24h": 20_000_000},
+        "current_volume": 20_000_000,
+        "wallet_conviction_score": 24, "wallet_unique_active_count": 3,
+        "wallet_unique_proven_count": 2, "wallet_unique_shared_count": 1,
+        "vol_changes": {"1d": 5, "2d": 2}, "wallet_exit_pressure": 10,
+        "fil_confluence_score": PAPER_READY_MIN_CONFLUENCE,
+    })
+    assert plan["state"] == "PAPER_READY"
+    assert plan["fil_confluence_max_score"] == SCALE_MAX
+    assert plan["fil_confluence_paper_ready_threshold"] == PAPER_READY_MIN_CONFLUENCE
+    below = build_trade_plan({
+        "symbol": "LINK", "price_usd": 10,
+        "quote": {"market_cap": 1_000_000_000, "volume_24h": 20_000_000},
+        "current_volume": 20_000_000,
+        "wallet_conviction_score": 24, "wallet_unique_active_count": 3,
+        "wallet_unique_proven_count": 2, "vol_changes": {"1d": 5, "2d": 2},
+        "wallet_exit_pressure": 10, "fil_confluence_score": PAPER_READY_MIN_CONFLUENCE - 0.1,
+    })
+    assert below["state"] != "PAPER_READY"
+
+def test_wallet_cap_and_technical_context_are_preserved():
+    """The reweighting must not buy reachability by diluting wallet evidence."""
+    assert BUCKET_CAPS["wallet"] == 30.0
+    result = build_confluence({
+        "wallet_conviction_score": 30.0,
+        "wallet": {"buy_sell_ratio_7d": 1.6, "buyers_7d": 50, "sellers_7d": 5,
+                   "top5_holder_pct": 20, "top20_holder_pct": 30},
+        "vol_changes": {"1d": 30, "2d": 25, "3d": 5, "7d": 5},
+        "current_volume": 1e9, "quote": {"market_cap": 5e9},
+        "ch24": 40.0, "futures_source": "binance", "tech": {"rsi": 78},
+    }, {"btc24": 3.0, "eth24": 3.0, "btc7": 4.0, "eth7": 4.0})
+    # A 40% 24h extension and an overbought RSI cost safety points, never reject.
+    assert result["fil_confluence_components"]["wallet"] == 30.0
+    assert result["fil_confluence_components"]["safety"] < BUCKET_CAPS["safety"]
+    assert "tech" not in result.get("fil_confluence_components", {})
+    plan = build_trade_plan({
+        "symbol": "LINK", "price_usd": 10,
+        "quote": {"market_cap": 1_000_000_000, "volume_24h": 20_000_000},
+        "current_volume": 20_000_000,
+        "wallet_conviction_score": 26, "wallet_unique_active_count": 3,
+        "wallet_unique_proven_count": 2, "vol_changes": {"1d": 5, "2d": 2},
+        "wallet_exit_pressure": 5, "ch24": 40,
+        "fil_confluence_score": PAPER_READY_MIN_CONFLUENCE,
+    })
+    assert plan["state"] == "PAPER_READY"
+    assert "24h move > 15%: late-entry caution" in " ".join(plan["reasons"])
 
 
 def test_calibration_requires_a_measurable_paper_sample():
@@ -378,6 +535,14 @@ if __name__ == "__main__":
     test_profile_component_is_bounded()
     test_wallet_conviction_never_double_counts_one_wallet()
     test_conviction_score_stays_inside_its_cap()
+    test_confluence_caps_are_reachable()
+    test_evidence_coverage_is_reported()
+    test_project_bucket_scores_breadth()
+    test_volume_bucket_scores_fresh_acceleration()
+    test_market_bucket_requires_breadth_not_just_average()
+    test_safety_bucket_scores_execution_floors()
+    test_paper_ready_threshold_is_single_sourced()
+    test_wallet_cap_and_technical_context_are_preserved()
     test_calibration_requires_a_measurable_paper_sample()
     test_conviction_applies_bounded_calibration()
     test_missing_artifacts_degrade_to_no_evidence()
