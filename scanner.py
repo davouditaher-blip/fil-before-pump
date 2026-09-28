@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -1259,6 +1260,57 @@ def _holders_path(chain, address):
     return f"/{chain}/tokens/{address}/token_holders_v2/"
 
 
+# Infrastructure that cannot be a discretionary accumulator.
+#
+# These are three separate tests because one substring test was wrong in both
+# directions at once. It discarded real holders whose name merely contained a
+# short word: "lp" also matches Alpaca, Delphi, Help and Zilp, "pool" also
+# matches Poolside, "dead" also matches Deadpool, "bridge" also matches
+# Bridgewater, and "null" also matches Null Labs. At the same time it let the
+# burn address through, because it only ever read a provider-supplied label and
+# that address is normally unlabelled, so it was being recorded as a holder
+# holding 44.6% of FLOKI and 40% of SFP.
+#
+# The burn and zero addresses are therefore recognised by value, which no
+# provider naming can get wrong, and labels are matched on whole tokens rather
+# than as substrings. Provider-supplied protocol brand and role names stay in
+# the list: a holder label is a name tag for an address, so a protocol name
+# there means that protocol's own contract rather than a person.
+
+INFRA_HOLDER_ADDRESSES = frozenset({
+    "0x000000000000000000000000000000000000dead",
+    "0x0000000000000000000000000000000000000000",
+})
+
+INFRA_HOLDER_TYPES = frozenset({
+    "contract", "exchange", "lp", "liquidity_pool", "burn",
+    "bridge", "pool", "vault", "staking", "treasury",
+})
+
+INFRA_HOLDER_LABEL_TOKENS = frozenset({
+    "exchange", "binance", "coinbase", "kraken", "okx", "bybit",
+    "gate", "gateio", "bitget", "mexc", "kucoin", "bitfinex",
+    "uniswap", "pancake", "pancakeswap", "router", "routers",
+    "liquidity", "liquiditypool", "bridge", "burn", "burnaddress",
+    "deadaddress", "nulladdress", "staking", "treasury", "contract",
+})
+
+
+def _is_infra_holder(wallet, label, holder_type):
+    """True for a holder that cannot make a discretionary accumulation decision.
+
+    Normalising happens here rather than at the call site. A helper that only
+    works while its caller remembers to lowercase fails open, which here means
+    quietly admitting exchange, bridge and LP wallets as smart money.
+    """
+    if str(wallet or "").lower() in INFRA_HOLDER_ADDRESSES:
+        return True
+    if str(holder_type or "").lower() in INFRA_HOLDER_TYPES:
+        return True
+    tokens = set(re.split(r"[^a-z0-9]+", str(label or "").lower()))
+    return bool(tokens & INFRA_HOLDER_LABEL_TOKENS)
+
+
 def goldrush_get(path, params=None):
     """Read-only multichain wallet/token data. GoldRush never labels a transfer as a buy/sell here.
 
@@ -1513,7 +1565,8 @@ def project_layer_missing_reason(coin):
         return "provider_unknown_token"
     if GOLDRUSH_OUTCOME_UNAVAILABLE in outcomes:
         return "provider_unavailable"
-    if GOLDRUSH_OUTCOME_OK in outcomes or GOLDRUSH_OUTCOME_UNUSABLE in outcomes:
+    if GOLDRUSH_OUTCOME_UNUSABLE in outcomes:
+        # The provider answered and not one row could be read. That gap is ours.
         return "provider_holders_unusable"
     return "provider_not_queried"
 
@@ -1646,6 +1699,12 @@ def goldrush_wallet_layer(coin):
     provider-labelled smart-money trades for this symbol, which makes the EVM
     project bucket able to exceed the concentration-only ceiling instead of
     being structurally capped at 7/20.
+
+    Concentration is measured across every row the provider returned, and
+    infrastructure is removed only from the smart-money holder list. Measuring
+    concentration after the removal would understate it, and understated
+    concentration is rewarded, so a protocol that parks its own supply in its
+    own contracts would score better than one holding it in a wallet.
     """
     if not GOLDRUSH_API_KEY:
         return {}
@@ -1655,26 +1714,34 @@ def goldrush_wallet_layer(coin):
 
     best = {}
     for chain, address in contracts:
-        items = goldrush_get(_holders_path(chain, address), {"page-size": 20, "page-number": 0})
+        path = _holders_path(chain, address)
+        items = goldrush_get(path, {"page-size": 20, "page-number": 0})
         if not items:
             continue
-        holders = []
+
+        ranked = []
         for h in items[:20]:
             wallet = h.get("address") or h.get("wallet_address") or h.get("walletAddress")
-            if wallet:
-                holders.append({
-                    "wallet": wallet,
-                    "symbol": coin.get("symbol"),
-                    "mint": address,
-                    "chain": chain,
-                    "rank": h.get("rank"),
-                    "percentage": h.get("percentage_relative_to_total_supply") or h.get("percentage"),
-                    "value": h.get("balance_quote") or h.get("value_quote"),
-                    "timestamp": int(datetime.now(timezone.utc).timestamp()),
-                })
-        if not holders:
-            _GOLDRUSH_OUTCOMES[_holders_path(chain, address)] = GOLDRUSH_OUTCOME_UNUSABLE
+            if not wallet:
+                continue
+            label = h.get("label") or h.get("name") or h.get("contract_name") or h.get("contractName") or ""
+            holder_type = h.get("type") or h.get("entity_type") or ""
+            ranked.append({
+                "wallet": wallet,
+                "symbol": coin.get("symbol"),
+                "mint": address,
+                "chain": chain,
+                "rank": h.get("rank"),
+                "percentage": h.get("percentage_relative_to_total_supply") or h.get("percentage"),
+                "value": h.get("balance_quote") or h.get("value_quote"),
+                "label": str(label).lower(),
+                "holder_type": str(holder_type).lower(),
+                "timestamp": int(datetime.now(timezone.utc).timestamp()),
+            })
+        if not ranked:
+            _GOLDRUSH_OUTCOMES[path] = GOLDRUSH_OUTCOME_UNUSABLE
             continue
+
         # Contract-backed layer, so this asset is proven EVM. That is what
         # makes the symbol-only GMGN join safe here and nowhere else.
         flow = gmgn_flow_for_symbol(coin.get("symbol"))
@@ -1682,9 +1749,12 @@ def goldrush_wallet_layer(coin):
             "chain": chain,
             "mint": address,
             "symbol": coin.get("symbol"),
-            "holders": holders,
-            "top5_holder_pct": sum(float(x.get("percentage") or 0) for x in holders[:5]),
-            "top20_holder_pct": sum(float(x.get("percentage") or 0) for x in holders),
+            "holders": [
+                x for x in ranked
+                if not _is_infra_holder(x["wallet"], x["label"], x["holder_type"])
+            ],
+            "top5_holder_pct": sum(_safe_float(x.get("percentage")) for x in ranked[:5]),
+            "top20_holder_pct": sum(_safe_float(x.get("percentage")) for x in ranked[:20]),
             "buy_sell_ratio_7d": flow.get("buy_sell_ratio_7d"),
             "buyers_7d": int(flow.get("buyers_7d") or 0),
             "sellers_7d": int(flow.get("sellers_7d") or 0),

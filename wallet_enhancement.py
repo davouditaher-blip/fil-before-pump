@@ -109,8 +109,7 @@ def enhanced_goldrush_wallet_layer(coin):
         if not items:
             continue
 
-        holders = []
-        total_supply = None
+        ranked = []
         for h in items[:100]:
             wallet = h.get("address") or h.get("wallet_address") or h.get("walletAddress")
             if not wallet:
@@ -119,9 +118,6 @@ def enhanced_goldrush_wallet_layer(coin):
             # GoldRush V2 holder responses expose raw balance + total_supply.
             label = str(h.get("label") or h.get("name") or h.get("contract_name") or h.get("contractName") or "").lower()
             holder_type = str(h.get("type") or h.get("entity_type") or "").lower()
-            infra_words = ("exchange", "binance", "coinbase", "kraken", "okx", "bybit", "gate.io", "gateio", "bitget", "mexc", "kucoin", "bitfinex", "uniswap", "pancake", "router", "liquidity", "lp", "pool", "bridge", "burn", "dead", "null", "staking", "treasury", "contract")
-            if any(w in label for w in infra_words) or holder_type in {"contract", "exchange", "lp", "liquidity_pool", "burn"}:
-                continue
 
             try:
                 balance = float(h.get("balance") or h.get("balance_raw") or 0)
@@ -144,7 +140,7 @@ def enhanced_goldrush_wallet_layer(coin):
             if percentage is None:
                 continue
 
-            holders.append({
+            ranked.append({
                 "wallet": wallet,
                 "symbol": coin.get("symbol"),
                 "mint": address,
@@ -159,37 +155,47 @@ def enhanced_goldrush_wallet_layer(coin):
                 "holder_type": holder_type,
             })
 
-        if not holders:
-            # The provider answered and we discarded everything it sent. That is
-            # a gap this scanner created, not one the provider has, so it is
+        if not ranked:
+            # The provider answered but no row could be read at all. That is a
+            # gap this scanner created, not one the provider has, so it is
             # recorded as such instead of being counted as a provider gap.
             scanner._GOLDRUSH_OUTCOMES[scanner._holders_path(chain, address)] = (
                 scanner.GOLDRUSH_OUTCOME_UNUSABLE
             )
             continue
 
-        if holders:
-            # Contract-backed GoldRush layer, so this asset is proven EVM. GMGN
-            # labels the side of its own smart-money trades, so the 7-day flow
-            # fields can be filled with real provider evidence instead of the
-            # hardcoded empty values. Still no raw-transfer inference.
-            flow = scanner.gmgn_flow_for_symbol(coin.get("symbol"))
-            best = {
-                "chain": chain,
-                "mint": address,
-                "symbol": coin.get("symbol"),
-                "holders": holders,
-                "top5_holder_pct": sum(float(x.get("percentage") or 0) for x in holders[:5]),
-                "top20_holder_pct": sum(float(x.get("percentage") or 0) for x in holders[:20]),
-                "buy_sell_ratio_7d": flow.get("buy_sell_ratio_7d"),
-                "buyers_7d": int(flow.get("buyers_7d") or 0),
-                "sellers_7d": int(flow.get("sellers_7d") or 0),
-                "flow_provider": flow.get("flow_provider"),
-                "flow_semantics": flow.get("flow_semantics"),
-                "provider": "GoldRush",
-                "price_usd": float(((coin.get("quote") or {}).get("USD") or {}).get("price") or 0),
-            }
-            break
+        # Contract-backed GoldRush layer, so this asset is proven EVM. GMGN
+        # labels the side of its own smart-money trades, so the 7-day flow
+        # fields can be filled with real provider evidence instead of the
+        # hardcoded empty values. Still no raw-transfer inference.
+        #
+        # Concentration is measured across every readable row, before
+        # infrastructure is removed. Measuring it afterwards would understate
+        # concentration, and understated concentration is rewarded, so parking
+        # supply in a labelled contract would improve a token's project score.
+        # Infrastructure is therefore removed from the smart-money holder list
+        # only, which is where it does no good: it can never accumulate or
+        # distribute on its own.
+        flow = scanner.gmgn_flow_for_symbol(coin.get("symbol"))
+        best = {
+            "chain": chain,
+            "mint": address,
+            "symbol": coin.get("symbol"),
+            "holders": [
+                x for x in ranked
+                if not scanner._is_infra_holder(x["wallet"], x["label"], x["holder_type"])
+            ],
+            "top5_holder_pct": sum(float(x.get("percentage") or 0) for x in ranked[:5]),
+            "top20_holder_pct": sum(float(x.get("percentage") or 0) for x in ranked[:20]),
+            "buy_sell_ratio_7d": flow.get("buy_sell_ratio_7d"),
+            "buyers_7d": int(flow.get("buyers_7d") or 0),
+            "sellers_7d": int(flow.get("sellers_7d") or 0),
+            "flow_provider": flow.get("flow_provider"),
+            "flow_semantics": flow.get("flow_semantics"),
+            "provider": "GoldRush",
+            "price_usd": float(((coin.get("quote") or {}).get("USD") or {}).get("price") or 0),
+        }
+        break
 
     return best
 

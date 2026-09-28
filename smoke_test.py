@@ -34,6 +34,12 @@ from confluence_engine import (
 )
 import wallet_intel_gate as wig
 
+# Captured before any test imports wallet_enhancement, which replaces
+# scanner.goldrush_wallet_layer on import. Without this, a test comparing the two
+# layer implementations compares the enhanced layer with itself and passes
+# without checking anything.
+_BASE_GOLDRUSH_LAYER = scanner.goldrush_wallet_layer
+
 def test_asset_exclusions():
     assert not is_primary_crypto_asset({"symbol": "PAXG", "name": "PAX Gold"})
     assert not is_primary_crypto_asset({"symbol": "XAUT", "name": "Tether Gold"})
@@ -769,11 +775,13 @@ def test_holders_the_scanner_filtered_out_are_not_blamed_on_the_provider():
     """
     import wallet_enhancement
 
+    # Every large UNI holder is a Uniswap pair contract, so the provider answers
+    # with rows that carry no smart money at all.
     payload = {"data": {"items": [
         {
             "address": f"0x{i:040x}",
             "label": "Uniswap V2",
-            "balance": 10 ** 24,
+            "balance": 4 * 10 ** 27,
             "total_supply": 10 ** 28,
             "rank": i,
         }
@@ -802,13 +810,186 @@ def test_holders_the_scanner_filtered_out_are_not_blamed_on_the_provider():
             },
         }
         layer = wallet_enhancement.enhanced_goldrush_wallet_layer(coin)
-        # The provider did return holders, and the filter is what removed them.
-        assert layer == {}
-        assert project_layer_missing_reason(coin) == "provider_holders_unusable"
-        assert "provider_holders_unusable" in PROJECT_LAYER_MISSING_REASONS
+
+        # A protocol token still gets real evidence about itself...
+        assert layer, "a protocol token must not be deleted by a label word"
+        # ...but none of its own contracts count as smart money...
+        assert layer["holders"] == [], "Uniswap contracts must never be smart money"
+        # ...and its locked supply stays in the concentration denominator, so
+        # being a DEX cannot earn it a dispersed-holder bonus.
+        assert layer["top20_holder_pct"] == 200.0
+        assert layer["top5_holder_pct"] == 200.0
+        # A readable row now always yields a layer, so the "we discarded
+        # everything" reason is reserved for rows that could not be parsed.
+        assert scanner.GOLDRUSH_OUTCOME_OK == scanner._GOLDRUSH_OUTCOMES[
+            scanner._holders_path("eth-mainnet", "0x1f9840a85d5af5bf1d1762f925bdaddc4201f984")]
     finally:
         scanner.GOLDRUSH_API_KEY = original_key
         scanner.session = original_session
+
+
+def test_infrastructure_cannot_make_a_token_look_dispersed():
+    """The incentive this closes.
+
+    Concentration is rewarded when low, so if infrastructure were removed before
+    concentration was measured, a protocol that parked its own supply in its own
+    contracts would score better than one holding it in a wallet. Concentration
+    is therefore measured over every row, and infrastructure is removed only
+    from the smart-money list.
+    """
+    import wallet_enhancement
+
+    supply = 10 ** 28
+    # Half the supply sits in the protocol's own contracts, half in wallets.
+    items = [{"address": f"0x{1:040x}", "label": "Uniswap V2",
+              "balance": 5 * 10 ** 27, "total_supply": supply, "rank": 1}]
+    items += [
+        {"address": f"0x{i:040x}", "label": "", "balance": 10 ** 26,
+         "total_supply": supply, "rank": i}
+        for i in range(2, 22)
+    ]
+    payload = {"data": {"items": items}}
+
+    class _Ok:
+        status_code = 200
+
+        def json(self):
+            return payload
+
+    class _Session:
+        def get(self, *_a, **_k):
+            return _Ok()
+
+    original_key, original_session = scanner.GOLDRUSH_API_KEY, scanner.session
+    try:
+        scanner.GOLDRUSH_API_KEY = "test"
+        scanner.session = _Session()
+        coin = {"symbol": "UNI", "platform": {
+            "name": "Ethereum", "token_address": "0xuni"}}
+        layer = wallet_enhancement.enhanced_goldrush_wallet_layer(coin)
+
+        # The 50% contract stake is still counted: top-20 covers the contract
+        # plus nineteen one-percent wallets (50 + 19), and top-5 covers the
+        # contract plus four of them (50 + 4).
+        assert round(layer["top20_holder_pct"], 6) == 69.0
+        assert round(layer["top5_holder_pct"], 6) == 54.0
+        # The contract is not smart money, the twenty wallets are.
+        assert len(layer["holders"]) == 20
+        assert all(h["label"] != "Uniswap V2" for h in layer["holders"])
+
+        # Understated concentration is what used to happen, and it was rewarded.
+        # Measured honestly the token sits at 69% and earns nothing; had the
+        # infrastructure been removed first, the same token would have measured
+        # 19% and collected the +5 dispersed-holder bonus for parking its supply
+        # in its own contract.
+        project, reasons, _ = _project({"wallet": {
+            "top20_holder_pct": layer["top20_holder_pct"],
+            "top5_holder_pct": layer["top5_holder_pct"],
+        }})
+        assert project == 0.0
+        assert not any("concentration" in r for r in reasons)
+
+        understated, understated_reasons, _ = _project({"wallet": {
+            "top20_holder_pct": 19.0,
+            "top5_holder_pct": 4.0,
+        }})
+        assert understated == 7.0, (
+            "the gaming path must still be worth points, or this proves nothing: "
+            "5 for a dispersed top-20 plus 2 for a dispersed top-5"
+        )
+    finally:
+        scanner.GOLDRUSH_API_KEY = original_key
+        scanner.session = original_session
+
+
+def test_infrastructure_label_matching_is_never_a_substring_test():
+    """Short words inside a holder's name must not read as infrastructure.
+
+    Every one of these was discarded before, purely because its name contained
+    a short word: "lp" in Alpaca/Delphi/Help/Zilp, "pool" in Poolside, "dead" in
+    Deadpool, "bridge" in Bridgewater, "null" in Null Labs, "contract" in
+    Contractual. All are plausible names for a real fund or treasury.
+    """
+    genuine = [
+        "Alpaca Finance", "Delphi Markets", "Help Protocol", "Zilp",
+        "Poolside", "PoolTogether", "Deadpool Capital", "Bridgewater Capital",
+        "Null Labs", "Contractual Reserve", "Firebase Fund", "Unstoppable",
+    ]
+    for label in genuine:
+        assert not scanner._is_infra_holder("0xholder", label, ""), label
+
+    infrastructure = [
+        "Uniswap V2", "Uniswap V3: UNI-WETH", "PancakeSwap V2 Pool",
+        "Binance Hot Wallet 6", "Gate.io: Exchange", "Coinbase",
+        "Some Treasury", "Staking Pool", "Liquidity",
+    ]
+    for label in infrastructure:
+        assert scanner._is_infra_holder("0xholder", label, ""), label
+
+
+def test_the_burn_address_is_excluded_by_value_even_when_unlabelled():
+    """The filter used to read only a provider label, and the burn address is
+    normally unlabelled, so it passed as a holder holding 44.6% of FLOKI."""
+    for address in ("0x000000000000000000000000000000000000dead",
+                    "0x0000000000000000000000000000000000000000",
+                    "0X000000000000000000000000000000000000DEAD"):
+        assert scanner._is_infra_holder(address, "", ""), address
+    assert not scanner._is_infra_holder("0xrealfund", "", "")
+    assert "0x000000000000000000000000000000000000dead" in scanner.INFRA_HOLDER_ADDRESSES
+
+
+def test_both_goldrush_layers_agree_on_filtering_and_concentration():
+    """Production installs the enhanced layer, but the base layer is what unit
+    tests exercise. They must not answer differently."""
+    import wallet_enhancement
+
+    supply = 10 ** 28
+    # Percentage is given explicitly and consistently with balance/supply so
+    # both implementations measure the same thing. The base layer reads the
+    # provider percentage, the enhanced layer derives it from balance/supply.
+    items = [
+        {"address": f"0x{1:040x}", "label": "Uniswap V2", "percentage": 40.0,
+         "balance": 4 * 10 ** 27, "total_supply": supply, "rank": 1},
+        {"address": f"0x{2:040x}", "label": "Alpaca Finance", "percentage": 30.0,
+         "balance": 3 * 10 ** 27, "total_supply": supply, "rank": 2},
+        {"address": "0x000000000000000000000000000000000000dead", "label": "",
+         "percentage": 10.0, "balance": 10 ** 27, "total_supply": supply, "rank": 3},
+    ]
+    payload = {"data": {"items": items}}
+
+    class _Ok:
+        status_code = 200
+
+        def json(self):
+            return payload
+
+    class _Session:
+        def get(self, *_a, **_k):
+            return _Ok()
+
+    coin = {"symbol": "UNI", "platform": {
+        "name": "Ethereum", "token_address": "0xuni"}}
+    original_key, original_session = scanner.GOLDRUSH_API_KEY, scanner.session
+    try:
+        scanner.GOLDRUSH_API_KEY = "test"
+        scanner.session = _Session()
+        base = _BASE_GOLDRUSH_LAYER(coin)
+        enhanced = wallet_enhancement.enhanced_goldrush_wallet_layer(coin)
+    finally:
+        scanner.GOLDRUSH_API_KEY = original_key
+        scanner.session = original_session
+
+    assert base is not None and enhanced is not None
+    assert [h["wallet"] for h in base["holders"]] == [h["wallet"] for h in enhanced["holders"]]
+    assert round(base["top5_holder_pct"], 6) == round(enhanced["top5_holder_pct"], 6)
+    assert round(base["top20_holder_pct"], 6) == round(enhanced["top20_holder_pct"], 6)
+    # The denominator keeps all three rows, including the pair contract and the
+    # burn address: 40 + 30 + 10.
+    assert round(enhanced["top5_holder_pct"], 6) == 80.0
+    assert round(enhanced["top20_holder_pct"], 6) == 80.0
+    # Only the Alpaca wallet survives as smart money.
+    assert len(enhanced["holders"]) == 1
+    assert enhanced["holders"][0]["label"] == "alpaca finance"
 
 
 def test_missing_keys_degrade_without_inventing_flow():
@@ -938,6 +1119,10 @@ if __name__ == "__main__":
     test_a_request_that_never_delivered_is_not_reported_as_a_provider_gap()
     test_missing_api_key_does_not_claim_the_provider_answered()
     test_holders_the_scanner_filtered_out_are_not_blamed_on_the_provider()
+    test_infrastructure_cannot_make_a_token_look_dispersed()
+    test_infrastructure_label_matching_is_never_a_substring_test()
+    test_the_burn_address_is_excluded_by_value_even_when_unlabelled()
+    test_both_goldrush_layers_agree_on_filtering_and_concentration()
     test_missing_keys_degrade_without_inventing_flow()
     test_goldrush_retries_a_transient_failure_before_giving_up()
     print("Fil Before Pump smoke tests: PASS")
