@@ -473,7 +473,7 @@
       "mae_pct": 0.0,
       "tp1_touched": false,
       "created_at": "2026-09-28T02:02:05.254673+00:00",
-      "last_seen_at": "2026-09-28T07:45:10.618628+00:00"
+      "last_seen_at": "2026-09-28T08:11:13.875846+00:00"
     },
     {
       "id": "PT-SKY-20260928020205254727",
@@ -953,20 +953,20 @@
       "mae_pct": 0.0,
       "tp1_touched": false,
       "created_at": "2026-09-28T02:02:05.254673+00:00",
-      "last_seen_at": "2026-09-28T07:45:10.618628+00:00"
+      "last_seen_at": "2026-09-28T08:11:13.875846+00:00"
     },
     {
-      "id": "PT-QNT-20260928071234560978",
+      "id": "PT-QNT-20260928081113875888",
       "symbol": "QNT",
-      "rank": 30,
+      "rank": 31,
       "direction": "LONG_PAPER",
       "status": "OPEN",
-      "entry_price": 282.199246527025,
-      "entry_time": "2026-09-28T07:12:34.560942+00:00",
-      "stop_price": 273.733269131214,
-      "take_profit_1_price": 299.131201318646,
-      "take_profit_2_price": 310.419171179727,
-      "wallet_conviction_score": 27.7,
+      "entry_price": 270.691715307062,
+      "entry_time": "2026-09-28T08:11:13.875846+00:00",
+      "stop_price": 262.57096384785,
+      "take_profit_1_price": 286.933218225486,
+      "take_profit_2_price": 297.760886837768,
+      "wallet_conviction_score": 27.4,
       "wallet_active": 7,
       "wallet_proven": 4,
       "wallet_shared": 6,
@@ -983,7 +983,6 @@
           "exited": false,
           "sources": [
             "cluster",
-            "gmgn",
             "profile",
             "radar"
           ]
@@ -1009,8 +1008,8 @@
           "chain": "eth",
           "active": true,
           "proven": false,
-          "pre_pump_first_entry_rate": 0.0,
-          "pre_pump_24h_10pct_rate": 0.0,
+          "pre_pump_first_entry_rate": 6.7,
+          "pre_pump_24h_10pct_rate": 3.4,
           "pre_pump_proof_attempts": 31,
           "shared": true,
           "exited": false,
@@ -1026,23 +1025,8 @@
           "active": true,
           "proven": true,
           "pre_pump_first_entry_rate": 22.2,
-          "pre_pump_24h_10pct_rate": 7.1,
-          "pre_pump_proof_attempts": 29,
-          "shared": true,
-          "exited": false,
-          "sources": [
-            "cluster",
-            "profile"
-          ]
-        },
-        {
-          "wallet": "0x055854dabe7deb658e62d3e93f31cb59caa8d226",
-          "chain": null,
-          "active": true,
-          "proven": true,
-          "pre_pump_first_entry_rate": 9.1,
-          "pre_pump_24h_10pct_rate": 7.4,
-          "pre_pump_proof_attempts": 27,
+          "pre_pump_24h_10pct_rate": 6.9,
+          "pre_pump_proof_attempts": 30,
           "shared": true,
           "exited": false,
           "sources": [
@@ -1066,7 +1050,22 @@
           ]
         },
         {
-          "wallet": "0x7bf30399dba8051c2bf191afe2cd07ea4e064625",
+          "wallet": "0x055854dabe7deb658e62d3e93f31cb59caa8d226",
+          "chain": null,
+          "active": true,
+          "proven": true,
+          "pre_pump_first_entry_rate": 10.0,
+          "pre_pump_24h_10pct_rate": 8.0,
+          "pre_pump_proof_attempts": 25,
+          "shared": true,
+          "exited": false,
+          "sources": [
+            "cluster",
+            "profile"
+          ]
+        },
+        {
+          "wallet": "0x45e6345d5755f13e98e6cf94c426f6ffbc7aadcc",
           "chain": null,
           "active": true,
           "proven": false,
@@ -1081,15 +1080,13 @@
         }
       ],
       "wallet_exit_pressure": 0.0,
-      "fil_confluence_score": 75.7,
+      "fil_confluence_score": 72.4,
       "leverage_cap": 3,
       "max_account_risk_pct": 1.0,
       "mfe_pct": 0.0,
-      "mae_pct": -1.4984090281711897,
+      "mae_pct": 0.0,
       "tp1_touched": false,
-      "created_at": "2026-09-28T07:12:34.560942+00:00",
-      "last_price": 277.970747539633,
-      "last_seen_at": "2026-09-28T07:45:10.618628+00:00"
+      "created_at": "2026-09-28T08:11:13.875846+00:00"
     }
   ],
   "closed": [
@@ -1606,14 +1603,155 @@
       "exit_time": "2026-09-28T07:12:34.560942+00:00",
       "pnl_pct": 10.797,
       "pnl_multiple_of_risk": 3.599
+    },
+    {
+      "id": "PT-QNT-20260928071234560978",
+      "symbol": "QNT",
+      "rank": 30,
+      "direction": "LONG_PAPER",
+      "status": "CLOSED",
+      "entry_price": 282.199246527025,
+      "entry_time": "2026-09-28T07:12:34.560942+00:00",
+      "stop_price": 273.733269131214,
+      "take_profit_1_price": 299.131201318646,
+      "take_profit_2_price": 310.419171179727,
+      "wallet_conviction_score": 27.7,
+      "wallet_active": 7,
+      "wallet_proven": 4,
+      "wallet_shared": 6,
+      "signal_wallets": [
+        {
+          "wallet": "0xe4613af9ecdf8db83707546af9d4bd9da76ce504",
+          "chain": "",
+          "active": true,
+          "proven": true,
+          "pre_pump_first_entry_rate": 20.0,
+          "pre_pump_24h_10pct_rate": 7.1,
+          "pre_pump_proof_attempts": 29,
+          "shared": true,
+          "exited": false,
+          "sources": [
+            "cluster",
+            "gmgn",
+            "profile",
+            "radar"
+          ]
+        },
+        {
+          "wallet": "0xdc270bf5fb6ca784be1887cc2be463aa7efbc0bb",
+          "chain": "",
+          "active": true,
+          "proven": false,
+          "pre_pump_first_entry_rate": 0.0,
+          "pre_pump_24h_10pct_rate": 0.0,
+          "pre_pump_proof_attempts": 1,
+          "shared": true,
+          "exited": false,
+          "sources": [
+            "cluster",
+            "profile",
+            "radar"
+          ]
+        },
+        {
+          "wallet": "0x2c1b3240631826cd4f9a894a207c09b6e861dce8",
+          "chain": "eth",
+          "active": true,
+          "proven": false,
+          "pre_pump_first_entry_rate": 0.0,
+          "pre_pump_24h_10pct_rate": 0.0,
+          "pre_pump_proof_attempts": 31,
+          "shared": true,
+          "exited": false,
+          "sources": [
+            "cluster",
+            "profile",
+            "radar"
+          ]
+        },
+        {
+          "wallet": "0xab2f731f01621b529225b3fb47cf404ccda099ff",
+          "chain": null,
+          "active": true,
+          "proven": true,
+          "pre_pump_first_entry_rate": 22.2,
+          "pre_pump_24h_10pct_rate": 7.1,
+          "pre_pump_proof_attempts": 29,
+          "shared": true,
+          "exited": false,
+          "sources": [
+            "cluster",
+            "profile"
+          ]
+        },
+        {
+          "wallet": "0x055854dabe7deb658e62d3e93f31cb59caa8d226",
+          "chain": null,
+          "active": true,
+          "proven": true,
+          "pre_pump_first_entry_rate": 9.1,
+          "pre_pump_24h_10pct_rate": 7.4,
+          "pre_pump_proof_attempts": 27,
+          "shared": true,
+          "exited": false,
+          "sources": [
+            "cluster",
+            "profile"
+          ]
+        },
+        {
+          "wallet": "0x3ee92cd00993a4488ae153ab41ac7947cbcbc1de",
+          "chain": null,
+          "active": true,
+          "proven": true,
+          "pre_pump_first_entry_rate": 14.3,
+          "pre_pump_24h_10pct_rate": 11.1,
+          "pre_pump_proof_attempts": 18,
+          "shared": true,
+          "exited": false,
+          "sources": [
+            "cluster",
+            "profile"
+          ]
+        },
+        {
+          "wallet": "0x7bf30399dba8051c2bf191afe2cd07ea4e064625",
+          "chain": null,
+          "active": true,
+          "proven": false,
+          "pre_pump_first_entry_rate": null,
+          "pre_pump_24h_10pct_rate": null,
+          "pre_pump_proof_attempts": 0,
+          "shared": false,
+          "exited": false,
+          "sources": [
+            "gmgn"
+          ]
+        }
+      ],
+      "wallet_exit_pressure": 0.0,
+      "fil_confluence_score": 75.7,
+      "leverage_cap": 3,
+      "max_account_risk_pct": 1.0,
+      "mfe_pct": 0.0,
+      "mae_pct": -4.077803665879344,
+      "tp1_touched": false,
+      "created_at": "2026-09-28T07:12:34.560942+00:00",
+      "last_price": 270.6917153070621,
+      "last_seen_at": "2026-09-28T08:11:13.875846+00:00",
+      "exit_price": 270.691715307062,
+      "exit_reason": "STOP_LOSS",
+      "exit_time": "2026-09-28T08:11:13.875846+00:00",
+      "pnl_pct": -4.0778,
+      "pnl_multiple_of_risk": -1.3593
     }
   ],
-  "updated_at": "2026-09-28T07:45:10.618628+00:00",
+  "updated_at": "2026-09-28T08:11:13.875846+00:00",
   "summary": {
     "open_count": 3,
-    "closed_count": 4,
+    "closed_count": 5,
     "win_count": 1,
-    "loss_count": 3,
+    "loss_count": 4,
     "orders_enabled": false
   }
 }
