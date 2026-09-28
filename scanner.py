@@ -1239,23 +1239,56 @@ def solscan_wallet_layer(symbol):
     }
 
 
+GOLDRUSH_TRANSIENT_STATUS = (429, 500, 502, 503, 504)
+
+
 def goldrush_get(path, params=None):
-    """Read-only multichain wallet/token data. GoldRush never labels a transfer as a buy/sell here."""
+    """Read-only multichain wallet/token data. GoldRush never labels a transfer as a buy/sell here.
+
+    Returns ``[]`` when the provider genuinely answered with no holders and
+    ``None`` when the request did not deliver. Resolving several contracts per
+    candidate raises request volume, so throttling, transient 5xx and transport
+    errors are retried once; a definitive answer such as 404, 401 or 403 is not
+    retried, because spending a request on it cannot change the outcome.
+    Otherwise a transport blip would be recorded as an honest "provider returned
+    nothing" coverage gap when no such answer ever arrived.
+    """
     if not GOLDRUSH_API_KEY:
         return None
-    try:
-        r = session.get(
-            GOLDRUSH_BASE + path,
-            params=params or {},
-            headers={"Authorization": f"Bearer {GOLDRUSH_API_KEY}", "accept": "application/json"},
-            timeout=30,
-        )
-        r.raise_for_status()
-        payload = r.json()
-        return (payload.get("data") or {}).get("items", [])
-    except requests.RequestException as e:
-        print(f"GoldRush warning: {e}")
-        return None
+    for attempt in range(2):
+        retry = False
+        try:
+            r = session.get(
+                GOLDRUSH_BASE + path,
+                params=params or {},
+                headers={"Authorization": f"Bearer {GOLDRUSH_API_KEY}", "accept": "application/json"},
+                timeout=30,
+            )
+            status = r.status_code
+            if status in GOLDRUSH_TRANSIENT_STATUS:
+                retry = attempt == 0
+                if not retry:
+                    print(f"GoldRush warning: HTTP {status} for {path}")
+                    return None
+            elif status >= 400:
+                # Definitive: unknown token, or the chain is not on this plan.
+                print(f"GoldRush warning: HTTP {status} for {path}")
+                return None
+            else:
+                try:
+                    payload = r.json()
+                except ValueError as e:
+                    print(f"GoldRush warning: malformed response for {path}: {e}")
+                    return None
+                return (payload.get("data") or {}).get("items", [])
+        except requests.RequestException as e:
+            retry = attempt == 0
+            if not retry:
+                print(f"GoldRush warning: {e}")
+                return None
+        if retry:
+            time.sleep(1.0)
+    return None
 
 
 # Provenance for the 7-day flow fields on a project layer. The two providers
@@ -1417,8 +1450,11 @@ def coin_contracts(coin):
 def project_layer_missing_reason(coin):
     """Classify exactly why an EVM candidate has no project layer.
 
-    A resolved contract that still yields no layer means the provider answered
-    with nothing, which is the one reason the scanner itself cannot fix.
+    A contract that resolved but produced no layer means the provider did not
+    deliver holder data, whether because it answered with an empty holder list
+    or because the call failed. That is the one gap the scanner cannot close
+    itself, and it is deliberately reported as such instead of being folded into
+    the contract-mapping reasons.
     """
     contracts, reason = _contract_entries(coin or {})
     return "provider_empty_response" if contracts else reason

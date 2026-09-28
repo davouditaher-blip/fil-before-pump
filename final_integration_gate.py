@@ -214,16 +214,21 @@ def main() -> None:
         gaps = [p for p in with_scale if not p.get("project_layer_present")]
         print(f"project layer coverage: {len(covered)}/{len(with_scale)}")
         # Every gap must carry an explicit reason, so an absent project layer is
-        # never silently indistinguishable from a genuinely weak score.
+        # never silently indistinguishable from a genuinely weak score. An
+        # artifact written before reason recording existed is reported rather
+        # than failed, because it says nothing about the current scanner.
+        records_reasons = any("project_layer_missing_reason" in p for p in with_scale)
         if gaps:
             counts = Counter(str(p.get("project_layer_missing_reason") or "unclassified") for p in gaps)
             print(f"plans without a project layer: {len(gaps)}")
             for reason, count in sorted(counts.items(), key=lambda kv: -kv[1]):
                 print(f"  - {reason}: {count}")
             if counts.get("unclassified"):
-                raise SystemExit(
-                    f"FAIL: {counts['unclassified']} plans have no recorded project-layer reason"
-                )
+                if records_reasons:
+                    raise SystemExit(
+                        f"FAIL: {counts['unclassified']} plans have no recorded project-layer reason"
+                    )
+                print("  note: artifact predates project-layer reason recording")
         # Flow provenance: Solana flow is Solscan's all-participant token flow,
         # EVM flow is GMGN's labelled smart-money trades. The two populations
         # differ, so the mix is always reported.

@@ -724,6 +724,77 @@ def test_missing_keys_degrade_without_inventing_flow():
         {"0x1": [{"symbol": "NEAR", "amount_usd": 10, "trade_timestamp": _NOW}]}, "NEAR", _NOW) == {}
 
 
+class _StubResponse:
+    def __init__(self, status_code, payload=None):
+        self.status_code = status_code
+        self._payload = payload or {}
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise scanner.requests.HTTPError(f"HTTP {self.status_code}")
+
+    def json(self):
+        return self._payload
+
+
+class _StubSession:
+    """Replays a fixed sequence of responses and counts the calls made."""
+
+    def __init__(self, responses):
+        self.responses = list(responses)
+        self.calls = 0
+
+    def get(self, *args, **kwargs):
+        self.calls += 1
+        item = self.responses.pop(0)
+        if isinstance(item, Exception):
+            raise item
+        return item
+
+
+def test_goldrush_retries_a_transient_failure_before_giving_up():
+    original_key = scanner.GOLDRUSH_API_KEY
+    original_session = scanner.session
+    original_sleep = scanner.time.sleep
+    try:
+        scanner.GOLDRUSH_API_KEY = "test"
+        scanner.time.sleep = lambda _s: None
+
+        # Throttled once, then answered. A single retry must recover the data
+        # instead of recording a false "provider returned nothing" gap.
+        stub = _StubSession([
+            _StubResponse(429),
+            _StubResponse(200, {"data": {"items": [{"address": "0x1", "percentage": "5"}]}}),
+        ])
+        scanner.session = stub
+        items = scanner.goldrush_get("/eth-mainnet/tokens/0xabc/token_holders_v2/")
+        assert stub.calls == 2
+        assert items == [{"address": "0x1", "percentage": "5"}]
+
+        # Persistently throttled: give up, and report a failure rather than an
+        # empty holder list so the two are never confused.
+        stub = _StubSession([_StubResponse(429), _StubResponse(429)])
+        scanner.session = stub
+        assert scanner.goldrush_get("/eth-mainnet/tokens/0xabc/token_holders_v2/") is None
+        assert stub.calls == 2
+
+        # A genuine empty answer is an empty list, and is not retried.
+        stub = _StubSession([_StubResponse(200, {"data": {"items": []}})])
+        scanner.session = stub
+        assert scanner.goldrush_get("/eth-mainnet/tokens/0xabc/token_holders_v2/") == []
+        assert stub.calls == 1
+
+        # A 404 is a real answer about the resource, so it must not be retried.
+        stub = _StubSession([_StubResponse(404)])
+        scanner.session = stub
+        assert scanner.goldrush_get("/eth-mainnet/tokens/0xabc/token_holders_v2/") is None
+        assert stub.calls == 1
+    finally:
+        scanner.GOLDRUSH_API_KEY = original_key
+        scanner.session = original_session
+        scanner.time.sleep = original_sleep
+
+
 if __name__ == "__main__":
     test_asset_exclusions()
     test_trade_plan_is_deterministic_and_paper_only()
@@ -760,4 +831,5 @@ if __name__ == "__main__":
     test_missing_contract_is_classified()
     test_resolved_contract_with_empty_provider_response_is_classified()
     test_missing_keys_degrade_without_inventing_flow()
+    test_goldrush_retries_a_transient_failure_before_giving_up()
     print("Fil Before Pump smoke tests: PASS")
