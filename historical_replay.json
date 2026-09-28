@@ -1,114 +1,114 @@
 {
   "mode": "HISTORICAL_FORWARD_ONLY",
   "orders_enabled": false,
-  "generated_at": "2026-09-28T11:45:36.135873+00:00",
+  "generated_at": "2026-09-28T12:11:25.760672+00:00",
   "threshold_usd": 5000.0,
-  "observation_count": 1421,
+  "observation_count": 1423,
   "wallet_count": 77,
   "statistics": {
     "6": {
       "observations": 1216,
       "hit_rate_pct": {
-        "5": 8.31,
+        "5": 8.22,
         "10": 2.3,
-        "20": 1.15,
+        "20": 1.23,
         "30": 0.9
       },
       "avg_mfe_pct": 1.976,
-      "avg_mae_pct": -0.282
+      "avg_mae_pct": -0.284
     },
     "12": {
-      "observations": 1347,
+      "observations": 1348,
       "hit_rate_pct": {
-        "5": 14.11,
+        "5": 14.02,
         "10": 2.23,
-        "20": 1.04,
+        "20": 1.11,
         "30": 0.82
       },
-      "avg_mfe_pct": 2.391,
-      "avg_mae_pct": -0.724
+      "avg_mfe_pct": 2.39,
+      "avg_mae_pct": -0.723
     },
     "24": {
-      "observations": 1421,
+      "observations": 1423,
       "hit_rate_pct": {
-        "5": 23.01,
-        "10": 9.15,
-        "20": 1.2,
+        "5": 22.91,
+        "10": 9.14,
+        "20": 1.26,
         "30": 0.77
       },
-      "avg_mfe_pct": 3.425,
-      "avg_mae_pct": -1.423
+      "avg_mfe_pct": 3.42,
+      "avg_mae_pct": -1.405
     }
   },
   "cohort_statistics": {
     "FIRST_ENTRY": {
       "6": {
-        "observations": 334,
+        "observations": 333,
         "hit_rate_pct": {
-          "5": 13.47,
-          "10": 6.59,
-          "20": 2.99,
+          "5": 13.21,
+          "10": 6.61,
+          "20": 3.3,
           "30": 2.1
         },
-        "avg_mfe_pct": 3.483,
-        "avg_mae_pct": -0.299
+        "avg_mfe_pct": 3.504,
+        "avg_mae_pct": -0.295
       },
       "12": {
-        "observations": 383,
+        "observations": 382,
         "hit_rate_pct": {
-          "5": 19.58,
-          "10": 6.01,
-          "20": 2.61,
+          "5": 19.37,
+          "10": 6.02,
+          "20": 2.88,
           "30": 1.83
         },
-        "avg_mfe_pct": 3.859,
-        "avg_mae_pct": -0.69
+        "avg_mfe_pct": 3.878,
+        "avg_mae_pct": -0.694
       },
       "24": {
         "observations": 411,
         "hit_rate_pct": {
-          "5": 27.49,
+          "5": 27.25,
           "10": 9.98,
-          "20": 2.68,
+          "20": 2.92,
           "30": 1.7
         },
-        "avg_mfe_pct": 4.63,
-        "avg_mae_pct": -1.09
+        "avg_mfe_pct": 4.605,
+        "avg_mae_pct": -1.074
       }
     },
     "REPEAT_ENTRY": {
       "6": {
-        "observations": 882,
+        "observations": 883,
         "hit_rate_pct": {
-          "5": 6.35,
+          "5": 6.34,
           "10": 0.68,
           "20": 0.45,
           "30": 0.45
         },
-        "avg_mfe_pct": 1.405,
-        "avg_mae_pct": -0.276
+        "avg_mfe_pct": 1.4,
+        "avg_mae_pct": -0.28
       },
       "12": {
-        "observations": 964,
+        "observations": 966,
         "hit_rate_pct": {
-          "5": 11.93,
-          "10": 0.73,
+          "5": 11.9,
+          "10": 0.72,
           "20": 0.41,
           "30": 0.41
         },
-        "avg_mfe_pct": 1.808,
-        "avg_mae_pct": -0.737
+        "avg_mfe_pct": 1.802,
+        "avg_mae_pct": -0.735
       },
       "24": {
-        "observations": 1010,
+        "observations": 1012,
         "hit_rate_pct": {
-          "5": 21.19,
-          "10": 8.81,
+          "5": 21.15,
+          "10": 8.79,
           "20": 0.59,
           "30": 0.4
         },
-        "avg_mfe_pct": 2.934,
-        "avg_mae_pct": -1.558
+        "avg_mfe_pct": 2.938,
+        "avg_mae_pct": -1.54
       }
     }
   },
@@ -5470,7 +5470,7 @@
       "entry_type": "REPEAT_ENTRY",
       "windows": {
         "6": {
-          "mfe_pct": -0.142,
+          "mfe_pct": 0.0,
           "mae_pct": -0.142,
           "targets_hit": {
             "5": false,
@@ -5480,7 +5480,7 @@
           }
         },
         "12": {
-          "mfe_pct": -0.142,
+          "mfe_pct": 0.0,
           "mae_pct": -0.142,
           "targets_hit": {
             "5": false,
@@ -5490,8 +5490,90 @@
           }
         },
         "24": {
-          "mfe_pct": -0.142,
+          "mfe_pct": 0.0,
           "mae_pct": -0.142,
+          "targets_hit": {
+            "5": false,
+            "10": false,
+            "20": false,
+            "30": false
+          }
+        }
+      }
+    },
+    {
+      "wallet": "0x7bf30399dba8051c2bf191afe2cd07ea4e064625",
+      "symbol": "LINK",
+      "entry_timestamp": 1790595503,
+      "entry_price": 14.032453522287573,
+      "entry_usd": 18019.04292909456,
+      "prior_qualified_buys": 4,
+      "entry_type": "REPEAT_ENTRY",
+      "windows": {
+        "6": {
+          "mfe_pct": 0.0,
+          "mae_pct": -0.22,
+          "targets_hit": {
+            "5": false,
+            "10": false,
+            "20": false,
+            "30": false
+          }
+        },
+        "12": {
+          "mfe_pct": 0.0,
+          "mae_pct": -0.22,
+          "targets_hit": {
+            "5": false,
+            "10": false,
+            "20": false,
+            "30": false
+          }
+        },
+        "24": {
+          "mfe_pct": 0.0,
+          "mae_pct": -0.22,
+          "targets_hit": {
+            "5": false,
+            "10": false,
+            "20": false,
+            "30": false
+          }
+        }
+      }
+    },
+    {
+      "wallet": "0x7bf30399dba8051c2bf191afe2cd07ea4e064625",
+      "symbol": "XAUT",
+      "entry_timestamp": 1790597099,
+      "entry_price": 4147.8058582517115,
+      "entry_usd": 13204.929843495,
+      "prior_qualified_buys": 0,
+      "entry_type": "FIRST_ENTRY",
+      "windows": {
+        "6": {
+          "mfe_pct": 0.026,
+          "mae_pct": 0.026,
+          "targets_hit": {
+            "5": false,
+            "10": false,
+            "20": false,
+            "30": false
+          }
+        },
+        "12": {
+          "mfe_pct": 0.026,
+          "mae_pct": 0.026,
+          "targets_hit": {
+            "5": false,
+            "10": false,
+            "20": false,
+            "30": false
+          }
+        },
+        "24": {
+          "mfe_pct": 0.026,
+          "mae_pct": 0.026,
           "targets_hit": {
             "5": false,
             "10": false,
@@ -8210,32 +8292,32 @@
       "entry_type": "FIRST_ENTRY",
       "windows": {
         "6": {
-          "mfe_pct": 17.311,
+          "mfe_pct": 20.009,
           "mae_pct": -0.835,
           "targets_hit": {
             "5": true,
             "10": true,
-            "20": false,
+            "20": true,
             "30": false
           }
         },
         "12": {
-          "mfe_pct": 17.311,
+          "mfe_pct": 20.009,
           "mae_pct": -0.835,
           "targets_hit": {
             "5": true,
             "10": true,
-            "20": false,
+            "20": true,
             "30": false
           }
         },
         "24": {
-          "mfe_pct": 17.311,
+          "mfe_pct": 20.009,
           "mae_pct": -0.835,
           "targets_hit": {
             "5": true,
             "10": true,
-            "20": false,
+            "20": true,
             "30": false
           }
         }
@@ -13640,7 +13722,7 @@
           }
         },
         "12": {
-          "mfe_pct": -0.867,
+          "mfe_pct": -0.73,
           "mae_pct": -0.867,
           "targets_hit": {
             "5": false,
@@ -13650,7 +13732,7 @@
           }
         },
         "24": {
-          "mfe_pct": -0.867,
+          "mfe_pct": -0.73,
           "mae_pct": -0.867,
           "targets_hit": {
             "5": false,
@@ -14883,7 +14965,7 @@
       "windows": {
         "6": {
           "mfe_pct": 1.933,
-          "mae_pct": 1.933,
+          "mae_pct": 0.0,
           "targets_hit": {
             "5": false,
             "10": false,
@@ -14893,7 +14975,7 @@
         },
         "12": {
           "mfe_pct": 1.933,
-          "mae_pct": 1.933,
+          "mae_pct": 0.0,
           "targets_hit": {
             "5": false,
             "10": false,
@@ -14903,7 +14985,7 @@
         },
         "24": {
           "mfe_pct": 1.933,
-          "mae_pct": 1.933,
+          "mae_pct": 0.0,
           "targets_hit": {
             "5": false,
             "10": false,
@@ -19253,7 +19335,7 @@
       "windows": {
         "12": {
           "mfe_pct": -4.295,
-          "mae_pct": -4.295,
+          "mae_pct": -4.52,
           "targets_hit": {
             "5": false,
             "10": false,
@@ -19263,7 +19345,7 @@
         },
         "24": {
           "mfe_pct": -4.295,
-          "mae_pct": -4.295,
+          "mae_pct": -4.52,
           "targets_hit": {
             "5": false,
             "10": false,
@@ -24056,7 +24138,7 @@
         },
         "24": {
           "mfe_pct": -0.003,
-          "mae_pct": -0.003,
+          "mae_pct": -1.933,
           "targets_hit": {
             "5": false,
             "10": false,
@@ -24087,7 +24169,7 @@
         },
         "12": {
           "mfe_pct": -0.147,
-          "mae_pct": -0.503,
+          "mae_pct": -2.788,
           "targets_hit": {
             "5": false,
             "10": false,
@@ -24097,7 +24179,7 @@
         },
         "24": {
           "mfe_pct": -0.147,
-          "mae_pct": -0.503,
+          "mae_pct": -2.788,
           "targets_hit": {
             "5": false,
             "10": false,
@@ -30779,7 +30861,7 @@
       "windows": {
         "6": {
           "mfe_pct": 7.109,
-          "mae_pct": 7.109,
+          "mae_pct": 5.054,
           "targets_hit": {
             "5": true,
             "10": false,
@@ -30789,7 +30871,7 @@
         },
         "12": {
           "mfe_pct": 7.109,
-          "mae_pct": 7.109,
+          "mae_pct": 5.054,
           "targets_hit": {
             "5": true,
             "10": false,
@@ -30799,7 +30881,7 @@
         },
         "24": {
           "mfe_pct": 7.109,
-          "mae_pct": 7.109,
+          "mae_pct": 5.054,
           "targets_hit": {
             "5": true,
             "10": false,
@@ -34537,6 +34619,37 @@
         "24": {
           "mfe_pct": 0.273,
           "mae_pct": -1.311,
+          "targets_hit": {
+            "5": false,
+            "10": false,
+            "20": false,
+            "30": false
+          }
+        }
+      }
+    },
+    {
+      "wallet": "0xb53597617f772b8361fca7ad5d3c97199c2e0d18",
+      "symbol": "SKY",
+      "entry_timestamp": 1790574734,
+      "entry_price": 0.08016139497672599,
+      "entry_usd": 11555.069279130432,
+      "prior_qualified_buys": 4,
+      "entry_type": "REPEAT_ENTRY",
+      "windows": {
+        "12": {
+          "mfe_pct": 0.194,
+          "mae_pct": 0.194,
+          "targets_hit": {
+            "5": false,
+            "10": false,
+            "20": false,
+            "30": false
+          }
+        },
+        "24": {
+          "mfe_pct": 0.194,
+          "mae_pct": 0.194,
           "targets_hit": {
             "5": false,
             "10": false,
@@ -40774,7 +40887,7 @@
       "entry_type": "FIRST_ENTRY",
       "windows": {
         "6": {
-          "mfe_pct": 5.821,
+          "mfe_pct": 5.92,
           "mae_pct": -3.651,
           "targets_hit": {
             "5": true,
@@ -40784,7 +40897,7 @@
           }
         },
         "12": {
-          "mfe_pct": 5.821,
+          "mfe_pct": 5.92,
           "mae_pct": -3.651,
           "targets_hit": {
             "5": true,
@@ -40794,7 +40907,7 @@
           }
         },
         "24": {
-          "mfe_pct": 5.821,
+          "mfe_pct": 5.92,
           "mae_pct": -3.651,
           "targets_hit": {
             "5": true,
@@ -40815,7 +40928,7 @@
       "entry_type": "REPEAT_ENTRY",
       "windows": {
         "6": {
-          "mfe_pct": 5.821,
+          "mfe_pct": 5.92,
           "mae_pct": -3.651,
           "targets_hit": {
             "5": true,
@@ -40825,7 +40938,7 @@
           }
         },
         "12": {
-          "mfe_pct": 5.821,
+          "mfe_pct": 5.92,
           "mae_pct": -3.651,
           "targets_hit": {
             "5": true,
@@ -40835,7 +40948,7 @@
           }
         },
         "24": {
-          "mfe_pct": 5.821,
+          "mfe_pct": 5.92,
           "mae_pct": -3.651,
           "targets_hit": {
             "5": true,
@@ -41001,47 +41114,6 @@
         "24": {
           "mfe_pct": 0.328,
           "mae_pct": 0.328,
-          "targets_hit": {
-            "5": false,
-            "10": false,
-            "20": false,
-            "30": false
-          }
-        }
-      }
-    },
-    {
-      "wallet": "0x2c1b3240631826cd4f9a894a207c09b6e861dce8",
-      "symbol": "SKY",
-      "entry_timestamp": 1790157881,
-      "entry_price": 0.07401942889963845,
-      "entry_usd": 12946.490691236153,
-      "prior_qualified_buys": 0,
-      "entry_type": "FIRST_ENTRY",
-      "windows": {
-        "6": {
-          "mfe_pct": -0.603,
-          "mae_pct": -0.603,
-          "targets_hit": {
-            "5": false,
-            "10": false,
-            "20": false,
-            "30": false
-          }
-        },
-        "12": {
-          "mfe_pct": -0.603,
-          "mae_pct": -0.603,
-          "targets_hit": {
-            "5": false,
-            "10": false,
-            "20": false,
-            "30": false
-          }
-        },
-        "24": {
-          "mfe_pct": -0.603,
-          "mae_pct": -6.368,
           "targets_hit": {
             "5": false,
             "10": false,
@@ -44021,52 +44093,11 @@
     {
       "wallet": "0x055854dabe7deb658e62d3e93f31cb59caa8d226",
       "symbol": "PEPE",
-      "entry_timestamp": 1790139876,
-      "entry_price": 5.033927779379106e-06,
-      "entry_usd": 6418.051869912925,
-      "prior_qualified_buys": 0,
-      "entry_type": "FIRST_ENTRY",
-      "windows": {
-        "6": {
-          "mfe_pct": -0.862,
-          "mae_pct": -0.862,
-          "targets_hit": {
-            "5": false,
-            "10": false,
-            "20": false,
-            "30": false
-          }
-        },
-        "12": {
-          "mfe_pct": -0.862,
-          "mae_pct": -0.862,
-          "targets_hit": {
-            "5": false,
-            "10": false,
-            "20": false,
-            "30": false
-          }
-        },
-        "24": {
-          "mfe_pct": -0.862,
-          "mae_pct": -14.325,
-          "targets_hit": {
-            "5": false,
-            "10": false,
-            "20": false,
-            "30": false
-          }
-        }
-      }
-    },
-    {
-      "wallet": "0x055854dabe7deb658e62d3e93f31cb59caa8d226",
-      "symbol": "PEPE",
       "entry_timestamp": 1790145347,
       "entry_price": 4.990512908114343e-06,
       "entry_usd": 6096.639958347331,
-      "prior_qualified_buys": 1,
-      "entry_type": "REPEAT_ENTRY",
+      "prior_qualified_buys": 0,
+      "entry_type": "FIRST_ENTRY",
       "windows": {
         "24": {
           "mfe_pct": -13.58,
@@ -44250,7 +44281,7 @@
       "entry_timestamp": 1790265104,
       "entry_price": 4.445056784776006e-06,
       "entry_usd": 5112.87810170948,
-      "prior_qualified_buys": 2,
+      "prior_qualified_buys": 1,
       "entry_type": "REPEAT_ENTRY",
       "windows": {
         "12": {
@@ -44302,7 +44333,7 @@
       "entry_timestamp": 1790343323,
       "entry_price": 4.4812289868232e-06,
       "entry_usd": 6126.593965377216,
-      "prior_qualified_buys": 3,
+      "prior_qualified_buys": 2,
       "entry_type": "REPEAT_ENTRY",
       "windows": {
         "6": {
@@ -47263,7 +47294,7 @@
           }
         },
         "12": {
-          "mfe_pct": 0.033,
+          "mfe_pct": 0.049,
           "mae_pct": -2.92,
           "targets_hit": {
             "5": false,
@@ -47273,7 +47304,7 @@
           }
         },
         "24": {
-          "mfe_pct": 0.033,
+          "mfe_pct": 0.049,
           "mae_pct": -2.92,
           "targets_hit": {
             "5": false,
@@ -47285,39 +47316,39 @@
       }
     },
     {
-      "wallet": "0x4b9fcc416bf5d9d15e8b0eb7ee15b93e8752d4da",
-      "symbol": "UNI",
-      "entry_timestamp": 1790121988,
-      "entry_price": 10.240967130229325,
-      "entry_usd": 26243.32143000215,
-      "prior_qualified_buys": 0,
-      "entry_type": "FIRST_ENTRY",
+      "wallet": "0xab2f731f01621b529225b3fb47cf404ccda099ff",
+      "symbol": "LINK",
+      "entry_timestamp": 1790593331,
+      "entry_price": 13.91254658878385,
+      "entry_usd": 8469.004107919629,
+      "prior_qualified_buys": 4,
+      "entry_type": "REPEAT_ENTRY",
       "windows": {
         "6": {
-          "mfe_pct": 5.139,
-          "mae_pct": 0.846,
+          "mfe_pct": 1.023,
+          "mae_pct": 1.023,
           "targets_hit": {
-            "5": true,
+            "5": false,
             "10": false,
             "20": false,
             "30": false
           }
         },
         "12": {
-          "mfe_pct": 5.139,
-          "mae_pct": -4.306,
+          "mfe_pct": 1.023,
+          "mae_pct": 1.023,
           "targets_hit": {
-            "5": true,
+            "5": false,
             "10": false,
             "20": false,
             "30": false
           }
         },
         "24": {
-          "mfe_pct": 5.139,
-          "mae_pct": -11.424,
+          "mfe_pct": 1.023,
+          "mae_pct": 1.023,
           "targets_hit": {
-            "5": true,
+            "5": false,
             "10": false,
             "20": false,
             "30": false
@@ -47331,8 +47362,8 @@
       "entry_timestamp": 1790125516,
       "entry_price": 10.327575115647685,
       "entry_usd": 12383.530599287977,
-      "prior_qualified_buys": 1,
-      "entry_type": "REPEAT_ENTRY",
+      "prior_qualified_buys": 0,
+      "entry_type": "FIRST_ENTRY",
       "windows": {
         "6": {
           "mfe_pct": 4.257,
@@ -47372,7 +47403,7 @@
       "entry_timestamp": 1790140739,
       "entry_price": 10.517095705345634,
       "entry_usd": 13944.150875853189,
-      "prior_qualified_buys": 2,
+      "prior_qualified_buys": 1,
       "entry_type": "REPEAT_ENTRY",
       "windows": {
         "6": {
@@ -47413,7 +47444,7 @@
       "entry_timestamp": 1790141789,
       "entry_price": 10.517095705345634,
       "entry_usd": 13944.150875853189,
-      "prior_qualified_buys": 3,
+      "prior_qualified_buys": 2,
       "entry_type": "REPEAT_ENTRY",
       "windows": {
         "6": {
@@ -47454,7 +47485,7 @@
       "entry_timestamp": 1790151527,
       "entry_price": 10.42864694114846,
       "entry_usd": 14501.978903028043,
-      "prior_qualified_buys": 4,
+      "prior_qualified_buys": 3,
       "entry_type": "REPEAT_ENTRY",
       "windows": {
         "6": {
@@ -47495,7 +47526,7 @@
       "entry_timestamp": 1790152726,
       "entry_price": 10.42864694114846,
       "entry_usd": 14501.978903028043,
-      "prior_qualified_buys": 5,
+      "prior_qualified_buys": 4,
       "entry_type": "REPEAT_ENTRY",
       "windows": {
         "6": {
@@ -47577,7 +47608,7 @@
       "entry_timestamp": 1790160827,
       "entry_price": 9.844108410318306,
       "entry_usd": 16116.600327384624,
-      "prior_qualified_buys": 6,
+      "prior_qualified_buys": 5,
       "entry_type": "REPEAT_ENTRY",
       "windows": {
         "6": {
@@ -47618,7 +47649,7 @@
       "entry_timestamp": 1790162639,
       "entry_price": 9.844108410318306,
       "entry_usd": 16116.600327384624,
-      "prior_qualified_buys": 7,
+      "prior_qualified_buys": 6,
       "entry_type": "REPEAT_ENTRY",
       "windows": {
         "6": {
@@ -47690,7 +47721,7 @@
       "entry_timestamp": 1790183831,
       "entry_price": 9.140124467467217,
       "entry_usd": 8425.239722213746,
-      "prior_qualified_buys": 8,
+      "prior_qualified_buys": 7,
       "entry_type": "REPEAT_ENTRY",
       "windows": {
         "6": {
@@ -47731,7 +47762,7 @@
       "entry_timestamp": 1790185747,
       "entry_price": 9.140124467467217,
       "entry_usd": 8425.239722213746,
-      "prior_qualified_buys": 9,
+      "prior_qualified_buys": 8,
       "entry_type": "REPEAT_ENTRY",
       "windows": {
         "6": {
@@ -47844,7 +47875,7 @@
       "entry_timestamp": 1790299359,
       "entry_price": 9.223920732169766,
       "entry_usd": 6348.521051231,
-      "prior_qualified_buys": 10,
+      "prior_qualified_buys": 9,
       "entry_type": "REPEAT_ENTRY",
       "windows": {
         "12": {
@@ -47998,7 +48029,7 @@
       "entry_timestamp": 1790404096,
       "entry_price": 9.744926521392015,
       "entry_usd": 29839.287758361934,
-      "prior_qualified_buys": 11,
+      "prior_qualified_buys": 10,
       "entry_type": "REPEAT_ENTRY",
       "windows": {
         "6": {
@@ -48142,7 +48173,7 @@
       "entry_timestamp": 1790501819,
       "entry_price": 10.0542353773862,
       "entry_usd": 7086.525105549378,
-      "prior_qualified_buys": 12,
+      "prior_qualified_buys": 11,
       "entry_type": "REPEAT_ENTRY",
       "windows": {
         "6": {
@@ -48183,7 +48214,7 @@
       "entry_timestamp": 1790502612,
       "entry_price": 10.0542353773862,
       "entry_usd": 7086.525105549378,
-      "prior_qualified_buys": 13,
+      "prior_qualified_buys": 12,
       "entry_type": "REPEAT_ENTRY",
       "windows": {
         "6": {
@@ -48337,7 +48368,7 @@
       "entry_timestamp": 1790554859,
       "entry_price": 9.695705971408387,
       "entry_usd": 5052.652314354,
-      "prior_qualified_buys": 14,
+      "prior_qualified_buys": 13,
       "entry_type": "REPEAT_ENTRY",
       "windows": {
         "6": {
@@ -54418,7 +54449,28 @@
         },
         "24": {
           "mfe_pct": 0.0,
-          "mae_pct": 0.0,
+          "mae_pct": -1.307,
+          "targets_hit": {
+            "5": false,
+            "10": false,
+            "20": false,
+            "30": false
+          }
+        }
+      }
+    },
+    {
+      "wallet": "0xd01ee8fc956657308a5b11ce269a79a042133474",
+      "symbol": "FWWBTC",
+      "entry_timestamp": 1790545721,
+      "entry_price": 84197.37583614922,
+      "entry_usd": 46503.35828453786,
+      "prior_qualified_buys": 2,
+      "entry_type": "REPEAT_ENTRY",
+      "windows": {
+        "24": {
+          "mfe_pct": -1.005,
+          "mae_pct": -1.307,
           "targets_hit": {
             "5": false,
             "10": false,
