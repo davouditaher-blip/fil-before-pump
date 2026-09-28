@@ -151,6 +151,11 @@ def build_trade_plan(x: dict[str, Any]) -> dict[str, Any]:
         "fil_confluence_components": dict(x.get("fil_confluence_components") or {}),
         "project_layer_present": project_layer_present,
         "evidence_coverage": dict(evidence_coverage),
+        # Why a candidate has no project evidence, so a coverage gap is never
+        # mistaken for a genuinely weak score. None when a layer was built.
+        "project_layer_missing_reason": x.get("project_layer_missing_reason"),
+        "project_flow_provider": (x.get("project_intelligence") or {}).get("flow_provider")
+        if isinstance(x.get("project_intelligence"), dict) else None,
         "wallet_conviction_score": round(wallet_score, 1),
         "wallet_conviction_pre_calibration": round(
             _num(x.get("wallet_conviction_score_pre_calibration"), wallet_score), 1

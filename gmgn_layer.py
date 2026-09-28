@@ -30,7 +30,17 @@ def run_gmgn(chain):
             try:
                 obj = json.loads(line)
                 if isinstance(obj, dict):
-                    return obj.get("list") or []
+                    rows = obj.get("list") or []
+                    # gmgn-cli omits the chain on each row, but we know which
+                    # chain was queried. Stamping it now lets newly persisted
+                    # history attribute trades to a chain instead of relying on
+                    # a symbol-only join. Previously stored rows are left
+                    # exactly as they are.
+                    if isinstance(rows, list):
+                        for row in rows:
+                            if isinstance(row, dict) and not row.get("chain"):
+                                row["chain"] = chain
+                    return rows
             except json.JSONDecodeError:
                 pass
     except Exception as e:

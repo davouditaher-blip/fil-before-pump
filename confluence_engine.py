@@ -18,6 +18,12 @@ becomes unreachable. The four missing criteria that previously made 12 points
 structurally unreachable are now scored from evidence the layers already
 collect, and ``_caps_reachable`` is asserted by the smoke tests so a future
 edit cannot quietly reintroduce a dead cap.
+
+The project bucket is exactly saturated: 13 points of 7-day flow plus 7 points
+of holder concentration equals PROJECT_CAP. It therefore gains no new criteria.
+EVM coverage is instead extended by filling the existing flow fields from
+provider-labelled GMGN trades, which lifts the EVM ceiling above the old
+concentration-only 7/20. ``_project`` itself is deliberately unchanged.
 """
 
 WALLET_CAP = 30.0
@@ -89,6 +95,12 @@ def _project(result):
     return _clamp(score, 0, PROJECT_CAP), reasons, {
         "buy_sell_ratio_7d": ratio, "buyers_7d": buyers, "sellers_7d": sellers,
         "top5_holder_pct": top5 or None, "top20_holder_pct": top20 or None,
+        # Provenance only, passed straight through from the layer. Solana flow
+        # is Solscan's all-participant token flow; EVM flow is GMGN's labelled
+        # smart-money trades. They measure different populations, so the source
+        # is reported rather than presented as one measurement.
+        "flow_provider": w.get("flow_provider"),
+        "flow_semantics": w.get("flow_semantics"),
     }
 
 def _volume(result):

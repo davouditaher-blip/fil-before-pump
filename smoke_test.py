@@ -1,6 +1,21 @@
 """Deterministic smoke tests for the wallet-first Fil Before Pump pipeline."""
+import scanner
 from scanner import is_primary_crypto_asset, wallet_conviction_signals
 from scanner import apply_wallet_radar_signals, apply_wallet_cluster_signals
+from scanner import (
+    COVALENT_CHAIN_BY_PLATFORM,
+    FLOW_PROVIDER_GMGN,
+    FLOW_PROVIDER_SOLSCAN,
+    FLOW_SEMANTICS_SMART_MONEY,
+    FLOW_SEMANTICS_TOKEN_FLOW,
+    GMGN_FLOW_WINDOW_SECONDS,
+    PROJECT_LAYER_MISSING_REASONS,
+    _project_evidence_strength,
+    apply_wallet_signals,
+    coin_contracts,
+    gmgn_flow_7d,
+    project_layer_missing_reason,
+)
 from trade_readiness import build_trade_plan
 from risk_engine import evaluate, filter_plans
 from confluence_engine import (
@@ -525,6 +540,190 @@ def test_wallet_intel_layer_never_enables_execution():
         assert not evaluate(plan).get("orders_enabled")
 
 
+_DAY = 24 * 60 * 60
+_NOW = 1_800_000_000
+
+
+def _trade(symbol, side, usd, age_days, ts_offset=0):
+    return {
+        "symbol": symbol,
+        "side": side,
+        "amount_usd": usd,
+        "trade_timestamp": _NOW - int(age_days * _DAY) + ts_offset,
+    }
+
+
+def test_gmgn_flow_aggregates_distinct_wallets_over_seven_days():
+    assert GMGN_FLOW_WINDOW_SECONDS == 7 * 24 * 60 * 60
+    history = {
+        # One wallet trading twice must still count as a single buyer.
+        "0xaaa": [_trade("NEAR", "buy", 1000, 1), _trade("NEAR", "buy", 500, 2)],
+        "0xbbb": [_trade("NEAR", "buy", 500, 3), _trade("NEAR", "sell", 250, 1)],
+        "0xccc": [_trade("NEAR", "sell", 750, 4)],
+        # Beyond the window, so it must not move the ratio at all.
+        "0xddd": [_trade("NEAR", "buy", 99_000, 8)],
+        # A different asset entirely.
+        "0xeee": [_trade("UNI", "buy", 50_000, 1)],
+    }
+    flow = gmgn_flow_7d(history, "NEAR", _NOW)
+    assert flow["buyers_7d"] == 2
+    assert flow["sellers_7d"] == 2
+    # 2000 bought against 1000 sold. If the 8-day-old row leaked in this would
+    # be 101, so this single assertion also pins the window length.
+    assert flow["buy_sell_ratio_7d"] == 2.0
+    assert flow["flow_provider"] == FLOW_PROVIDER_GMGN
+    assert flow["flow_semantics"] == FLOW_SEMANTICS_SMART_MONEY
+
+
+def test_gmgn_flow_window_is_inclusive_at_exactly_seven_days():
+    inside = {"0xeee": [_trade("EDGE", "buy", 100, 7)]}
+    assert gmgn_flow_7d(inside, "EDGE", _NOW)["buyers_7d"] == 1
+    # One second older than the window and the trade is gone.
+    outside = {"0xeee": [_trade("EDGE", "buy", 100, 7, -1)]}
+    assert gmgn_flow_7d(outside, "EDGE", _NOW) == {}
+
+
+def test_gmgn_sell_only_flow_scores_below_equivalent_buying():
+    sell_flow = gmgn_flow_7d({
+        "0x1": [_trade("XYZ", "sell", 900, 1)],
+        "0x2": [_trade("XYZ", "sell", 100, 2)],
+    }, "XYZ", _NOW)
+    assert sell_flow["buyers_7d"] == 0
+    assert sell_flow["sellers_7d"] == 2
+    # Nothing was bought at all, so the ratio is a measured zero rather than
+    # missing data, and the project bucket must be able to punish that.
+    assert sell_flow["buy_sell_ratio_7d"] == 0.0
+
+    concentration = {"top5_holder_pct": 10, "top20_holder_pct": 20}
+    sell_score, sell_reasons, _ = _project({"wallet": dict(sell_flow, **concentration)})
+    buy_score, _, _ = _project({"wallet": dict(
+        concentration, buy_sell_ratio_7d=2.0, buyers_7d=30, sellers_7d=2)})
+    assert any("sellers exceed buyers" in r for r in sell_reasons)
+    # Concentration-only EVM evidence could never separate these two cases.
+    assert sell_score < buy_score
+
+
+def test_evm_project_score_can_exceed_the_old_concentration_ceiling():
+    # Exactly the state an EVM asset was stuck in: concentration but no flow.
+    thin = {"top5_holder_pct": 20, "top20_holder_pct": 30,
+            "buy_sell_ratio_7d": None, "buyers_7d": 0, "sellers_7d": 0}
+    thin_score, _, _ = _project({"wallet": thin})
+    assert thin_score == 7
+
+    # The same asset once provider-labelled GMGN flow is attached.
+    rich = dict(thin, buy_sell_ratio_7d=2.0, buyers_7d=40, sellers_7d=10,
+                flow_provider=FLOW_PROVIDER_GMGN,
+                flow_semantics=FLOW_SEMANTICS_SMART_MONEY)
+    rich_score, _, evidence = _project({"wallet": rich})
+    assert rich_score > 7
+    assert rich_score <= BUCKET_CAPS["project"]
+    assert evidence["flow_provider"] == FLOW_PROVIDER_GMGN
+    assert evidence["flow_semantics"] == FLOW_SEMANTICS_SMART_MONEY
+
+
+def test_solscan_flow_is_never_replaced_by_gmgn_flow():
+    solscan = {
+        "chain": "solana", "symbol": "PENGU",
+        "top5_holder_pct": 5, "top20_holder_pct": 10,
+        "buy_sell_ratio_7d": 1.8, "buyers_7d": 120, "sellers_7d": 30,
+        "flow_provider": FLOW_PROVIDER_SOLSCAN,
+        "flow_semantics": FLOW_SEMANTICS_TOKEN_FLOW,
+    }
+    goldrush = {
+        "chain": "eth-mainnet", "symbol": "PENGU",
+        "top5_holder_pct": 5, "top20_holder_pct": 10,
+        "buy_sell_ratio_7d": 4.0, "buyers_7d": 40, "sellers_7d": 2,
+        "flow_provider": FLOW_PROVIDER_GMGN,
+        "flow_semantics": FLOW_SEMANTICS_SMART_MONEY,
+        "provider": "GoldRush",
+    }
+    # Solscan is collected first in the scan, so this is the real order.
+    forward = {"score": 0.0, "reasons": []}
+    apply_wallet_signals(forward, solscan)
+    apply_wallet_signals(forward, goldrush)
+    assert forward["wallet"]["flow_provider"] == FLOW_PROVIDER_SOLSCAN
+    assert forward["wallet"]["buyers_7d"] == 120
+    assert forward["wallet"]["flow_semantics"] == FLOW_SEMANTICS_TOKEN_FLOW
+
+    # Order must not decide the winner either.
+    reverse = {"score": 0.0, "reasons": []}
+    apply_wallet_signals(reverse, goldrush)
+    apply_wallet_signals(reverse, solscan)
+    assert reverse["wallet"]["flow_provider"] == FLOW_PROVIDER_SOLSCAN
+
+
+def test_richest_project_layer_survives_any_provider_order():
+    thin = {
+        "chain": "eth-mainnet", "symbol": "AAVE", "holders": [],
+        "top5_holder_pct": 8, "top20_holder_pct": 12,
+        "buy_sell_ratio_7d": None, "buyers_7d": 0, "sellers_7d": 0,
+        "provider": "GoldRush",
+    }
+    rich = dict(thin, buy_sell_ratio_7d=1.9, buyers_7d=55, sellers_7d=21,
+                flow_provider=FLOW_PROVIDER_GMGN,
+                flow_semantics=FLOW_SEMANTICS_SMART_MONEY)
+    assert _project_evidence_strength(rich) > _project_evidence_strength(thin)
+
+    for layers in ([thin, rich], [rich, thin]):
+        result = {"score": 0.0, "reasons": []}
+        for layer in layers:
+            apply_wallet_signals(result, layer)
+        assert result["wallet"] is rich
+
+
+def test_polygon_maps_to_a_real_covalent_chain():
+    coin = {"symbol": "POL", "platform": {"name": "Polygon", "token_address": "0xabc"}}
+    assert coin_contracts(coin) == [("polygon-mainnet", "0xabc")]
+    # "matic-mainnet" is not a Covalent chain; it silently emptied the holder
+    # map and cost every Polygon candidate its project layer.
+    assert COVALENT_CHAIN_BY_PLATFORM["polygon"] == "polygon-mainnet"
+    assert "matic-mainnet" not in COVALENT_CHAIN_BY_PLATFORM.values()
+
+
+def test_unsupported_chain_is_reported_not_hidden():
+    coin = {"symbol": "WEIRD", "platform": {"name": "Some New Chain", "token_address": "0xdef"}}
+    assert coin_contracts(coin) == []
+    reason = project_layer_missing_reason(coin)
+    assert reason == "unsupported_chain"
+    assert reason in PROJECT_LAYER_MISSING_REASONS
+
+
+def test_missing_contract_is_classified():
+    # No platform object at all.
+    assert project_layer_missing_reason({"symbol": "AAA"}) == "no_contract_mapping"
+    # Platform present but carrying no contract address.
+    assert project_layer_missing_reason({"symbol": "AAA", "platform": {}}) == "no_token_address"
+    assert project_layer_missing_reason(
+        {"symbol": "AAA", "platform": {"name": "Ethereum"}}) == "no_token_address"
+    assert coin_contracts({"symbol": "AAA", "platform": {}}) == []
+
+
+def test_resolved_contract_with_empty_provider_response_is_classified():
+    coin = {"symbol": "GHOST", "platform": {"name": "Ethereum", "token_address": "0xfeed"}}
+    assert coin_contracts(coin) == [("eth-mainnet", "0xfeed")]
+    # The contract resolved, so only the provider returning nothing can be why
+    # there is still no project layer.
+    assert project_layer_missing_reason(coin) == "provider_empty_response"
+    assert "provider_empty_response" in PROJECT_LAYER_MISSING_REASONS
+
+
+def test_missing_keys_degrade_without_inventing_flow():
+    original = scanner.GOLDRUSH_API_KEY
+    try:
+        scanner.GOLDRUSH_API_KEY = ""
+        # No key, no layer, and above all no fabricated flow evidence.
+        assert scanner.goldrush_wallet_layer({"symbol": "UNI"}) == {}
+    finally:
+        scanner.GOLDRUSH_API_KEY = original
+
+    # An absent history, an unknown symbol and an unlabelled row all yield no
+    # flow rather than zeros that would read as measured evidence.
+    assert gmgn_flow_7d({}, "NEAR", _NOW) == {}
+    assert gmgn_flow_7d({"0x1": [_trade("NEAR", "buy", 10, 1)]}, "OTHER", _NOW) == {}
+    assert gmgn_flow_7d(
+        {"0x1": [{"symbol": "NEAR", "amount_usd": 10, "trade_timestamp": _NOW}]}, "NEAR", _NOW) == {}
+
+
 if __name__ == "__main__":
     test_asset_exclusions()
     test_trade_plan_is_deterministic_and_paper_only()
@@ -550,4 +749,15 @@ if __name__ == "__main__":
     test_readiness_plan_reports_long_term_evidence()
     test_adverse_measurable_calibration_blocks_paper_plan()
     test_wallet_intel_layer_never_enables_execution()
+    test_gmgn_flow_aggregates_distinct_wallets_over_seven_days()
+    test_gmgn_flow_window_is_inclusive_at_exactly_seven_days()
+    test_gmgn_sell_only_flow_scores_below_equivalent_buying()
+    test_evm_project_score_can_exceed_the_old_concentration_ceiling()
+    test_solscan_flow_is_never_replaced_by_gmgn_flow()
+    test_richest_project_layer_survives_any_provider_order()
+    test_polygon_maps_to_a_real_covalent_chain()
+    test_unsupported_chain_is_reported_not_hidden()
+    test_missing_contract_is_classified()
+    test_resolved_contract_with_empty_provider_response_is_classified()
+    test_missing_keys_degrade_without_inventing_flow()
     print("Fil Before Pump smoke tests: PASS")

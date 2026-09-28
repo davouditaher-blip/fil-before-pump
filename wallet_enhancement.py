@@ -160,6 +160,11 @@ def enhanced_goldrush_wallet_layer(coin):
             })
 
         if holders:
+            # Contract-backed GoldRush layer, so this asset is proven EVM. GMGN
+            # labels the side of its own smart-money trades, so the 7-day flow
+            # fields can be filled with real provider evidence instead of the
+            # hardcoded empty values. Still no raw-transfer inference.
+            flow = scanner.gmgn_flow_for_symbol(coin.get("symbol"))
             best = {
                 "chain": chain,
                 "mint": address,
@@ -167,9 +172,11 @@ def enhanced_goldrush_wallet_layer(coin):
                 "holders": holders,
                 "top5_holder_pct": sum(float(x.get("percentage") or 0) for x in holders[:5]),
                 "top20_holder_pct": sum(float(x.get("percentage") or 0) for x in holders[:20]),
-                "buy_sell_ratio_7d": None,
-                "buyers_7d": 0,
-                "sellers_7d": 0,
+                "buy_sell_ratio_7d": flow.get("buy_sell_ratio_7d"),
+                "buyers_7d": int(flow.get("buyers_7d") or 0),
+                "sellers_7d": int(flow.get("sellers_7d") or 0),
+                "flow_provider": flow.get("flow_provider"),
+                "flow_semantics": flow.get("flow_semantics"),
                 "provider": "GoldRush",
                 "price_usd": float(((coin.get("quote") or {}).get("USD") or {}).get("price") or 0),
             }

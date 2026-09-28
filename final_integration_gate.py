@@ -6,6 +6,7 @@ This gate is read-only and never enables exchange execution.
 from __future__ import annotations
 
 import json
+from collections import Counter
 from pathlib import Path
 
 from confluence_engine import BUCKET_CAPS, PAPER_READY_MIN_CONFLUENCE, SCALE_MAX, _caps_reachable
@@ -209,7 +210,33 @@ def main() -> None:
         # threshold, and whether the project provider layer actually covers the
         # futures universe. Print both so the next run settles it.
         print(f"plans reporting evidence coverage: {len(with_scale)}")
-        print(f"project layer coverage: {sum(1 for p in with_scale if p.get('project_layer_present'))}/{len(with_scale)}")
+        covered = [p for p in with_scale if p.get("project_layer_present")]
+        gaps = [p for p in with_scale if not p.get("project_layer_present")]
+        print(f"project layer coverage: {len(covered)}/{len(with_scale)}")
+        # Every gap must carry an explicit reason, so an absent project layer is
+        # never silently indistinguishable from a genuinely weak score.
+        if gaps:
+            counts = Counter(str(p.get("project_layer_missing_reason") or "unclassified") for p in gaps)
+            print(f"plans without a project layer: {len(gaps)}")
+            for reason, count in sorted(counts.items(), key=lambda kv: -kv[1]):
+                print(f"  - {reason}: {count}")
+            if counts.get("unclassified"):
+                raise SystemExit(
+                    f"FAIL: {counts['unclassified']} plans have no recorded project-layer reason"
+                )
+        # Flow provenance: Solana flow is Solscan's all-participant token flow,
+        # EVM flow is GMGN's labelled smart-money trades. The two populations
+        # differ, so the mix is always reported.
+        provenance = Counter(str(p.get("project_flow_provider") or "none") for p in with_scale)
+        print(f"project flow provenance: {dict(provenance)}")
+        projects = [
+            _num((p.get("fil_confluence_components") or {}).get("project"))
+            for p in with_scale
+            if isinstance(p.get("fil_confluence_components"), dict)
+        ]
+        if projects:
+            print(f"project bucket fill: mean {sum(projects) / len(projects):.1f}/{BUCKET_CAPS['project']:.0f}"
+                  f" / max {max(projects):.1f}")
         print(f"confluence fill pct: min {min(_num(p.get('fil_confluence_fill_pct')) for p in with_scale):.1f} / max {max(_num(p.get('fil_confluence_fill_pct')) for p in with_scale):.1f}")
     print("live exchange execution: DISABLED")
 

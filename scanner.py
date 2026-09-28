@@ -1232,6 +1232,10 @@ def solscan_wallet_layer(symbol):
         "buyers_7d": buyers7,
         "sellers_7d": sellers7,
         "buy_sell_ratio_7d": (buy7 / sell7) if sell7 > 0 else None,
+        # Provenance only. Solscan's flow is all-participant token flow and is
+        # never replaced by GMGN smart-money flow for the same asset.
+        "flow_provider": FLOW_PROVIDER_SOLSCAN,
+        "flow_semantics": FLOW_SEMANTICS_TOKEN_FLOW,
     }
 
 
@@ -1254,35 +1258,300 @@ def goldrush_get(path, params=None):
         return None
 
 
+# Provenance for the 7-day flow fields on a project layer. The two providers
+# measure different populations, so the source is always stated explicitly and
+# never silently mixed.
+FLOW_PROVIDER_SOLSCAN = "Solscan-token"
+FLOW_PROVIDER_GMGN = "GMGN-smart-money"
+FLOW_SEMANTICS_TOKEN_FLOW = "all-participant-token-flow"
+FLOW_SEMANTICS_SMART_MONEY = "provider-labelled-smart-money-trades"
+
+GMGN_HISTORY_FILE = Path("gmgn_wallet_history.json")
+GMGN_FLOW_WINDOW_SECONDS = 7 * 24 * 60 * 60
+
+# Every reason the EVM project layer can be absent. Coverage gaps are recorded
+# with one of these so no candidate is silently missing project evidence.
+PROJECT_LAYER_MISSING_REASONS = (
+    "no_contract_mapping",
+    "no_token_address",
+    "unsupported_chain",
+    "provider_empty_response",
+)
+
+# Upper bound on contracts probed per candidate. GoldRush calls are serial, so
+# this keeps the 30-minute workflow inside its time budget.
+MAX_CONTRACTS_PER_COIN = 3
+
+# CMC platform name -> Covalent chain slug. GoldRush is the Covalent API, so
+# these must be Covalent slugs. "polygon" previously mapped to "matic-mainnet",
+# which is not a Covalent chain, so every Polygon token silently returned an
+# empty holder map and lost its project layer.
+COVALENT_CHAIN_BY_PLATFORM = {
+    "ethereum": "eth-mainnet",
+    "bnb smart chain (bep20)": "bsc-mainnet",
+    "bnb smart chain (bep-20)": "bsc-mainnet",
+    "bnb smart chain": "bsc-mainnet",
+    "bsc": "bsc-mainnet",
+    "polygon": "polygon-mainnet",
+    "polygon pos": "polygon-mainnet",
+    "matic": "polygon-mainnet",
+    "polygon zkevm": "polygonzkevm-mainnet",
+    "arbitrum one": "arbitrum-mainnet",
+    "arbitrum": "arbitrum-mainnet",
+    "optimism": "optimism-mainnet",
+    "op mainnet": "optimism-mainnet",
+    "base": "base-mainnet",
+    "avalanche c-chain": "avalanche-mainnet",
+    "avalanche": "avalanche-mainnet",
+    "gnosis": "gnosis-mainnet",
+    "xdai": "gnosis-mainnet",
+    "fantom": "fantom-mainnet",
+    "opera": "fantom-mainnet",
+    "celo": "celo-mainnet",
+    "moonbeam": "moonbeam-mainnet",
+    "moonriver": "moonriver-mainnet",
+    "klaytn": "klaytn-mainnet",
+    "linea": "linea-mainnet",
+    "scroll": "scroll-mainnet",
+    "zksync": "zksync-mainnet",
+    "zksync era": "zksync-mainnet",
+    "blast": "blast-mainnet",
+    "mantle": "mantle-mainnet",
+    "sonic": "sonic-mainnet",
+    "berachain": "berachain-mainnet",
+    "unichain": "unichain-mainnet",
+    "world chain": "world-chain-mainnet",
+    "hyperevm": "hyperevm-mainnet",
+    "hyperliquid": "hyperevm-mainnet",
+    "monad": "monad-mainnet",
+    "sei": "sei-mainnet",
+    "sei network": "sei-mainnet",
+    "story": "story-mainnet",
+    "abstract": "abstract-mainnet",
+    "apechain": "apechain-mainnet",
+    "fraxtal": "fraxtal-mainnet",
+    "zora": "zora-mainnet",
+    "taiko": "taiko-mainnet",
+    "ink": "ink-mainnet",
+    "lisk": "lisk-mainnet",
+    "metis": "metis-mainnet",
+    "cronos": "cronos-mainnet",
+    "aurora": "aurora-mainnet",
+    "opbnb": "opbnb-mainnet",
+    "boba": "boba-mainnet",
+    "soneium": "soneium-mainnet",
+    "plume": "plume-mainnet",
+    "sophon": "sophon-mainnet",
+    "zetachain": "zetachain-mainnet",
+    "telos": "telos-mainnet",
+    "rootstock": "rootstock-mainnet",
+    "harmony": "harmony-mainnet",
+    "tron": "tron-mainnet",
+    "trc20": "tron-mainnet",
+}
+
+
+def _platform_key(name):
+    return " ".join(str(name or "").split()).lower()
+
+
+def _platform_entries(coin):
+    """Every CMC platform object a listing payload carries.
+
+    CMC exposes the primary chain under ``platform`` and, on some payloads, a
+    full list under ``platforms``. Reading only the single primary object left
+    most multi-chain tokens with no contract at all.
+    """
+    entries = []
+    for key in ("platform", "platforms"):
+        value = (coin or {}).get(key)
+        if isinstance(value, dict):
+            entries.append(value)
+        elif isinstance(value, list):
+            entries.extend(x for x in value if isinstance(x, dict))
+    return entries
+
+
+def _contract_entries(coin):
+    """Return ``(contracts, missing_reason)`` for a CMC listing payload.
+
+    ``missing_reason`` is one of PROJECT_LAYER_MISSING_REASONS and is None
+    whenever at least one supported contract resolved.
+    """
+    entries = _platform_entries(coin)
+    if not entries:
+        return [], "no_contract_mapping"
+
+    contracts = []
+    saw_address = False
+    saw_unsupported = False
+    for platform in entries:
+        address = platform.get("token_address") or platform.get("tokenAddress")
+        if not address:
+            continue
+        saw_address = True
+        chain = COVALENT_CHAIN_BY_PLATFORM.get(_platform_key(platform.get("name")))
+        if not chain:
+            saw_unsupported = True
+            continue
+        pair = (chain, str(address))
+        if pair not in contracts:
+            contracts.append(pair)
+        if len(contracts) >= MAX_CONTRACTS_PER_COIN:
+            break
+
+    if contracts:
+        return contracts, None
+    if not saw_address:
+        return [], "no_token_address"
+    if saw_unsupported:
+        return [], "unsupported_chain"
+    return [], "no_contract_mapping"
+
+
 def coin_contracts(coin):
     """Return CMC platform contract mappings when present in the listing payload."""
-    out = []
-    platform = coin.get("platform") or {}
-    if isinstance(platform, dict):
-        name = str(platform.get("name") or "").lower()
-        address = platform.get("token_address") or platform.get("tokenAddress")
-        if address:
-            chain = {
-                "ethereum": "eth-mainnet",
-                "bnb smart chain (bep20)": "bsc-mainnet",
-                "bnb smart chain": "bsc-mainnet",
-                "polygon": "matic-mainnet",
-                "arbitrum one": "arbitrum-mainnet",
-                "optimism": "optimism-mainnet",
-                "base": "base-mainnet",
-                "avalanche c-chain": "avalanche-mainnet",
-            }.get(name)
-            if chain:
-                out.append((chain, address))
-    return out
+    return _contract_entries(coin)[0]
+
+
+def project_layer_missing_reason(coin):
+    """Classify exactly why an EVM candidate has no project layer.
+
+    A resolved contract that still yields no layer means the provider answered
+    with nothing, which is the one reason the scanner itself cannot fix.
+    """
+    contracts, reason = _contract_entries(coin or {})
+    return "provider_empty_response" if contracts else reason
+
+
+def _safe_float(value):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+_GMGN_HISTORY_CACHE = []
+
+
+def _gmgn_history():
+    """Load the persisted GMGN trade history once per process.
+
+    A missing or unreadable artifact degrades to "no flow evidence" rather than
+    failing the scan.
+    """
+    if _GMGN_HISTORY_CACHE:
+        return _GMGN_HISTORY_CACHE[0]
+    history = {}
+    try:
+        if GMGN_HISTORY_FILE.exists():
+            loaded = json.loads(GMGN_HISTORY_FILE.read_text())
+            if isinstance(loaded, dict):
+                history = loaded
+    except (OSError, ValueError) as e:
+        print(f"GMGN history warning: {e}")
+        history = {}
+    _GMGN_HISTORY_CACHE.append(history)
+    return history
+
+
+def gmgn_flow_7d(history, symbol, now_ts, window_seconds=GMGN_FLOW_WINDOW_SECONDS):
+    """Aggregate GMGN's own labelled buy/sell trades for one symbol over 7 days.
+
+    GMGN classifies the side of every smart-money trade, so this is genuine
+    provider-labelled flow rather than an inference from raw transfers, which
+    this engine deliberately never performs. ``amount_usd`` supplies the ratio
+    and buyers/sellers are distinct wallets, so a single wallet cannot inflate
+    participation.
+
+    Persisted rows predate chain capture and carry an empty ``chain``, so this
+    aggregate is symbol-only. It may therefore only be attached to a layer
+    already proven to be EVM (a GoldRush contract layer) and never to a Solscan
+    layer, where Solscan's own all-participant flow is authoritative.
+    """
+    target = str(symbol or "").upper()
+    if not target:
+        return {}
+    cutoff = int(now_ts) - int(window_seconds)
+    buyers = set()
+    sellers = set()
+    buy_usd = 0.0
+    sell_usd = 0.0
+    for wallet, rows in (history or {}).items():
+        if not wallet:
+            continue
+        for row in rows or []:
+            if not isinstance(row, dict):
+                continue
+            if str(row.get("symbol") or "").upper() != target:
+                continue
+            try:
+                ts = int(row.get("trade_timestamp") or row.get("timestamp") or 0)
+            except (TypeError, ValueError):
+                continue
+            if ts < cutoff:
+                continue
+            side = str(row.get("side") or "").lower()
+            if side == "buy":
+                buyers.add(wallet)
+                buy_usd += _safe_float(row.get("amount_usd"))
+            elif side == "sell":
+                sellers.add(wallet)
+                sell_usd += _safe_float(row.get("amount_usd"))
+    if not buyers and not sellers:
+        return {}
+    return {
+        "buy_sell_ratio_7d": (buy_usd / sell_usd) if sell_usd > 0 else None,
+        "buyers_7d": len(buyers),
+        "sellers_7d": len(sellers),
+        "flow_provider": FLOW_PROVIDER_GMGN,
+        "flow_semantics": FLOW_SEMANTICS_SMART_MONEY,
+    }
+
+
+def gmgn_flow_for_symbol(symbol, now_ts=None):
+    """7-day GMGN flow for a symbol, read from the persisted history."""
+    now = now_ts or int(datetime.now(timezone.utc).timestamp())
+    return gmgn_flow_7d(_gmgn_history(), symbol, now)
+
+
+def _project_evidence_strength(layer):
+    """Rank a project layer by how much scoring evidence it can actually carry.
+
+    A thin provider layer must never replace a richer one for the same asset.
+    Previously ``apply_wallet_signals`` overwrote unconditionally, so a
+    flow-less GoldRush layer could erase real Solscan token flow purely
+    depending on iteration order.
+    """
+    if not layer:
+        return -1
+    strength = 0
+    if layer.get("buy_sell_ratio_7d") is not None:
+        strength += 4
+    if int(layer.get("buyers_7d") or 0):
+        strength += 1
+    if int(layer.get("sellers_7d") or 0):
+        strength += 1
+    if layer.get("top5_holder_pct"):
+        strength += 1
+    if layer.get("top20_holder_pct"):
+        strength += 1
+    # Solscan's flow is all-participant token flow, so it outranks smart-money
+    # flow for the same asset.
+    if layer.get("flow_provider") == FLOW_PROVIDER_SOLSCAN:
+        strength += 2
+    return strength
 
 
 def goldrush_wallet_layer(coin):
     """Holder-map layer for EVM assets.
 
-    We deliberately do NOT infer buys/sells from raw transfers. Those require
-    provider-level trade classification and are handled separately by Solscan
-    where available.
+    GoldRush's token_holders_v2 response carries concentration but never labels
+    a transfer as a buy or sell, so we never infer flow from raw transfers.
+    The three 7-day flow fields are instead filled from GMGN's own
+    provider-labelled smart-money trades for this symbol, which makes the EVM
+    project bucket able to exceed the concentration-only ceiling instead of
+    being structurally capped at 7/20.
     """
     if not GOLDRUSH_API_KEY:
         return {}
@@ -1310,6 +1579,9 @@ def goldrush_wallet_layer(coin):
                     "timestamp": int(datetime.now(timezone.utc).timestamp()),
                 })
         if holders:
+            # Contract-backed layer, so this asset is proven EVM. That is what
+            # makes the symbol-only GMGN join safe here and nowhere else.
+            flow = gmgn_flow_for_symbol(coin.get("symbol"))
             best = {
                 "chain": chain,
                 "mint": address,
@@ -1317,9 +1589,11 @@ def goldrush_wallet_layer(coin):
                 "holders": holders,
                 "top5_holder_pct": sum(float(x.get("percentage") or 0) for x in holders[:5]),
                 "top20_holder_pct": sum(float(x.get("percentage") or 0) for x in holders),
-                "buy_sell_ratio_7d": None,
-                "buyers_7d": 0,
-                "sellers_7d": 0,
+                "buy_sell_ratio_7d": flow.get("buy_sell_ratio_7d"),
+                "buyers_7d": int(flow.get("buyers_7d") or 0),
+                "sellers_7d": int(flow.get("sellers_7d") or 0),
+                "flow_provider": flow.get("flow_provider"),
+                "flow_semantics": flow.get("flow_semantics"),
                 "provider": "GoldRush",
             }
             break
@@ -1397,6 +1671,13 @@ def wallet_overlap(history, symbol):
 
 def apply_wallet_signals(result, layer):
     if not layer:
+        return result
+
+    # A weaker layer must never overwrite a richer one for the same asset.
+    # Ties keep the layer already in place, and the caller collects Solscan
+    # first, so all-participant token flow wins over smart-money flow.
+    existing = result.get("wallet")
+    if existing and _project_evidence_strength(existing) >= _project_evidence_strength(layer):
         return result
 
     result["wallet"] = layer
@@ -2074,6 +2355,12 @@ def main():
                 apply_wallet_signals(result, layer)
             if layers:
                 result["wallet_provider"] = ",".join(sorted({l.get("provider", l.get("chain", "onchain")) for l in layers}))
+                result["project_layer_missing_reason"] = None
+            else:
+                # Record exactly why this candidate has no project evidence, so
+                # a coverage gap is never indistinguishable from a weak score.
+                # A symbol CMC never listed resolves to "no_contract_mapping".
+                result["project_layer_missing_reason"] = project_layer_missing_reason(coin)
             time.sleep(0.10)
 
         wallet_history = update_wallet_history(wallet_layers)
