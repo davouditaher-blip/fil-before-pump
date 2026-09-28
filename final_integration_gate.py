@@ -242,6 +242,14 @@ def main() -> None:
                     f"  - run faults (not asset gaps): {faults}"
                     "  -> request never delivered; expect a different result next run"
                 )
+            # Gaps this scanner caused. These are not provider limits, so they
+            # must stay visible instead of disappearing into a provider bucket.
+            created = counts.get("provider_holders_unusable", 0)
+            if created:
+                print(
+                    f"  - self-inflicted (own filters, not the provider): {created}"
+                    "  -> provider answered, our rules discarded every holder"
+                )
         # Flow provenance: Solana flow is Solscan's all-participant token flow,
         # EVM flow is GMGN's labelled smart-money trades. The two populations
         # differ, so the mix is always reported.

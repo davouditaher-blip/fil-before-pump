@@ -159,6 +159,15 @@ def enhanced_goldrush_wallet_layer(coin):
                 "holder_type": holder_type,
             })
 
+        if not holders:
+            # The provider answered and we discarded everything it sent. That is
+            # a gap this scanner created, not one the provider has, so it is
+            # recorded as such instead of being counted as a provider gap.
+            scanner._GOLDRUSH_OUTCOMES[scanner._holders_path(chain, address)] = (
+                scanner.GOLDRUSH_OUTCOME_UNUSABLE
+            )
+            continue
+
         if holders:
             # Contract-backed GoldRush layer, so this asset is proven EVM. GMGN
             # labels the side of its own smart-money trades, so the 7-day flow

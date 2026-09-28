@@ -759,6 +759,58 @@ def test_missing_api_key_does_not_claim_the_provider_answered():
         scanner.GOLDRUSH_API_KEY = original_key
 
 
+def test_holders_the_scanner_filtered_out_are_not_blamed_on_the_provider():
+    """A token whose top holders are its own DEX gets emptied by our own filter.
+
+    UNI is the real case: every large UNI holder is a Uniswap pair contract or
+    the Uniswap treasury, so the infrastructure filter removes all of them. The
+    provider answered correctly, so calling that a provider gap is false, and it
+    would hide a gap this scanner created and could simply choose not to create.
+    """
+    import wallet_enhancement
+
+    payload = {"data": {"items": [
+        {
+            "address": f"0x{i:040x}",
+            "label": "Uniswap V2",
+            "balance": 10 ** 24,
+            "total_supply": 10 ** 28,
+            "rank": i,
+        }
+        for i in range(1, 6)
+    ]}}
+
+    class _Ok:
+        status_code = 200
+
+        def json(self):
+            return payload
+
+    class _Session:
+        def get(self, *_a, **_k):
+            return _Ok()
+
+    original_key, original_session = scanner.GOLDRUSH_API_KEY, scanner.session
+    try:
+        scanner.GOLDRUSH_API_KEY = "test"
+        scanner.session = _Session()
+        coin = {
+            "symbol": "UNI",
+            "platform": {
+                "name": "Ethereum",
+                "token_address": "0x1f9840a85d5af5bf1d1762f925bdaddc4201f984",
+            },
+        }
+        layer = wallet_enhancement.enhanced_goldrush_wallet_layer(coin)
+        # The provider did return holders, and the filter is what removed them.
+        assert layer == {}
+        assert project_layer_missing_reason(coin) == "provider_holders_unusable"
+        assert "provider_holders_unusable" in PROJECT_LAYER_MISSING_REASONS
+    finally:
+        scanner.GOLDRUSH_API_KEY = original_key
+        scanner.session = original_session
+
+
 def test_missing_keys_degrade_without_inventing_flow():
     original = scanner.GOLDRUSH_API_KEY
     try:
@@ -885,6 +937,7 @@ if __name__ == "__main__":
     test_a_genuine_empty_answer_is_the_only_gap_reported_as_a_gap()
     test_a_request_that_never_delivered_is_not_reported_as_a_provider_gap()
     test_missing_api_key_does_not_claim_the_provider_answered()
+    test_holders_the_scanner_filtered_out_are_not_blamed_on_the_provider()
     test_missing_keys_degrade_without_inventing_flow()
     test_goldrush_retries_a_transient_failure_before_giving_up()
     print("Fil Before Pump smoke tests: PASS")

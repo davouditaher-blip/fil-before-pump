@@ -1243,6 +1243,7 @@ GOLDRUSH_TRANSIENT_STATUS = (429, 500, 502, 503, 504)
 
 GOLDRUSH_OUTCOME_EMPTY = "empty"
 GOLDRUSH_OUTCOME_OK = "ok"
+GOLDRUSH_OUTCOME_UNUSABLE = "unusable"
 GOLDRUSH_OUTCOME_UNKNOWN_TOKEN = "unknown_token"
 GOLDRUSH_OUTCOME_UNAVAILABLE = "unavailable"
 GOLDRUSH_OUTCOME_NOT_CONFIGURED = "not_configured"
@@ -1339,6 +1340,7 @@ PROJECT_LAYER_MISSING_REASONS = (
     "no_token_address",
     "unsupported_chain",
     "provider_empty_response",
+    "provider_holders_unusable",
     "provider_unknown_token",
     "provider_unavailable",
     "provider_not_queried",
@@ -1493,7 +1495,9 @@ def project_layer_missing_reason(coin):
     run quietly become a permanent claim.
 
     The recorded outcome is read back rather than re-requested, so classifying a
-    gap costs no extra API call.
+    gap costs no extra API call. A provider that answered and was then filtered
+    down to nothing by the scanner's own rules is reported separately again,
+    because that gap was created here rather than found there.
     """
     contracts, reason = _contract_entries(coin or {})
     if not contracts:
@@ -1509,6 +1513,8 @@ def project_layer_missing_reason(coin):
         return "provider_unknown_token"
     if GOLDRUSH_OUTCOME_UNAVAILABLE in outcomes:
         return "provider_unavailable"
+    if GOLDRUSH_OUTCOME_OK in outcomes or GOLDRUSH_OUTCOME_UNUSABLE in outcomes:
+        return "provider_holders_unusable"
     return "provider_not_queried"
 
 
@@ -1666,25 +1672,27 @@ def goldrush_wallet_layer(coin):
                     "value": h.get("balance_quote") or h.get("value_quote"),
                     "timestamp": int(datetime.now(timezone.utc).timestamp()),
                 })
-        if holders:
-            # Contract-backed layer, so this asset is proven EVM. That is what
-            # makes the symbol-only GMGN join safe here and nowhere else.
-            flow = gmgn_flow_for_symbol(coin.get("symbol"))
-            best = {
-                "chain": chain,
-                "mint": address,
-                "symbol": coin.get("symbol"),
-                "holders": holders,
-                "top5_holder_pct": sum(float(x.get("percentage") or 0) for x in holders[:5]),
-                "top20_holder_pct": sum(float(x.get("percentage") or 0) for x in holders),
-                "buy_sell_ratio_7d": flow.get("buy_sell_ratio_7d"),
-                "buyers_7d": int(flow.get("buyers_7d") or 0),
-                "sellers_7d": int(flow.get("sellers_7d") or 0),
-                "flow_provider": flow.get("flow_provider"),
-                "flow_semantics": flow.get("flow_semantics"),
-                "provider": "GoldRush",
-            }
-            break
+        if not holders:
+            _GOLDRUSH_OUTCOMES[_holders_path(chain, address)] = GOLDRUSH_OUTCOME_UNUSABLE
+            continue
+        # Contract-backed layer, so this asset is proven EVM. That is what
+        # makes the symbol-only GMGN join safe here and nowhere else.
+        flow = gmgn_flow_for_symbol(coin.get("symbol"))
+        best = {
+            "chain": chain,
+            "mint": address,
+            "symbol": coin.get("symbol"),
+            "holders": holders,
+            "top5_holder_pct": sum(float(x.get("percentage") or 0) for x in holders[:5]),
+            "top20_holder_pct": sum(float(x.get("percentage") or 0) for x in holders),
+            "buy_sell_ratio_7d": flow.get("buy_sell_ratio_7d"),
+            "buyers_7d": int(flow.get("buyers_7d") or 0),
+            "sellers_7d": int(flow.get("sellers_7d") or 0),
+            "flow_provider": flow.get("flow_provider"),
+            "flow_semantics": flow.get("flow_semantics"),
+            "provider": "GoldRush",
+        }
+        break
     return best
 
 
