@@ -229,6 +229,19 @@ def main() -> None:
                         f"FAIL: {counts['unclassified']} plans have no recorded project-layer reason"
                     )
                 print("  note: artifact predates project-layer reason recording")
+            # Separate what the provider genuinely does not have from faults that
+            # only spoiled this run. A throttled or unauthenticated request says
+            # nothing about the asset and will differ next run, so counting it as
+            # a permanent gap would make a bad run look like a lasting fact.
+            faults = sum(
+                counts.get(reason, 0)
+                for reason in ("provider_unavailable", "provider_not_queried")
+            )
+            if faults:
+                print(
+                    f"  - run faults (not asset gaps): {faults}"
+                    "  -> request never delivered; expect a different result next run"
+                )
         # Flow provenance: Solana flow is Solscan's all-participant token flow,
         # EVM flow is GMGN's labelled smart-money trades. The two populations
         # differ, so the mix is always reported.

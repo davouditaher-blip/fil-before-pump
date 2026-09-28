@@ -701,10 +701,62 @@ def test_missing_contract_is_classified():
 def test_resolved_contract_with_empty_provider_response_is_classified():
     coin = {"symbol": "GHOST", "platform": {"name": "Ethereum", "token_address": "0xfeed"}}
     assert coin_contracts(coin) == [("eth-mainnet", "0xfeed")]
-    # The contract resolved, so only the provider returning nothing can be why
-    # there is still no project layer.
-    assert project_layer_missing_reason(coin) == "provider_empty_response"
+    # The contract resolved, so only the provider can explain the missing layer.
+    # Nothing has been asked yet, and claiming the provider "returned nothing"
+    # would be a statement no answer ever supported.
+    assert project_layer_missing_reason(coin) == "provider_not_queried"
+    assert "provider_not_queried" in PROJECT_LAYER_MISSING_REASONS
     assert "provider_empty_response" in PROJECT_LAYER_MISSING_REASONS
+
+
+def test_a_genuine_empty_answer_is_the_only_gap_reported_as_a_gap():
+    original_key, original_session = scanner.GOLDRUSH_API_KEY, scanner.session
+    try:
+        scanner.GOLDRUSH_API_KEY = "test"
+        coin = {"symbol": "GHOST", "platform": {"name": "Ethereum", "token_address": "0xempty"}}
+        scanner.session = _StubSession([_StubResponse(200, {"data": {"items": []}})])
+        assert scanner.goldrush_get(
+            scanner._holders_path("eth-mainnet", "0xempty"), {"page-size": 20, "page-number": 0}
+        ) == []
+        assert project_layer_missing_reason(coin) == "provider_empty_response"
+    finally:
+        scanner.GOLDRUSH_API_KEY = original_key
+        scanner.session = original_session
+
+
+def test_a_request_that_never_delivered_is_not_reported_as_a_provider_gap():
+    """A dropped or refused request says nothing about the asset itself."""
+    original_key, original_session = scanner.GOLDRUSH_API_KEY, scanner.session
+    try:
+        scanner.GOLDRUSH_API_KEY = "test"
+        coin = {"symbol": "DROP", "platform": {"name": "Ethereum", "token_address": "0xdrop"}}
+        path = scanner._holders_path("eth-mainnet", "0xdrop")
+
+        # 404: the provider does not carry this token.
+        scanner.session = _StubSession([_StubResponse(404)])
+        scanner.goldrush_get(path, {"page-size": 20, "page-number": 0})
+        assert project_layer_missing_reason(coin) == "provider_unknown_token"
+
+        # 401: nothing was delivered, so nothing is known about the token.
+        scanner.session = _StubSession([_StubResponse(401)])
+        scanner.goldrush_get(path, {"page-size": 20, "page-number": 0})
+        assert project_layer_missing_reason(coin) == "provider_unavailable"
+    finally:
+        scanner.GOLDRUSH_API_KEY = original_key
+        scanner.session = original_session
+
+
+def test_missing_api_key_does_not_claim_the_provider_answered():
+    original_key = scanner.GOLDRUSH_API_KEY
+    try:
+        scanner.GOLDRUSH_API_KEY = ""
+        coin = {"symbol": "NOKEY", "platform": {"name": "Ethereum", "token_address": "0xnokey"}}
+        assert scanner.goldrush_get(
+            scanner._holders_path("eth-mainnet", "0xnokey"), {"page-size": 20, "page-number": 0}
+        ) is None
+        assert project_layer_missing_reason(coin) == "provider_not_queried"
+    finally:
+        scanner.GOLDRUSH_API_KEY = original_key
 
 
 def test_missing_keys_degrade_without_inventing_flow():
@@ -830,6 +882,9 @@ if __name__ == "__main__":
     test_unsupported_chain_is_reported_not_hidden()
     test_missing_contract_is_classified()
     test_resolved_contract_with_empty_provider_response_is_classified()
+    test_a_genuine_empty_answer_is_the_only_gap_reported_as_a_gap()
+    test_a_request_that_never_delivered_is_not_reported_as_a_provider_gap()
+    test_missing_api_key_does_not_claim_the_provider_answered()
     test_missing_keys_degrade_without_inventing_flow()
     test_goldrush_retries_a_transient_failure_before_giving_up()
     print("Fil Before Pump smoke tests: PASS")

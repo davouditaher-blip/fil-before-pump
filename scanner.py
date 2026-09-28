@@ -1241,6 +1241,22 @@ def solscan_wallet_layer(symbol):
 
 GOLDRUSH_TRANSIENT_STATUS = (429, 500, 502, 503, 504)
 
+GOLDRUSH_OUTCOME_EMPTY = "empty"
+GOLDRUSH_OUTCOME_OK = "ok"
+GOLDRUSH_OUTCOME_UNKNOWN_TOKEN = "unknown_token"
+GOLDRUSH_OUTCOME_UNAVAILABLE = "unavailable"
+GOLDRUSH_OUTCOME_NOT_CONFIGURED = "not_configured"
+
+# Why each request failed, keyed by request path. Coverage reporting needs this:
+# a request that never delivered is not the same as a provider that answered
+# with no holders, and reporting one as the other turns a run fault into a
+# permanent statement about the asset.
+_GOLDRUSH_OUTCOMES = {}
+
+
+def _holders_path(chain, address):
+    return f"/{chain}/tokens/{address}/token_holders_v2/"
+
 
 def goldrush_get(path, params=None):
     """Read-only multichain wallet/token data. GoldRush never labels a transfer as a buy/sell here.
@@ -1252,8 +1268,12 @@ def goldrush_get(path, params=None):
     retried, because spending a request on it cannot change the outcome.
     Otherwise a transport blip would be recorded as an honest "provider returned
     nothing" coverage gap when no such answer ever arrived.
+
+    The outcome is also recorded in ``_GOLDRUSH_OUTCOMES`` so the coverage report
+    can name what actually happened instead of assuming an empty holder list.
     """
     if not GOLDRUSH_API_KEY:
+        _GOLDRUSH_OUTCOMES[path] = GOLDRUSH_OUTCOME_NOT_CONFIGURED
         return None
     for attempt in range(2):
         retry = False
@@ -1269,22 +1289,32 @@ def goldrush_get(path, params=None):
                 retry = attempt == 0
                 if not retry:
                     print(f"GoldRush warning: HTTP {status} for {path}")
+                    _GOLDRUSH_OUTCOMES[path] = GOLDRUSH_OUTCOME_UNAVAILABLE
                     return None
             elif status >= 400:
                 # Definitive: unknown token, or the chain is not on this plan.
                 print(f"GoldRush warning: HTTP {status} for {path}")
+                _GOLDRUSH_OUTCOMES[path] = (
+                    GOLDRUSH_OUTCOME_UNKNOWN_TOKEN if status == 404 else GOLDRUSH_OUTCOME_UNAVAILABLE
+                )
                 return None
             else:
                 try:
                     payload = r.json()
                 except ValueError as e:
                     print(f"GoldRush warning: malformed response for {path}: {e}")
+                    _GOLDRUSH_OUTCOMES[path] = GOLDRUSH_OUTCOME_UNAVAILABLE
                     return None
-                return (payload.get("data") or {}).get("items", [])
+                items = (payload.get("data") or {}).get("items", [])
+                _GOLDRUSH_OUTCOMES[path] = (
+                    GOLDRUSH_OUTCOME_OK if items else GOLDRUSH_OUTCOME_EMPTY
+                )
+                return items
         except requests.RequestException as e:
             retry = attempt == 0
             if not retry:
                 print(f"GoldRush warning: {e}")
+                _GOLDRUSH_OUTCOMES[path] = GOLDRUSH_OUTCOME_UNAVAILABLE
                 return None
         if retry:
             time.sleep(1.0)
@@ -1309,6 +1339,9 @@ PROJECT_LAYER_MISSING_REASONS = (
     "no_token_address",
     "unsupported_chain",
     "provider_empty_response",
+    "provider_unknown_token",
+    "provider_unavailable",
+    "provider_not_queried",
 )
 
 # Upper bound on contracts probed per candidate. GoldRush calls are serial, so
@@ -1450,14 +1483,33 @@ def coin_contracts(coin):
 def project_layer_missing_reason(coin):
     """Classify exactly why an EVM candidate has no project layer.
 
-    A contract that resolved but produced no layer means the provider did not
-    deliver holder data, whether because it answered with an empty holder list
-    or because the call failed. That is the one gap the scanner cannot close
-    itself, and it is deliberately reported as such instead of being folded into
-    the contract-mapping reasons.
+    A contract that resolved but produced no layer has several very different
+    causes, and only one of them is a real gap in what we know about the asset.
+    A provider that answered with no holders means the evidence does not exist
+    upstream. A 404 means the provider does not carry that token at all, and a
+    throttled, unauthorised or dropped request means nothing was ever learned
+    about it. Reporting the last two as "the provider returned nothing" states
+    something about the asset that no answer ever supported, and would let a bad
+    run quietly become a permanent claim.
+
+    The recorded outcome is read back rather than re-requested, so classifying a
+    gap costs no extra API call.
     """
     contracts, reason = _contract_entries(coin or {})
-    return "provider_empty_response" if contracts else reason
+    if not contracts:
+        return reason
+
+    outcomes = [
+        _GOLDRUSH_OUTCOMES.get(_holders_path(chain, address))
+        for chain, address in contracts
+    ]
+    if GOLDRUSH_OUTCOME_EMPTY in outcomes:
+        return "provider_empty_response"
+    if GOLDRUSH_OUTCOME_UNKNOWN_TOKEN in outcomes:
+        return "provider_unknown_token"
+    if GOLDRUSH_OUTCOME_UNAVAILABLE in outcomes:
+        return "provider_unavailable"
+    return "provider_not_queried"
 
 
 def _safe_float(value):
@@ -1597,7 +1649,7 @@ def goldrush_wallet_layer(coin):
 
     best = {}
     for chain, address in contracts:
-        items = goldrush_get(f"/{chain}/tokens/{address}/token_holders_v2/", {"page-size": 20, "page-number": 0})
+        items = goldrush_get(_holders_path(chain, address), {"page-size": 20, "page-number": 0})
         if not items:
             continue
         holders = []

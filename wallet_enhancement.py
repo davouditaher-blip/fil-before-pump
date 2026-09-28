@@ -103,7 +103,7 @@ def enhanced_goldrush_wallet_layer(coin):
     best = {}
     for chain, address in contracts:
         items = scanner.goldrush_get(
-            f"/{chain}/tokens/{address}/token_holders_v2/",
+            scanner._holders_path(chain, address),
             {"page-size": 100, "page-number": 0},
         )
         if not items:
