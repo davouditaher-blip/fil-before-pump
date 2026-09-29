@@ -31,6 +31,9 @@ REQUIRED_CODE = [
     "test_historical_replay.py",
     "wallet_history_validation.py",
     "test_wallet_history_validation.py",
+    "zerion_layer.py",
+    "test_zerion_layer.py",
+    "zerion_smoke_test.py",
 ]
 
 REQUIRED_ARTIFACTS = [

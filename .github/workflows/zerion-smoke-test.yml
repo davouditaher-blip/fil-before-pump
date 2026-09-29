@@ -1,0 +1,87 @@
+name: Zerion API Smoke Test
+
+# Manual only. There is deliberately no `schedule`, `push`, `pull_request`,
+# `workflow_call` or any other automatic trigger: this workflow spends metered
+# API quota against a third-party provider, so it must be an explicit human
+# decision every time. Backfill automation should be a separate, deliberate
+# step, added only once this smoke test is known to pass.
+on:
+  workflow_dispatch:
+    inputs:
+      wallet:
+        description: "EVM address to probe (default: the repo's own test wallet)"
+        required: false
+        type: string
+      days:
+        description: "Look-back window in days (small on purpose)"
+        required: false
+        default: "90"
+        type: string
+
+# Read-only. This workflow must never be able to write to the repository.
+permissions:
+  contents: read
+
+concurrency:
+  group: zerion-smoke
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    name: Live Zerion probe
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install requests
+        run: python -m pip install --quiet "requests>=2.31,<3"
+
+      - name: Offline provider tests (no network, no quota)
+        run: |
+          python -m py_compile zerion_layer.py zerion_smoke_test.py
+          python test_zerion_layer.py
+
+      - name: Run live smoke test
+        id: probe
+        env:
+          # Injected from the repository secret. Referenced only as an
+          # environment variable; never echoed. The script additionally scrubs
+          # this value and its Base64 Basic form from all output.
+          ZERION_API_KEY: ${{ secrets.ZERION_API_KEY }}
+          ZERION_SMOKE_WALLET: ${{ inputs.wallet || '0x3D457D0B79EFAC77ed38F37870C713D0244479EA' }}
+          ZERION_SMOKE_DAYS: ${{ inputs.days || '90' }}
+        run: |
+          set -o pipefail
+          python zerion_smoke_test.py | tee zerion_smoke_output.txt
+
+      - name: Assert no credential leaked into the output
+        if: always()
+        env:
+          ZERION_API_KEY: ${{ secrets.ZERION_API_KEY }}
+        run: |
+          if [ -z "${ZERION_API_KEY:-}" ]; then
+            echo "::error::ZERION_API_KEY is not set. Add it under Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+          if [ ! -f zerion_smoke_output.txt ]; then
+            echo "::error::smoke test produced no output file"
+            exit 1
+          fi
+          # The probe script should already have redacted this. Assert it, so a
+          # future change that prints a header fails loudly instead of quietly
+          # publishing a live credential to a possibly-public Actions log.
+          if grep -qF -- "$ZERION_API_KEY" zerion_smoke_output.txt; then
+            echo "::error::a credential value reached the output; refusing to pass"
+            exit 1
+          fi
+          echo "ZERION_API_KEY is set (length ${#ZERION_API_KEY}, value withheld) and does not appear in the output."
+          rm -f zerion_smoke_output.txt

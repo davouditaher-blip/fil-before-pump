@@ -207,5 +207,216 @@ on the wallet happening to trade the same contract again, then re-run this
 validation and compare `entries_with_valid_peak` against the current 20,948.
 Keep the PROVEN threshold fixed while doing it so the comparison is honest.
 
+## Current task state
+Status: ZERION ADDED AS AN ADDITIONAL HISTORICAL WALLET SOURCE (PROVIDER LAYER ONLY), WITH A MANUAL LIVE SMOKE TEST
+Stage commit: see the commit titled "Add the Zerion historical wallet-history provider and a manual live smoke test".
+
+What was added
+- New `zerion_layer.py`: a provider/adaptor for the Zerion Wallet Transactions
+  API. It fetches decoded transaction history for a wallet and emits records in
+  the shape the existing wallet history already uses, so
+  `wallet_history_validation` consumes them with no other change.
+- New `test_zerion_layer.py`: 85 deterministic fixture tests, no network and no
+  `requests` dependency (the module imports it lazily, so the suite runs in a
+  bare checkout). `final_integration_gate.REQUIRED_CODE` now requires both.
+- Endpoint: `GET https://api.zerion.io/v1/wallets/{address}/transactions/`,
+  HTTP Basic auth with `ZERION_API_KEY` as the username and an empty password.
+- `ZERION_API_KEY` is the only credential read. It is never printed, logged,
+  stored in an artifact or placed in `PROVIDER_STATE`, and a test asserts that
+  `provider_state()` and the written archive are both key-free.
+
+Supported capabilities
+- Wallet address (path-escaped), chain filtering (`filter[chain_ids]`, project
+  names `eth`/`bsc`/`base`/`sol` mapped to Zerion's `ethereum`/
+  `binance-smart-chain`/`base`/`solana`), trade filtering
+  (`filter[operation_types]`, default `trade` only), historical date range
+  (`filter[min_mined_at]` / `filter[max_mined_at]`, accepted as seconds,
+  milliseconds or ISO and always sent as the 13 digits the API requires),
+  cursor pagination, and retries with rate-limit handling.
+- Cursor pagination follows `links.next` verbatim and never hand-builds a
+  `page[after]` token, because the cursor is opaque. The first page carries the
+  filter query string; later pages are the provider's own URL with no extra
+  params. Guarded by a max-page cap, a run-scoped request budget, a repeated
+  cursor check, and a refusal to follow any cursor that leaves
+  `api.zerion.io` (the request carries Basic-auth credentials).
+
+Retry and rate-limit behaviour
+- Retries 429/500/503 with exponential backoff (1s, 2s, 4s, capped at 30s),
+  honouring `Retry-After` and `RateLimit-Org-Second-Reset`. Never retries
+  400/401/422, which return the same answer however often they are sent.
+- Deliberately *not* GMGN's rule. `gmgn_layer.run_gmgn_cli` treats a rate limit
+  as terminal for the run because GMGN states that retrying during a ban
+  extends it. Zerion documents the opposite, so a transient 429 is retried and
+  only an exhausted day/month quota (where no wait can help) stops the run. A
+  spent per-second window is paced, not treated as terminal.
+- A missing key short-circuits before any request, so an unkeyed run fails
+  loudly instead of looking like an empty wallet, and a partial fetch keeps the
+  pages it got while still reporting `ok=False`, keeping UNAVAILABLE
+  distinguishable from EMPTY.
+
+Normalization
+- One row per fungible transfer, so a swap yields the buy leg (`direction=in`)
+  and the sell leg (`direction=out`), which is the wallet-centric `side`
+  semantics the entry/exit reconstruction is defined against.
+- Chain is stored in the project's short names and the contract address is the
+  implementation for that transaction's own chain, so a Zerion row and a GMGN
+  row of the same token land on the same `whv.asset_identity` key. Base58 Solana
+  addresses keep their case.
+- Emits `source`, `timestamp` (observed) and `trade_timestamp` (mined_at), the
+  row contract `wallet_history_validation.event_ts` depends on; plus
+  `transaction_hash`, `chain`, `address`, `symbol`, `side`, `amount_usd`,
+  `price_usd`, `token_amount`, `operation_type`, `status`, `maker_tags`.
+- Fabricates nothing. No `price_change` / `peak_multiple` / `first_*_timestamp`
+  keys are emitted, because Zerion reports no current/entry ratio; no module
+  indexes those keys on a history row, so their absence is safe and post-entry
+  peaks come from the wallet's own later trades, as for GMGN. `is_open_or_close`
+  is left explicitly unknown. Dropped with a reason: non-`confirmed`
+  transactions, spam-flagged transactions, `self` transfers, and native-asset
+  transfers (no contract, so no token identity). A missing price is not turned
+  into a zero-value trade.
+
+Preserved behaviour
+- `merge_into_history` is strictly additive. It never modifies, replaces or
+  deletes an existing GMGN row, writes one record when both providers already
+  agree on an event, keeps rows only one provider has, and does nothing at all
+  on an empty or failed fetch. Its identity key is built from
+  `whv.asset_identity/event_ts/event_side/event_usd/event_price` and is
+  cross-checked against `whv._dedupe` by a test, so the two cannot drift into
+  double-counting.
+- Verified against the committed 162,081-record dataset in memory: merging a
+  Zerion row into one of 400 wallets removed nothing and added exactly the one
+  new row. `gmgn_wallet_history.json` is unmodified on disk.
+- Scoring, candidate selection, trading logic and live execution are untouched.
+  `orders_enabled` remains false in every artifact and the gate still reports
+  `live exchange execution: DISABLED`.
+
+Live API smoke test (read-only, real requests to api.zerion.io)
+- The GitHub Actions secret `ZERION_API_KEY` is encrypted at rest and is only
+  ever injected into a workflow run on a GitHub runner. It is not present in the
+  AndCode/PRoot sandbox and cannot be read from a local checkout, and running a
+  workflow would require committing and pushing, which was explicitly deferred.
+  So no *authenticated* request has been made. Everything up to the credential
+  check was verified against the live API with a deliberately invalid key,
+  which costs no quota and touches no real data.
+- The endpoint and the full filter query are real and accepted. Against
+  `0x28c6c06298d514db089934071355e5743bf21d60` (Binance hot wallet, already in
+  this repo) the request below returns HTTP 401 with
+  "The API key is invalid, please, make sure that you are using a valid key",
+  issued exactly once and never retried:
+  `page[size]=2&currency=usd&filter[chain_ids]=ethereum&filter[operation_types]=trade&filter[min_mined_at]=1750000000000&filter[max_mined_at]=1750086400000&filter[trash]=only_non_trash`
+  A 401 (rather than a 400) confirms the credential *shape* is right: HTTP
+  Basic with the key as username and an empty password. A malformed filter would
+  have been rejected as a 400 before the credential was ever considered.
+- **Two real defects found and fixed, both only findable by hitting the API.**
+  1. An unauthenticated request answers **402 Payment Required**, not 401, with
+     "Provide an API key via `Authorization: Basic <base64(api_key:)>`".
+     402 was in neither the retryable nor the terminal set and was falling
+     through as a generic error. It is now terminal, and 401/402/403 are
+     labelled `CREDENTIAL_REJECTED` on both `fetch_page` and
+     `fetch_wallet_transactions`, so a caller can tell "this request will never
+     be served" apart from a wallet that genuinely has no history. `400/404/422`
+     are labelled `REQUEST_NOT_SERVABLE`. `TERMINAL_STATUS` was declared but
+     never actually referenced; it is now load-bearing.
+  2. A request carrying the default `Python-urllib/x.y` agent never reaches
+     Zerion: Cloudflare refuses it at the edge with
+     "Error 1010: The site owner has blocked access based on your browser's
+     signature" (HTTP 403). `python-requests/x.y` and a descriptive agent are
+     both accepted, so the integration would probably have worked by luck, since
+     `requests` is what the live path uses. Relying on a library's default agent
+     to stay allowed is a hidden dependency, so an explicit descriptive
+     `User-Agent` is now sent by `request_headers()`.
+- Not verified: a 200 response body, so the normalizer has still only been
+  exercised against fixtures, and `links.next` pagination has not been seen from
+  the live API. A deliberately minimal one-day, one-page request was used, so no
+  large backfill was performed and no quota beyond the rejected request was
+  spent. No credential, Authorization header or wallet data was written to any
+  artifact.
+
+Validation
+- `test_zerion_layer.py`: 85 tests (12 added for the findings below and for the
+  smoke script itself). Confirmed by mutation, each of which makes the suite
+  fail: 429 no longer retried; in/out direction mapping inverted; merge replacing
+  existing history; chain-specific implementation address ignored; untrusted
+  next-cursor host check removed; fabricated `price_change`/`peak_multiple`;
+  failed/pending transactions kept; date range sent in seconds instead of
+  milliseconds; trade filter default removed; event identity ignoring the
+  transaction hash; explicit User-Agent removed; 402/403 treated as retryable;
+  terminal flag suppressed; 402 removed from the terminal set; `page_trace`
+  dropped; `http_status` never recorded; smoke redaction disabled; short-key
+  redaction guard removed; `MAX_PAGES` raised to 20; `PAGE_SIZE` raised to 100;
+  a 200 with zero records reported as a failure.
+- `final_integration_gate.py`, `e2e_validate.py`, `test_historical_replay.py` and
+  `wallet_history_validation.py` pass, and the gate still reports
+  `live exchange execution: DISABLED`. `smoke_test.py` and
+  `test_wallet_history_validation.py` could not be run in the AndCode/PRoot
+  sandbox (no `pip`, `requests` is not installed and `scanner.py`/`gmgn_layer.py`
+  import it at module level); both fail identically at HEAD with no changes
+  applied, so this is environmental and pre-existing.
+- The smoke script is fully unit-tested offline, so the first time the real
+  network path runs is inside the workflow, not at the moment of first
+  correctness. Its own tests cover the 200 path, an empty 200 window, a
+  followed cursor, the `max_pages` cap, cursor-loop detection, a rejected
+  credential, an untrackable address, and credential redaction.
+
+Manual live verification path
+- `.github/workflows/zerion-smoke-test.yml` ("Zerion API Smoke Test") runs
+  `zerion_smoke_test.py` against the real API. It is `workflow_dispatch` only:
+  no `schedule`, `push`, `pull_request`, `workflow_call` or any other automatic
+  trigger, because the request spends metered third-party quota and must stay a
+  deliberate human action. `permissions: contents: read` and
+  `persist-credentials: false` mean the job cannot write to the repository or
+  leave a token behind.
+- The probe asks for `page[size]=2` over a 90-day window and follows at most one
+  `links.next` cursor, so it cannot degenerate into a backfill. It prints HTTP
+  status, transaction count, per-page trace, normalized row sample, and explicit
+  pass/fail checks for authenticated 200, envelope parsing, normalization and
+  cursor advancement. A 200 with zero rows is a PASS: the request worked and the
+  window was quiet, and failing it would only invite widening the request.
+- The default target is `0x3D457D0B79EFAC77ed38F37870C713D0244479EA`, the wallet
+  this repository's own tests use and which is present in
+  `gmgn_wallet_history.json`. It is deliberately NOT the Binance hot wallet from
+  the Nansen workflow: Zerion declines to track high-volume exchange addresses,
+  so that address answers 400 and would prove nothing about the credential. The
+  smoke script distinguishes the two failure modes by reason, `CREDENTIAL_
+  REJECTED` (401/402/403) versus `REQUEST_NOT_SERVABLE` (400/404/422).
+- Credential handling: the key is injected as an environment variable and never
+  printed. The script redacts the key, its `key:` form and its Base64 `Basic`
+  form from all output, so even a provider that echoes the credential back in an
+  error body cannot leak it into a possibly-public Actions log. Redaction
+  deliberately leaves ordinary prose alone ("The API key is invalid" survives
+  intact) and skips values too short to redact safely, because a one-character
+  key would otherwise shred every word in the report. A final step greps the
+  captured output for the credential value and fails the job if it appears, so a
+  future change that prints a header fails loudly instead of quietly publishing
+  a live credential. The run commits nothing.
+
+Blockers / open items
+- **The authenticated smoke test has still never actually been executed.** It is
+  now one manual click away, but until an operator runs the workflow, the live
+  response shape, the real record volume, and live `links.next` pagination remain
+  unverified. Everything asserted about the live API so far comes from
+  unauthenticated and invalid-key probes.
+- **Zerion is wired but not scheduled, and that is still deliberate.** No
+  backfill automation was added. `zerion_layer.main()` remains a runnable CLI
+  (`ZERION_BACKFILL_WALLET`, optional `ZERION_BACKFILL_CHAINS` / `_FROM` / `_TO`)
+  writing `wallet_archive/raw/zerion/transactions/`, and `merge_into_history` is
+  available to the collector, but a scheduled backfill spends metered quota and
+  commits artifacts, which is a separate deployment decision.
+- Zerion is the EVM/Solana primary source rather than a GMGN equivalent for
+  every token, and it declines addresses it does not track, so cold-start
+  coverage per wallet will differ between the two providers.
+- The repo has no `.gitignore`, so `__pycache__/` shows up as untracked after
+  any local test run. Untracked only; never committed.
+
+Recommended next task
+Run `Zerion API Smoke Test` from the Actions tab (90-day window, default wallet)
+and read the result. Expected: `HTTP status: 200` with a small number of
+normalized rows and a per-page trace showing a followed cursor. Then, and only
+then, merge fetched history through `merge_into_history` and re-run
+`wallet_history_validation` with the PROVEN threshold held fixed, comparing
+`entries_with_valid_peak` and the PROVEN count against the current 20,948 / 4. If
+it returns 401/402, the secret is wrong rather than the code; if 400, the wallet
+is untracked and the default should move to a known-tracked address.
+
 ## Communication
 Every completed stage must leave a concise repository-based handoff containing: status, commit SHA, changed files, tests/results, blockers, and next task.
