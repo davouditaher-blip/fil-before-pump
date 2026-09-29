@@ -781,8 +781,15 @@ def main():
         "",
         f"📚 GMGN History: {history_unique_wallets:,} unique wallets | "
         f"{history_total_records:,} stored records | {history_wallets_with_buys:,} wallets with buys",
-        f"🏆 Proven wallets (current historical test): {len(current_proven_wallets):,}",
-        f"🗂 Stored-history validation: {stored_validation['proven_wallets']:,} PROVEN | "
+        # These two lines count different populations and must not be read as the
+        # same number. This line counts only PROVEN wallets that are *also*
+        # current buyers in this run's live GMGN feed, so it is legitimately 0
+        # when no proven wallet happens to be buying right now. The next line is
+        # the total PROVEN count across all stored history.
+        f"🏆 Proven wallets buying NOW in the live GMGN feed: {len(current_proven_wallets):,} "
+        f"(current-feed subset, not the total historical count)",
+        f"🗂 TOTAL historically PROVEN wallets (all stored history): "
+        f"{stored_validation['proven_wallets']:,} | "
         f"{stored_validation['classification_counts'].get(whv.ACTIVITY_BUT_UNPROVEN, 0):,} "
         f"historical-but-unproven | "
         f"{stored_validation['classification_counts'].get(whv.NO_HISTORY, 0):,} cold-start",
@@ -838,10 +845,21 @@ def main():
                 + (f"/{e['move_days']:.1f}d" if e.get("move_days") is not None else "")
                 for e in p.get("recent_examples", [])[:2]
             )
+            # Read every counter from the keys the live and offline profiles
+            # actually publish. ``dict.get(k, fallback)`` evaluates its fallback
+            # eagerly, so the previous ``p['successful_prior_buys']`` /
+            # ``p['prior_buys']`` / ``p['weighted_win_rate']`` defaults raised
+            # KeyError on both paths and killed the whole report.
+            successes_shown = int(p.get("successful_pre_pump_entries") or 0)
+            attempts_shown = int(p.get("observed_opportunities") or p.get("opportunities") or 0)
+            # UNKNOWN (no observable forward window) stays UNKNOWN. It is
+            # reported as a label and never formatted as a percentage, so an
+            # unobservable wallet can never be shown as 0% performance.
+            win_rate = p.get("pre_pump_win_rate")
+            win_rate_text = "نامشخص" if win_rate is None else f"{win_rate:.0f}%"
             shared_history.append(
-                f"{p['wallet'][:8]}… {p.get('successful_pre_pump_entries', p['successful_prior_buys'])}/"
-                f"{p.get('pre_pump_opportunities', p['prior_buys'])}"
-                f" ({p.get('pre_pump_win_rate', p['weighted_win_rate']):.0f}%)"
+                f"{p['wallet'][:8]}… {successes_shown}/{attempts_shown}"
+                f" ({win_rate_text})"
                 + (f" | {examples}" if examples else "")
             )
         shared_text = (
