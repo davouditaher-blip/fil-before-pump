@@ -153,6 +153,10 @@ def update_history(trades, history):
         wallet = t.get("maker")
         address = t.get("base_address")
         tx = t.get("transaction_hash") or t.get("id")
+        # Store under one canonical key so a checksummed address and its
+        # lowercase form can never become two half-histories for one wallet.
+        # The original casing is preserved on the row itself.
+        wallet = whv.wallet_identity(wallet)
         if not wallet or not address:
             continue
 
@@ -215,10 +219,21 @@ def update_history(trades, history):
         # GMGN/API response returned zero trades on this run.
         if not trades:
             return
+        # Keep every collected record, oldest included.
+        #
+        # This used to end in ``[-1000:]``, which silently discarded the
+        # OLDEST rows of any wallet that crossed 1000 records. For a historical
+        # archive that is the worst possible direction to lose data: the
+        # earliest entries are exactly the ones a forward-return reconstruction
+        # needs, and a backfill deep enough to reach 2000 rows per wallet would
+        # have quietly erased its own history. No artificial per-wallet cap is
+        # applied here. Depth is bounded instead by the provider's real history
+        # and by the append-only archive under ``wallet_archive/``; this in-memory
+        # dict stays the working set for the live report.
         history[wallet] = sorted(
             bucket,
             key=lambda x: int(x.get("trade_timestamp") or x.get("timestamp") or 0)
-        )[-1000:]
+        )
 
 
 
@@ -656,7 +671,10 @@ def main():
             profile = analyze_wallet_activity(
                 x["chain"], wallet, activity, wallet_kline_cache,
                 int(datetime.now(timezone.utc).timestamp()),
-                stored_rows=history.get(wallet),
+                # Case-normalized: stored keys mix checksummed and lowercase EVM
+                # addresses, so a case-sensitive lookup silently missed a third
+                # of the qualified buy rows.
+                stored_rows=whv.rows_for_wallet(history, wallet),
             )
             activity_profiles.append(profile)
             if profile.get("proven"):
@@ -682,7 +700,7 @@ def main():
             profile = analyze_wallet_activity(
                 x["chain"], wallet, activity, shared_kline_cache,
                 int(datetime.now(timezone.utc).timestamp()),
-                stored_rows=history.get(wallet),
+                stored_rows=whv.rows_for_wallet(history, wallet),
             )
             if profile.get("opportunities", 0) or profile.get("unknown_opportunities", 0):
                 shared_profiles.append(profile)

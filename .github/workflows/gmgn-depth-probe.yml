@@ -1,0 +1,95 @@
+name: GMGN Historical Depth Probe (ONE WALLET)
+
+# Manual, bounded, read-only. This is a measurement, not a backfill.
+#
+# It exists because the project's real GMGN history depth is UNKNOWN: the stored
+# history only spans 7.9 days, and the one earlier backfill archive returned
+# zero rows. Rather than assume a depth, this measures it for exactly one wallet.
+#
+# It never enumerates wallets, never writes gmgn_wallet_history.json, and never
+# places an order. Max pages is hard-capped, so pagination cannot loop.
+#
+# NOTE: this workflow deliberately does NOT commit the result artifact. The
+# result stays in the run logs and is retrieved from the Actions run summary, so
+# no probe output is pushed to the repository.
+
+on:
+  workflow_dispatch:
+    inputs:
+      wallet:
+        description: "EXACTLY ONE wallet address to probe"
+        required: true
+        default: "0x3d457d0b79efac77ed38f37870c713d0244479ea"
+      chains:
+        description: "Comma-separated chains"
+        required: false
+        default: "sol,bsc,base,eth"
+      limit:
+        description: "Rows requested per page (NOT assumed to be full history)"
+        required: false
+        default: "200"
+      max_pages:
+        description: "Hard pagination stop"
+        required: false
+        default: "10"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gmgn-depth-probe
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install GMGN CLI
+        run: npm install -g gmgn-cli
+
+      - name: Probe historical depth for ONE wallet
+        env:
+          GMGN_API_KEY: ${{ secrets.GMGN_API_KEY }}
+          PROBE_WALLET: ${{ inputs.wallet }}
+          PROBE_CHAINS: ${{ inputs.chains }}
+          PROBE_LIMIT: ${{ inputs.limit }}
+          PROBE_MAX_PAGES: ${{ inputs.max_pages }}
+          PROBE_RESULT: gmgn_depth_probe.json
+        run: python gmgn_depth_probe.py
+
+      - name: Summarise measured depth
+        if: always()
+        run: |
+          echo "### GMGN measured historical depth" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ -f gmgn_depth_probe.json ]; then
+            python - <<'PY' >> $GITHUB_STEP_SUMMARY
+          import json
+          d = json.load(open("gmgn_depth_probe.json"))
+          print(f"- wallet: `{d['wallet']}`")
+          print(f"- requests: {d['totals']['requests']} | pages: {d['totals']['pages']} | rows: {d['totals']['rows']}")
+          print(f"- buys: {d['totals']['buys']} | sells: {d['totals']['sells']}")
+          print(f"- **max measured span: {d['max_span_days']} days**")
+          print(f"- earliest event: {d['earliest_event_any_chain']}")
+          print(f"- pagination detected: {d['pagination_detected_any_chain']} {d['pagination_type_any_chain']}")
+          print("")
+          print("| chain | pages | rows | buys | sells | ids | span_days | stop |")
+          print("|---|---|---|---|---|---|---|---|")
+          for chain, c in d["by_chain"].items():
+              print(f"| {chain} | {c['pages']} | {c['rows']} | {c['buys']} | {c['sells']} | "
+                    f"{c['rows_with_event_id']} | {c['span_days']} | {c['stop_reason']} |")
+          PY
+          else
+            echo "- probe produced no result file" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Full artifact is in this job's log output above (not committed)." >> $GITHUB_STEP_SUMMARY

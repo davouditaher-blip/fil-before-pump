@@ -373,6 +373,109 @@ def test_validate_history_handles_empty_and_malformed_input():
     assert summary["orders_enabled"] is False
 
 
+def test_wallet_identity_folds_evm_case_and_preserves_base58():
+    # EVM addresses are case-insensitive: the same account in any casing.
+    lower = "0x3d457d0b79efac77ed38f37870c713d0244479ea"
+    mixed = "0x3D457D0B79EFAC77ed38F37870C713D0244479EA"
+    assert whv.wallet_identity(mixed) == lower
+    assert whv.wallet_identity(lower) == lower
+    # Chain-prefixed forms resolve to the same wallet.
+    assert whv.wallet_identity("eth:" + mixed) == lower
+    assert whv.wallet_identity("eth-mainnet:" + mixed) == lower
+    assert whv.wallet_identity("bsc:" + mixed) == lower
+    # Base58 Solana addresses ARE case-sensitive, so they must be preserved
+    # byte for byte. Lowercasing them would be corruption, not normalisation.
+    base58 = "3d4K8PGBcnJ4sApcx1VX6yiWjnx9oCYYjjgSB4hZPJFY"
+    assert whv.wallet_identity(base58) == base58
+    # Blank / junk never becomes a usable key.
+    assert whv.wallet_identity("") == ""
+    assert whv.wallet_identity(None) == ""
+    assert whv.wallet_identity("   ") == ""
+
+
+def test_wallet_lookup_is_case_insensitive_in_both_directions():
+    lower = "0x3d457d0b79efac77ed38f37870c713d0244479ea"
+    mixed = "0x3D457D0B79EFAC77ed38F37870C713D0244479EA"
+    # lowercase stored key, mixed-case lookup
+    assert len(whv.rows_for_wallet({lower: [{"a": 1}]}, mixed)) == 1
+    # mixed-case stored key, lowercase lookup
+    assert len(whv.rows_for_wallet({mixed: [{"a": 1}]}, lower)) == 1
+    # A wallet stored under both casings is ONE wallet, and a lookup in either
+    # direction returns the complete merged history rather than one slice.
+    both = {lower: [{"a": 1}], mixed: [{"a": 2}]}
+    assert len(whv.rows_for_wallet(both, lower)) == 2
+    assert len(whv.rows_for_wallet(both, mixed)) == 2
+    # Casing alone must never duplicate a wallet.
+    assert len(whv.wallet_index(both)) == 1
+    # ...and normalising the lookup must not delete any stored key.
+    assert len(both) == 2
+    # A different wallet is still a different wallet.
+    other = "0x98feae3174b130f06cad43e7d5d9d3e146f4dd14"
+    assert len(whv.rows_for_wallet({lower: [{"a": 1}]}, other)) == 0
+    # Missing/blank wallet yields no rows rather than raising.
+    assert whv.rows_for_wallet({lower: [{"a": 1}]}, None) == []
+
+
+def test_wallet_identity_never_uses_symbol():
+    # Wallet identity is an address. A symbol is a label, and 1975 of 7396 stored
+    # symbols map to more than one contract, so it can never be a wallet key.
+    assert whv.wallet_identity("SIGNULL") == "SIGNULL"
+    assert whv.wallet_identity("0xa") == "0xa"
+    # Two tokens sharing a symbol remain distinguishable by contract address.
+    identity_a = ("eth", "0x1111111111111111111111111111111111111111")
+    identity_b = ("eth", "0x2222222222222222222222222222222222222222")
+    assert identity_a != identity_b
+
+
+def test_history_update_keeps_every_record_beyond_1000_rows():
+    """The ``[-1000:]`` truncation must not come back.
+
+    It used to slice off the OLDEST rows of any wallet that crossed 1000
+    records, which is the worst direction to lose history for a forward-return
+    reconstruction. A backfill deep enough to exceed the cap would have erased
+    exactly the early entries it was collecting.
+    """
+    import gmgn_layer
+
+    history = {}
+    now = T0
+    # 1,500 distinct transactions for one wallet, oldest first.
+    for i in range(1500):
+        gmgn_layer.update_history([{
+            "maker": "0x3d457d0b79efac77ed38f37870c713d0244479ea",
+            "base_address": f"0xasset{i:04d}",
+            "transaction_hash": f"tx{i:05d}",
+            "timestamp": T0 + i * 60,
+            "side": "buy",
+            "amount_usd": 1000.0,
+            "price_usd": 1.0,
+        }], history)
+
+    rows = history["0x3d457d0b79efac77ed38f37870c713d0244479ea"]
+    # Nothing is dropped and nothing is invented.
+    assert len(rows) == 1500, f"expected 1500 retained rows, got {len(rows)}"
+    # The oldest record is still present, which is what the old cap destroyed.
+    assert rows[0]["transaction_hash"] == "tx00000"
+    assert rows[-1]["transaction_hash"] == "tx01499"
+    # Chronological order is preserved.
+    stamps = [r["trade_timestamp"] for r in rows]
+    assert stamps == sorted(stamps)
+    # Re-running the same transaction updates it instead of duplicating it.
+    gmgn_layer.update_history([{
+        "maker": "0x3D457D0B79EFAC77ed38F37870C713D0244479EA",
+        "base_address": "0xasset0000",
+        "transaction_hash": "tx00000",
+        "timestamp": T0,
+        "side": "buy",
+        "amount_usd": 1000.0,
+        "price_usd": 1.0,
+    }], history)
+    # The mixed-case write resolved to the SAME stored key (one wallet, no
+    # duplicate created by casing) and still updated in place.
+    assert len(history) == 1
+    assert len(next(iter(history.values()))) == 1500
+
+
 TESTS = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
 
 

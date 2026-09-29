@@ -63,12 +63,17 @@ posts to manufacture a count.
 from __future__ import annotations
 
 import json
+import re
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
 HISTORY_FILE = Path("gmgn_wallet_history.json")
+
+# EVM addresses are 0x + exactly 40 hex characters. Only these are case-folded;
+# base58 Solana addresses are case-sensitive and must never be lowercased.
+_EVM_ADDRESS = re.compile(r"^0x[0-9a-fA-F]{40}$")
 
 # Pre-pump success definition. Matches the existing rule in
 # gmgn_layer.analyze_wallet_activity / wallet_track_profile.
@@ -161,6 +166,78 @@ def event_usd(row: dict[str, Any]) -> float:
         or row.get("value_usd")
         or row.get("valueUsd")
     )
+
+
+def wallet_identity(value: Any) -> str:
+    """Canonical wallet identity key for lookup and dedupe.
+
+    EVM addresses (0x + 40 hex) are case-insensitive by definition: the same
+    address is ``0xAbC…`` and ``0xabc…`` and they are the same account. Base58
+    (Solana) addresses *are* case-sensitive, so those are only stripped of
+    surrounding whitespace and otherwise preserved byte for byte. Lowercasing a
+    base58 address would be data corruption, not normalisation.
+
+    The chain is deliberately *not* part of the wallet key: one EVM account
+    address is the same account on every EVM chain, and the token identity
+    already carries its own chain. Solidity-style chain prefixes (``eth:0x…``)
+    are accepted so a provider that returns them resolves to the same wallet.
+    """
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    if ":" in text:
+        prefix, _, remainder = text.partition(":")
+        if prefix.lower() in {"eth", "ethereum", "bsc", "bnb", "base", "eth-mainnet",
+                              "bsc-mainnet", "base-mainnet", "sol", "solana"}:
+            text = remainder.strip()
+            if not text:
+                return ""
+    if _EVM_ADDRESS.fullmatch(text):
+        return text.lower()
+    return text
+
+
+def wallet_index(history: dict[str, Any]) -> dict[str, str]:
+    """Map canonical wallet key -> the original stored key.
+
+    Stored history mixes casing (1,131 of 2,131 keys are not lowercase, because
+    the GMGN CLI returns checksummed EVM addresses) while callers look wallets up
+    with whatever casing the provider just handed them. A case-sensitive
+    ``history.get(wallet)`` therefore missed 35% of the qualified buy rows. This
+    index resolves both directions without rewriting or deleting any stored key.
+
+    When two stored keys canonicalize to the same wallet, the first wins as the
+    stored key and the rows of the others stay on disk untouched, so no record
+    is deleted and no wallet is duplicated by casing alone.
+    """
+    index: dict[str, str] = {}
+    for key in history or {}:
+        canonical = wallet_identity(key)
+        if not canonical:
+            continue
+        index.setdefault(canonical, key)
+    return index
+
+
+def rows_for_wallet(history: dict[str, Any], wallet: Any) -> list[dict[str, Any]]:
+    """Return every stored row for a wallet, matched case-insensitively.
+
+    Merges the rows of all stored keys that canonicalize to the same wallet so a
+    wallet that was stored under mixed and lowercase keys is not silently split
+    into two half-histories.
+    """
+    canonical = wallet_identity(wallet)
+    if not canonical:
+        return []
+    # Every stored key that canonicalizes to this wallet is merged, including an
+    # exact-case hit. Short-circuiting on the exact key first would return only
+    # that slice and hide the rows stored under another casing of the same
+    # wallet, splitting one wallet's history in two.
+    rows: list[dict[str, Any]] = []
+    for key, value in (history or {}).items():
+        if wallet_identity(key) == canonical and isinstance(value, list):
+            rows.extend(value)
+    return rows
 
 
 def event_side(row: dict[str, Any]) -> str:
