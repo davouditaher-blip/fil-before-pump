@@ -13,6 +13,11 @@ jobs:
   test-nansen:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Test Nansen API
         env:
           NANSEN_API_KEY: ${{ secrets.NANSEN_API_KEY }}
@@ -41,9 +46,9 @@ jobs:
           TMP=$(mktemp)
           HTTP_CODE=$(curl -sS -o "$TMP" -w "%{http_code}"             -X POST "https://api.nansen.ai/api/v1/profiler/address/historical-balances"             -H "apiKey: ${NANSEN_API_KEY}"             -H "Content-Type: application/json"             -H "Accept: application/json"             --data "$BODY")
 
-          echo "HTTP_STATUS=$HTTP_CODE"
+          echo "HTTP_STATUS=$HTTP_CODE" | tee nansen_test_result.txt
 
-          python3 - "$TMP" "$HTTP_CODE" <<'PY'
+          python3 - "$TMP" "$HTTP_CODE" <<'PY' | tee -a nansen_test_result.txt
           import json, sys
           p, code = sys.argv[1], sys.argv[2]
           obj = json.load(open(p))
