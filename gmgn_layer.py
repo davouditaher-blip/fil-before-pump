@@ -19,14 +19,27 @@ CHAINS = ("sol", "bsc", "base", "eth")
 
 
 def run_gmgn(chain):
+    """Fetch one chain's smart-money feed.
+
+    Honors the run-scoped rate-limit state: once a limit has been seen, every
+    later chain returns ``[]`` without issuing a request, so the scheduled
+    layer cannot extend a ban by continuing to fire into it.
+    """
+    if is_provider_rate_limited():
+        return []
     env = os.environ.copy()
     env["GMGN_API_KEY"] = GMGN_API_KEY
     cmd = ["npx", "--yes", "gmgn-cli", "track", "smartmoney",
            "--chain", chain, "--limit", "200", "--raw"]
+    PROVIDER_STATE["requests_made"] = int(PROVIDER_STATE.get("requests_made", 0)) + 1
     try:
         p = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=90)
         if p.returncode != 0:
-            print(f"GMGN {chain} warning: {p.stderr[-1000:]}")
+            detail = p.stderr or ""
+            if detect_rate_limit(detail) or detect_rate_limit(p.stdout):
+                _mark_rate_limited(detail)
+                return []
+            print(f"GMGN {chain} warning: {detail[-1000:]}")
             return []
         for line in reversed(p.stdout.strip().splitlines()):
             try:
@@ -237,19 +250,95 @@ def update_history(trades, history):
 
 
 
+def detect_rate_limit(text):
+    """Detect a GMGN rate-limit / ban response in CLI output.
+
+    GMGN signals this in several equivalent shapes, all of which have been seen
+    in this project's own Actions logs:
+
+        "code=429 error=RATE_LIMIT_EXCEEDED"
+        "code=429 error=RATE_LIMIT_BANNED"
+        "HTTP 429 ... IP is temporarily banned ... repeated requests can
+         extend the ban by 5s up to 5 minutes"
+
+    A rate limit is not a transient blip. The provider states that retrying
+    during a ban *extends* it, so a retry loop converts a short limit into a
+    long one. It is therefore treated as a terminal, run-scoped condition.
+    """
+    if not text:
+        return False
+    lowered = str(text).lower()
+    if "rate_limit" in lowered or "rate limit" in lowered:
+        return True
+    if "429" in lowered:
+        return True
+    # Chinese-language variant of the same plan limit.
+    return "限频" in str(text) or "频率" in str(text)
+
+
+# Run-scoped provider state. Once a rate limit is seen, no further GMGN request
+# is issued for the rest of the process, and every consumer that would
+# otherwise read an empty result knows the data is UNAVAILABLE rather than
+# genuinely empty.
+PROVIDER_STATE = {
+    "rate_limited": False,
+    "reason": None,
+    "detail": None,
+    "at": None,
+    "requests_made": 0,
+}
+
+
+def provider_state():
+    """Snapshot of the current GMGN provider state."""
+    return dict(PROVIDER_STATE)
+
+
+def is_provider_rate_limited():
+    return bool(PROVIDER_STATE.get("rate_limited"))
+
+
+def _mark_rate_limited(detail, at=None):
+    now = at or datetime.now(timezone.utc).isoformat()
+    PROVIDER_STATE["rate_limited"] = True
+    PROVIDER_STATE["detail"] = str(detail)[-600:]
+    PROVIDER_STATE["at"] = now
+    if not PROVIDER_STATE.get("reason"):
+        PROVIDER_STATE["reason"] = "RATE_LIMITED"
+    print(f"GMGN RATE LIMIT — stopping GMGN requests for this run: {detail[-200:]}")
+    return {}
+
+
 def run_gmgn_cli(args, timeout=60):
+    """Run one gmgn-cli call.
+
+    A confirmed rate limit is a HARD STOP for the whole run: it records the
+    state, and every later call short-circuits to ``{}`` without touching the
+    network, so the run cannot extend the ban by retrying into it. The return
+    type stays a plain dict because external callers
+    (``wallet_radar.holdings``, ``scanner``) index into it directly.
+    """
+    if is_provider_rate_limited():
+        return {}
+
     env = os.environ.copy()
     env["GMGN_API_KEY"] = GMGN_API_KEY
     cmd = ["npx", "--yes", "gmgn-cli", *args, "--raw"]
+    PROVIDER_STATE["requests_made"] = int(PROVIDER_STATE.get("requests_made", 0)) + 1
     try:
         p = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=timeout)
         if p.returncode != 0:
-            print(f"GMGN CLI warning: {p.stderr[-800:]}")
+            detail = p.stderr or ""
+            if detect_rate_limit(detail) or detect_rate_limit(p.stdout):
+                return _mark_rate_limited(f"portfolio activity/cli: {detail}", at=None)
+            print(f"GMGN CLI warning: {detail[-800:]}")
             return {}
         for line in reversed(p.stdout.strip().splitlines()):
             try:
                 obj = json.loads(line)
                 if isinstance(obj, dict):
+                    if detect_rate_limit(json.dumps(obj, ensure_ascii=False)):
+                        return _mark_rate_limited("rate limit in CLI response body")
                     return obj
             except json.JSONDecodeError:
                 pass
@@ -258,9 +347,35 @@ def run_gmgn_cli(args, timeout=60):
     return {}
 
 
+# Fan-out budget: candidate signals * wallets per signal is unbounded, and each
+# pair issues a portfolio_activity call. Cap it per run so a large signal set
+# cannot hammer the metered GMGN plan, and spread calls with a fixed pacing
+# delay (pacing also keeps a ban window from being re-entered 90 times a run,
+# which is exactly what the Actions logs showed).
+ACTIVITY_CALL_BUDGET = 300
+ACTIVITY_CALL_PACING_SECONDS = 0.5
+_ACTIVITY_CALLS = {"count": 0, "exhausted": False}
+
+
+def activity_call_count():
+    return int(_ACTIVITY_CALLS.get("count", 0))
+
+
+def activity_budget_exhausted():
+    return bool(_ACTIVITY_CALLS.get("exhausted"))
+
+
 def portfolio_activity(chain, wallet, limit=200):
     if chain not in CHAINS or not wallet:
         return []
+    if activity_budget_exhausted():
+        return []
+    if int(_ACTIVITY_CALLS.get("count", 0)) >= ACTIVITY_CALL_BUDGET:
+        _ACTIVITY_CALLS["exhausted"] = True
+        print(f"GMGN ACTIVITY BUDGET: hit {ACTIVITY_CALL_BUDGET} portfolio calls for this run; further calls skipped.")
+        return []
+    _ACTIVITY_CALLS["count"] = int(_ACTIVITY_CALLS.get("count", 0)) + 1
+    time.sleep(ACTIVITY_CALL_PACING_SECONDS)
     obj = run_gmgn_cli([
         "portfolio", "activity", "--chain", chain, "--wallet", wallet,
         "--limit", str(limit), "--type", "buy", "--type", "sell"
@@ -607,6 +722,19 @@ def main():
         time.sleep(0.25)
 
     if not trades:
+        if is_provider_rate_limited():
+            send_telegram(
+                "🐋 GMGN SMART MONEY LAYER\n\n"
+                "⚠️ DATA UNAVAILABLE / RATE LIMITED\n"
+                "GMGN rejected requests with HTTP 429 (rate limit / temporary ban). "
+                "No Smart Money feed could be fetched this run.\n"
+                "This is a provider availability state, not a market signal, and it "
+                "is NOT reported as zero wallets.\n"
+                f"Detected at: {PROVIDER_STATE.get('at') or 'unknown'}\n"
+                f"Requests attempted this run: {PROVIDER_STATE.get('requests_made', 0)}"
+            )
+            print("RATE LIMITED: no Smart Money feed available this run.")
+            return
         send_telegram("🐋 GMGN SMART MONEY LAYER\n\nNo Smart Money trade records returned.")
         return
 
@@ -804,8 +932,17 @@ def main():
         # current buyers in this run's live GMGN feed, so it is legitimately 0
         # when no proven wallet happens to be buying right now. The next line is
         # the total PROVEN count across all stored history.
-        f"🏆 Proven wallets buying NOW in the live GMGN feed: {len(current_proven_wallets):,} "
-        f"(current-feed subset, not the total historical count)",
+        # When live data was unavailable (rate limit / budget exhausted) the
+        # live-feed number is deliberately NOT shown as a 0: it is reported as
+        # unavailable, because a missing live answer is not the same as "none".
+        (
+            f"🏆 Proven wallets buying NOW in the live GMGN feed: "
+            f"{len(current_proven_wallets):,} "
+            f"(current-feed subset, not the total historical count)"
+            if not (is_provider_rate_limited() or activity_budget_exhausted())
+            else f"🏆 Proven wallets buying NOW in the live GMGN feed: "
+                 f"DATA UNAVAILABLE — live GMGN feed state (see banner)"
+        ),
         f"🗂 TOTAL historically PROVEN wallets (all stored history): "
         f"{stored_validation['proven_wallets']:,} | "
         f"{stored_validation['classification_counts'].get(whv.ACTIVITY_BUT_UNPROVEN, 0):,} "
@@ -819,8 +956,30 @@ def main():
         f"📏 PROVEN rule: >={whv.MIN_OBSERVED_ENTRIES} observed entries, "
         f">={whv.MIN_SUCCESSFUL_ENTRIES} genuine {whv.TARGET_MULTIPLE:g}x pre-pump hits, "
         f"win rate >={whv.MIN_WIN_RATE_PCT:g}% (chain+contract identity)",
-        ""
+        "",
     ]
+
+    # Provider availability is reported as an explicit condition, never folded
+    # into a zero. A rate limit or an exhausted activity budget means some
+    # live-feed counts below are UNKNOWN for this run, so the banner guards
+    # every number that depends on live GMGN data.
+    if is_provider_rate_limited() or activity_budget_exhausted():
+        warnings = []
+        if is_provider_rate_limited():
+            warnings.append(
+                "DATA UNAVAILABLE / RATE LIMITED: GMGN returned HTTP 429 "
+                "(rate limit or temporary ban) during this run. Live wallet-activity "
+                "counts below are NOT available; do not read them as zero."
+            )
+        if activity_budget_exhausted():
+            warnings.append(
+                "ACTIVITY BUDGET EXHAUSTED: this run's capped portfolio-activity "
+                "calls were used up, so wallets beyond the cap were not queried. "
+                "Any missing live counts are UNKNOWN, not zero."
+            )
+        for w in warnings:
+            lines.append(f"⚠️ {w}")
+        lines.append("")
 
     for x in signals[:25]:
         rank = f" #{x['rank']}" if x.get("rank") else ""
