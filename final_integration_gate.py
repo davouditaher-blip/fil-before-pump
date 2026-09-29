@@ -29,6 +29,8 @@ REQUIRED_CODE = [
     "e2e_validate.py",
     "historical_replay.py",
     "test_historical_replay.py",
+    "wallet_history_validation.py",
+    "test_wallet_history_validation.py",
 ]
 
 REQUIRED_ARTIFACTS = [

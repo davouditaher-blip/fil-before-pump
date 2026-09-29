@@ -115,5 +115,97 @@ its coverage rather than lowering the threshold again. Then feed
 `paper_feedback_calibration` from closed paper trades so the bounded calibration
 memory can move off `NO_HISTORY`.
 
+## Current task state
+Status: HISTORICAL WALLET VALIDATION REBUILT — "PROVEN WALLETS = 0" WAS A PROVIDER-AVAILABILITY FAULT
+
+What was wrong
+- `gmgn_layer.analyze_wallet_activity` is the only function that sets `proven`
+  for the wallet-track gate, and it could only reconstruct history from a
+  *live* `gmgn portfolio activity` call plus a *live* `gmgn market kline` call.
+  When the provider was slow, rate limited or unkeyed, both returned nothing,
+  the profile collapsed to `opportunities=0`, and every wallet was reported
+  unproven: "Proven wallets (current historical test): 0",
+  "historical proof not yet established", "سابقه کافی نیست".
+- That is a *provider availability* fault being printed as a *wallet quality*
+  fact. The repository already stored 162,081 GMGN records across 2,129
+  wallets (1,908 with buys) and that stored history was never replayed through
+  the proven-wallet decision.
+- `wallet_quality_engine._forward_hit_rate` and `_pre_pump_proof` joined
+  forward observations on the ticker symbol. 1,975 of 7,396 stored symbols map
+  to more than one contract and one ("SI") maps to 63, so entries were credited
+  or blamed for another token's price move. 775 of 962 qualified entries had a
+  colliding symbol.
+- The live path's own rule was `proven = bool(successes)`, i.e. a single 2x
+  observation, which disagreed with the offline rule and made "proven" mean
+  "saw one good trade".
+
+What changed
+- New `wallet_history_validation.py` reconstructs every stored buy offline:
+  canonical chain+contract identity, entry time/price, peak multiple, MFE/MAE,
+  target reached, exit timestamp or current holding, and observation-window
+  completeness. It never joins on symbol alone.
+- Three explicit states replace the binary: `PROVEN`,
+  `HISTORICAL_ACTIVITY_BUT_UNPROVEN`, `NO_HISTORY`. A window with no forward
+  observation stays UNKNOWN and is excluded from the win rate, so it can never
+  be recorded as 0% performance or as a loss.
+- `analyze_wallet_activity` now falls back to stored rows when live activity is
+  unusable, and both paths share one `whv.classify` threshold.
+- The PROVEN threshold is explicit and published on every profile and in the
+  summary artifact: >= 3 observed entries AND >= 2 genuine 2x pre-pump hits AND
+  win rate >= 60% over observed entries. `MIN_SUCCESSFUL_ENTRIES` is currently
+  implied by the other two bounds; it is kept explicit so loosening either
+  cannot silently weaken the proof standard.
+- Deduplication keys on full event identity and sorts with the original index as
+  a stable tie-breaker, so repeat buys survive and chronological order is kept.
+- The Telegram report now prints the three states, the reconstructed-entry
+  counters and the PROVEN rule, instead of one "sابقه کافی نیست" line.
+
+Validation on the committed 162,081-record dataset
+- 2,129 wallets evaluated; 1,616 with sufficient evidence.
+- 4 PROVEN, 1,833 HISTORICAL_ACTIVITY_BUT_UNPROVEN, 292 NO_HISTORY/COLD_START.
+- 31,382 reconstructed entries; 20,948 with a valid peak/MFE; 18,298 with a
+  valid exit; 2,650 still holding with no exit; 10,434 UNKNOWN windows.
+- The 292 cold starts are explained: 221 sell-only, 40 buys with no price,
+  31 below the entry floor. The 10,434 UNKNOWN windows are all entries made
+  inside the last 14 days whose forward window has not elapsed yet.
+
+Tests
+- New `test_wallet_history_validation.py`: 27 deterministic fixture tests
+  covering a successful pre-pump wallet, a losing/late wallet, cold start,
+  missing price, missing exit, a partial exit, multiple buys of one asset, the
+  same symbol on different contracts and on different chains, duplicate
+  records, deduplicated-but-ordered rows, a current holding with no exit, and a
+  wallet with activity but insufficient evidence.
+- Verified by mutation: joining on symbol instead of contract, and dividing the
+  win rate by all entries instead of observed entries, each make the suite
+  fail. Ignoring `trade_timestamp` also fails.
+- `smoke_test.py`, `test_historical_replay.py`, `e2e_validate.py` and
+  `final_integration_gate.py` all pass; the gate now also requires the two new
+  modules.
+- `orders_enabled` remains false in every artifact and no live execution exists.
+
+Blockers / open items
+- **Provider gap**: 4 PROVEN is a real number from real evidence, not a
+  threshold artefact, but it is small. The binding constraint is observation
+  density, not criteria: 20,948 of 31,382 entries have a forward window only
+  because the wallet traded that same contract again. 4h klines would give far
+  denser MFE, but they require a live `market kline` call, which is exactly the
+  dependency that was removed. Offline candle backfill is the next real gain.
+- **Chain attribution**: only 17.1% of stored rows carry a chain (the GMGN CLI
+  omits it and only post-stamp rows have it). Unattributed rows are kept rather
+  than discarded, and the contract address carries the identity, so this is
+  safe but imprecise.
+- `MIN_SUCCESSFUL_ENTRIES` is redundant with the other two bounds; it is
+  documented as a guard rather than presented as independent evidence.
+- `wallet_signal_profiles.py` still hardcodes `paper_feedback_calibration: 0.0`.
+- The repo has no `.gitignore`, so `__pycache__/` shows up as untracked after
+  any local test run. Untracked only; never committed.
+
+Recommended next task
+Backfill 4h klines into a stored artifact so post-entry MFE no longer depends
+on the wallet happening to trade the same contract again, then re-run this
+validation and compare `entries_with_valid_peak` against the current 20,948.
+Keep the PROVEN threshold fixed while doing it so the comparison is honest.
+
 ## Communication
 Every completed stage must leave a concise repository-based handoff containing: status, commit SHA, changed files, tests/results, blockers, and next task.

@@ -8,6 +8,8 @@ from pathlib import Path
 
 import requests
 
+import wallet_history_validation as whv
+
 CMC_API_KEY = os.environ.get("CMC_API_KEY", "")
 GMGN_API_KEY = os.environ.get("GMGN_API_KEY", "")
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
@@ -275,16 +277,66 @@ def _num(*values):
     return 0.0
 
 
-def analyze_wallet_activity(chain, wallet, activity, kline_cache, now_ts):
-    """Measure real historical entries; UNKNOWN is never converted to 0%."""
-    cutoff = now_ts - 180 * 86400
+def _offline_profile_fields(profile, chain):
+    """Adapt a stored-history profile to the shape this layer already emits.
+
+    ``analyze_wallet_activity`` returns ``all_examples`` keyed by ``timestamp``
+    and ``recent_examples`` keyed by ``peak_multiple``; the Telegram report and
+    the cluster/reputation readers both depend on those names, so the offline
+    path maps onto the same contract instead of publishing a second schema.
+    """
+    def _example(record):
+        item = dict(record)
+        item["timestamp"] = record.get("entry_timestamp")
+        item["multiple"] = record.get("peak_multiple")
+        return item
+
+    return {
+        "wallet": profile.get("wallet"),
+        "chain": chain,
+        "history_class": profile.get("history_class"),
+        "evidence_source": profile.get("evidence_source"),
+        "opportunities": profile.get("opportunities", 0),
+        "observed_opportunities": profile.get("observed_opportunities", 0),
+        "unknown_opportunities": profile.get("unknown_opportunities", 0),
+        "successful_pre_pump_entries": profile.get("successful_pre_pump_entries", 0),
+        "pre_pump_win_rate": profile.get("pre_pump_win_rate"),
+        "entries_with_exit": profile.get("entries_with_exit", 0),
+        "entries_holding": profile.get("entries_holding", 0),
+        "criteria": profile.get("criteria", {}),
+        "proven": bool(profile.get("proven")),
+        "recent_examples": [_example(x) for x in profile.get("recent_examples", [])],
+        "all_examples": [_example(x) for x in profile.get("all_examples", [])],
+    }
+
+
+def analyze_wallet_activity(chain, wallet, activity, kline_cache, now_ts, stored_rows=None):
+    """Measure real historical entries; UNKNOWN is never converted to 0%.
+
+    ``activity`` is the live ``gmgn portfolio activity`` payload. When the
+    provider returns nothing (missing key, timeout, rate limit, or a wallet the
+    activity endpoint does not cover) that is a *provider availability* fault,
+    not a statement about the wallet. Falling straight through to
+    ``opportunities=0`` reported every such wallet as unproven and produced
+    "historical proof not yet established" / "سابقه کافی نیست" even though the
+    repository already stores that wallet's history in
+    ``gmgn_wallet_history.json``.
+
+    ``stored_rows`` supplies that offline evidence. The reconstruction runs on
+    canonical chain+contract identity, computes a real post-entry peak/exit,
+    and keeps unobservable windows as UNKNOWN rather than as 0% performance.
+    Live 4h klines are still preferred when they are available, because they
+    are a denser observation series than the wallet's own later trades.
+    """
+    live = list(activity or [])
+
     buys = []
-    for r in activity:
+    for r in live:
         side = str(r.get("side") or r.get("type") or "").lower()
         if side != "buy":
             continue
         ts = int(_num(r.get("timestamp"), r.get("block_timestamp"), r.get("time")))
-        if not ts or ts < cutoff:
+        if not ts or ts < now_ts - 180 * 86400:
             continue
         address = r.get("base_address") or r.get("token_address") or r.get("address")
         if not address:
@@ -299,6 +351,13 @@ def analyze_wallet_activity(chain, wallet, activity, kline_cache, now_ts):
             "amount_usd": _num(r.get("amount_usd"), r.get("usd_value"), r.get("amount"))
         })
 
+    offline = None
+    if not buys and stored_rows:
+        # Live activity was unusable. Reconstruct the same profile from the
+        # history this project already owns instead of reporting a cold start.
+        offline = whv.reconstruct_wallet(wallet, stored_rows, chain=chain)
+        return _offline_profile_fields(offline, chain)
+
     grouped = defaultdict(list)
     for row in buys:
         grouped[(row["chain"], row["address"], row["symbol"])].append(row)
@@ -308,7 +367,12 @@ def analyze_wallet_activity(chain, wallet, activity, kline_cache, now_ts):
         rows.sort(key=lambda x: x["timestamp"])
         first = rows[0]
         if first["price"] <= 0:
-            opportunities.append({**first, "status": "unknown", "peak_multiple": None})
+            # No entry price: this is an UNKNOWN, never a 0% outcome.
+            opportunities.append({
+                **first, "status": "unknown", "outcome": whv.OUTCOME_UNKNOWN,
+                "peak_multiple": None, "peak_timestamp": 0, "days_to_peak": None,
+                "observation_complete": False,
+            })
             continue
 
         end_ts = min(now_ts, first["timestamp"] + 14 * 86400)
@@ -336,23 +400,35 @@ def analyze_wallet_activity(chain, wallet, activity, kline_cache, now_ts):
             status = "success" if multiple is not None and multiple >= 2.0 else "observed_no_2x"
 
         opportunities.append({
-            **first, "status": status,
+            **first, "status": status, "outcome": status,
+            "observation_complete": bool(candles),
             "peak_multiple": round(multiple, 3) if multiple is not None else None,
             "peak_timestamp": peak_ts,
             "days_to_peak": round((peak_ts - first["timestamp"]) / 86400.0, 2) if peak_ts else None
         })
 
-    successes = [x for x in opportunities if x["status"] == "success"]
-    observed = [x for x in opportunities if x["status"] in ("success", "observed_no_2x")]
-    unknown = [x for x in opportunities if x["status"] == "unknown"]
+    # One PROVEN threshold for both evidence sources. The live path previously
+    # used ``proven = bool(successes)``, i.e. a single 2x observation, which
+    # made "proven" mean "seen one good trade" and disagreed with the offline
+    # path. Both now require depth, productivity and multiple successes, so a
+    # candidate cannot be promoted by whichever source happens to answer.
+    history_class, observed, successes, unknown, win_rate = whv.classify(opportunities)
     return {
         "wallet": wallet, "chain": chain,
+        "history_class": history_class,
+        "evidence_source": "LIVE_GMGN_ACTIVITY",
         "opportunities": len(opportunities),
         "observed_opportunities": len(observed),
         "unknown_opportunities": len(unknown),
         "successful_pre_pump_entries": len(successes),
-        "pre_pump_win_rate": round(len(successes) / len(observed) * 100.0, 1) if observed else None,
-        "proven": bool(successes),
+        "pre_pump_win_rate": win_rate,
+        "criteria": {
+            "min_observed_entries": whv.MIN_OBSERVED_ENTRIES,
+            "min_win_rate_pct": whv.MIN_WIN_RATE_PCT,
+            "min_successful_entries": whv.MIN_SUCCESSFUL_ENTRIES,
+            "target_multiple": whv.TARGET_MULTIPLE,
+        },
+        "proven": history_class == whv.PROVEN,
         "recent_examples": sorted(successes, key=lambda x: x.get("peak_multiple") or 0, reverse=True)[:5],
         "all_examples": sorted(opportunities, key=lambda x: x["timestamp"], reverse=True)[:12]
     }
@@ -579,7 +655,8 @@ def main():
             activity = portfolio_activity(x["chain"], wallet, limit=200)
             profile = analyze_wallet_activity(
                 x["chain"], wallet, activity, wallet_kline_cache,
-                int(datetime.now(timezone.utc).timestamp())
+                int(datetime.now(timezone.utc).timestamp()),
+                stored_rows=history.get(wallet),
             )
             activity_profiles.append(profile)
             if profile.get("proven"):
@@ -604,7 +681,8 @@ def main():
             activity = portfolio_activity(x["chain"], wallet, limit=200)
             profile = analyze_wallet_activity(
                 x["chain"], wallet, activity, shared_kline_cache,
-                int(datetime.now(timezone.utc).timestamp())
+                int(datetime.now(timezone.utc).timestamp()),
+                stored_rows=history.get(wallet),
             )
             if profile.get("opportunities", 0) or profile.get("unknown_opportunities", 0):
                 shared_profiles.append(profile)
@@ -689,6 +767,11 @@ def main():
         reverse=True,
     )
 
+    # Historical validation of every stored wallet, run offline so the proven
+    # classification reflects evidence the project owns rather than live API
+    # reachability. UNKNOWN is reported as UNKNOWN, never as a 0% performance.
+    stored_validation = whv.validate_history(history)
+
     lines = [
         "🐋 FIL BEFORE PUMP — GMGN SMART MONEY LAYER",
         "",
@@ -699,6 +782,18 @@ def main():
         f"📚 GMGN History: {history_unique_wallets:,} unique wallets | "
         f"{history_total_records:,} stored records | {history_wallets_with_buys:,} wallets with buys",
         f"🏆 Proven wallets (current historical test): {len(current_proven_wallets):,}",
+        f"🗂 Stored-history validation: {stored_validation['proven_wallets']:,} PROVEN | "
+        f"{stored_validation['classification_counts'].get(whv.ACTIVITY_BUT_UNPROVEN, 0):,} "
+        f"historical-but-unproven | "
+        f"{stored_validation['classification_counts'].get(whv.NO_HISTORY, 0):,} cold-start",
+        f"🔬 Reconstructed entries: {stored_validation['reconstructed_entries']:,} | "
+        f"with peak/MFE: {stored_validation['entries_with_valid_peak']:,} | "
+        f"with exit: {stored_validation['entries_with_valid_exit']:,} | "
+        f"still holding: {stored_validation['entries_holding_no_exit']:,} | "
+        f"unknown windows: {stored_validation['unknown_windows']:,}",
+        f"📏 PROVEN rule: >={whv.MIN_OBSERVED_ENTRIES} observed entries, "
+        f">={whv.MIN_SUCCESSFUL_ENTRIES} genuine {whv.TARGET_MULTIPLE:g}x pre-pump hits, "
+        f"win rate >={whv.MIN_WIN_RATE_PCT:g}% (chain+contract identity)",
         ""
     ]
 
@@ -708,12 +803,24 @@ def main():
         wallets = ", ".join(w[:8] + "…" for w in x["wallets"][:4])
         proven_text = []
         for w in x.get("activity_profiles", [])[:4]:
+            # Report the three states distinctly. A wallet with no reconstructed
+            # evidence is COLD_START, a wallet with entries but no usable
+            # forward window is UNKNOWN, and neither is a losing wallet.
             if not int(w.get("opportunities", 0) or 0):
-                status = "سابقه کافی نیست"
+                status = "سابقه کافی نیست (cold-start: هیچ خرید قابل ارزیابی ثبت نشده)"
+            elif int(w.get("observed_opportunities", 0) or 0) == 0:
+                status = (
+                    f"سابقه ثبت شد ولی پنجره قیمتی قابل مشاهده نیست (نامشخص، نه ضرر)"
+                    f" | {w.get('unknown_opportunities', 0)} فرصت"
+                )
             elif w.get("pre_pump_win_rate") is not None:
                 status = f"موفق {w['successful_pre_pump_entries']}/{w['observed_opportunities']} ({w['pre_pump_win_rate']:.0f}%)"
             else:
                 status = f"بررسی‌شده {w['observed_opportunities']} | نامشخص {w['unknown_opportunities']}"
+            if w.get("history_class") == whv.PROVEN:
+                status = "✅ اثبات‌شده | " + status
+            elif w.get("history_class") == whv.ACTIVITY_BUT_UNPROVEN:
+                status = "🟡 سابقه دارد ولی اثبات کافی نیست | " + status
             examples = ", ".join(
                 f"{e['symbol']} {e['peak_multiple']:.1f}x"
                 for e in w.get("recent_examples", [])[:3]

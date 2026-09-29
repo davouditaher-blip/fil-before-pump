@@ -12,6 +12,8 @@ import os
 from pathlib import Path
 from typing import Any
 
+import wallet_history_validation as whv
+
 HISTORY = Path("gmgn_wallet_history.json")
 OUTPUT = Path("wallet_quality.json")
 THRESHOLD_USD = 5000.0
@@ -88,21 +90,21 @@ def _pnl(row: dict[str, Any]) -> float | None:
 
 def _forward_hit_rate(buys: list[dict[str, Any]], rows: list[dict[str, Any]]) -> tuple[int, int]:
     attempts = hits = 0
-    by_symbol: dict[str, list[dict[str, Any]]] = {}
+    by_asset: dict[tuple[str, str], list[dict[str, Any]]] = {}
     for row in rows:
-        symbol = str(row.get("symbol") or "").upper()
-        if symbol:
-            by_symbol.setdefault(symbol, []).append(row)
+        identity = whv.asset_identity(row)
+        if identity is not None:
+            by_asset.setdefault(identity, []).append(row)
 
     for buy in buys:
-        symbol = str(buy.get("symbol") or "").upper()
+        identity = whv.asset_identity(buy)
         entry = _price(buy)
         t0 = _ts(buy)
-        if not symbol or entry <= 0 or t0 <= 0:
+        if identity is None or entry <= 0 or t0 <= 0:
             continue
         future = [
             _price(r)
-            for r in by_symbol.get(symbol, [])
+            for r in by_asset.get(identity, [])
             if _ts(r) > t0 and _ts(r) - t0 <= LOOKAHEAD_SECONDS and _price(r) > 0
         ]
         if not future:
@@ -120,20 +122,27 @@ def _pre_pump_proof(qualified_buys: list[dict[str, Any]], rows: list[dict[str, A
     >=$5K buy we only inspect rows timestamped after the entry and measure
     whether +10/+20/+30% was reached within 6/12/24 hours. MFE/MAE are also
     recorded from the same forward-only window.
-    """
-    by_symbol: dict[str, list[dict[str, Any]]] = {}
-    for row in rows:
-        symbol = str(row.get("symbol") or "").upper()
-        if symbol:
-            by_symbol.setdefault(symbol, []).append(row)
-    for symbol in by_symbol:
-        by_symbol[symbol] = sorted(by_symbol[symbol], key=_ts)
 
-    first_buy_by_symbol: dict[str, int] = {}
+    Forward observations are joined on canonical ``chain + contract address``
+    rather than on the ticker. 1975 of the 7396 stored symbols map to more than
+    one contract and one maps to 63, so a symbol join attributes another
+    token's price move to this entry and reports fabricated wins and losses
+    alike. Rows without a contract address carry no identity and are excluded
+    rather than being attributed to an arbitrary asset.
+    """
+    by_asset: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for row in rows:
+        identity = whv.asset_identity(row)
+        if identity is not None:
+            by_asset.setdefault(identity, []).append(row)
+    for identity in by_asset:
+        by_asset[identity] = sorted(by_asset[identity], key=_ts)
+
+    first_buy_by_asset: dict[tuple[str, str], int] = {}
     for buy in sorted(qualified_buys, key=_ts):
-        symbol = str(buy.get("symbol") or "").upper()
-        if symbol and symbol not in first_buy_by_symbol:
-            first_buy_by_symbol[symbol] = _ts(buy)
+        identity = whv.asset_identity(buy)
+        if identity is not None and identity not in first_buy_by_asset:
+            first_buy_by_asset[identity] = _ts(buy)
 
     attempts = 0
     first_entry_attempts = 0
@@ -142,19 +151,20 @@ def _pre_pump_proof(qualified_buys: list[dict[str, Any]], rows: list[dict[str, A
     observations = []
 
     for buy in sorted(qualified_buys, key=_ts):
+        identity = whv.asset_identity(buy)
         symbol = str(buy.get("symbol") or "").upper()
         entry = _price(buy)
         t0 = _ts(buy)
-        if not symbol or entry <= 0 or t0 <= 0:
+        if identity is None or entry <= 0 or t0 <= 0:
             continue
         future = [
-            r for r in by_symbol.get(symbol, [])
+            r for r in by_asset.get(identity, [])
             if _ts(r) > t0 and 0 < _ts(r) - t0 <= 24 * 3600 and _price(r) > 0
         ]
         if not future:
             continue
         attempts += 1
-        is_first = t0 == first_buy_by_symbol.get(symbol)
+        is_first = t0 == first_buy_by_asset.get(identity)
         if is_first:
             first_entry_attempts += 1
 
