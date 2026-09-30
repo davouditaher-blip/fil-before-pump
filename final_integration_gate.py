@@ -34,6 +34,11 @@ REQUIRED_CODE = [
     "zerion_layer.py",
     "test_zerion_layer.py",
     "zerion_smoke_test.py",
+    "zerion_history.py",
+    "test_zerion_history.py",
+    "historical_discovery.py",
+    "test_historical_discovery.py",
+    "proven_wallet_registry.py",
 ]
 
 REQUIRED_ARTIFACTS = [

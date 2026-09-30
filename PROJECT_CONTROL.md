@@ -418,5 +418,115 @@ then, merge fetched history through `merge_into_history` and re-run
 it returns 401/402, the secret is wrong rather than the code; if 400, the wallet
 is untracked and the default should move to a known-tracked address.
 
+## Historical wallet discovery foundation (2026-09-30)
+
+Status: implemented, validated, committed. Read-only foundation. No execution.
+
+What this stage adds
+- `historical_discovery.py` is the first half of the historical pipeline: source
+  adapters -> normalized observations -> identity -> additive dedup with
+  provenance -> reconstruction -> candidate generation. Every provider enters
+  through the same `SourceAdapter`, so a fourth source cannot become a fourth
+  scoring path.
+- `proven_wallet_registry.py` is the minimal `PROVEN_WALLET_REGISTRY` schema and
+  interface. It is deliberately *not* populated: it defines the contract, the
+  merge semantics and the validation, and nothing else.
+- `test_historical_discovery.py` covers both, including the properties that
+  protect the rest of the repository.
+
+Design decisions worth keeping
+- **An observation is also a history row.** `wallet_history_validation` already
+  owns the event identity this repository trusts, so the normalized observation
+  reuses its field names (`chain`, `address`, `side`, `amount_usd`,
+  `trade_timestamp`, `transaction_hash`) and adds provenance alongside. A second
+  "discovery row" format would have needed its own dedup rule, and the two rules
+  would eventually disagree about whether one on-chain event is one event.
+- **`transaction_hash` and `trade_timestamp` are `None`, never `""` or `0`.** A
+  missing value that reads as a present-but-empty one lets a row pass an
+  identity check it never earned.
+- **Chain names are canonicalized.** Nansen says `ethereum`, GMGN says `eth`.
+  Untranslated they produce two different `asset_identity` keys for one token, so
+  the same position reconstructs as two entries. An *unmapped* chain is kept
+  verbatim rather than folded into a neighbour, because guessing would merge two
+  different assets. An absent chain stays `""`: 73% of stored GMGN rows carry
+  none, and inventing one would attribute history the data does not support.
+- **The base of a merge is accepted verbatim.** Only *incoming* rows are tested
+  for a match. Re-deduplicating the stored base collapsed 6 real rows out of
+  182,588, because the tolerant matcher considers some stored pairs to be the
+  same event. The invariant is now `output >= base`: a provider conflict can add
+  evidence, never remove a row. Verified on the full committed dataset: 182,588
+  -> 182,588, with 6,191 rows corroborated and repeated ingestion a no-op.
+- **Nansen stays a snapshot.** Its archived artifact is a
+  profiler `historical-balances` response with no side, no entry price and no
+  hash, so it normalizes to `KIND_BALANCE_SNAPSHOT` and contributes zero trades.
+  Treating a balance as an execution would invent entries that never happened.
+- **Hyperliquid is schema-only.** There is no client in this repository. The
+  adapter fixes the row contract and invents no endpoint or credential. A
+  perpetual fill is a real trade; what is genuinely unknown is its chain
+  identity, which stays empty rather than being guessed.
+- **PROVEN is copied, never computed.** `proven_status` is `whv`'s
+  `history_class` verbatim, and the criteria are untouched
+  (`3 / 2 / 60% / 2x`). Discovery adds only weaker descriptive tiers below
+  `QUALIFIED_HISTORICAL_WALLET`. 100 x $20k buys that never double is
+  `QUALIFIED_HISTORICAL_WALLET` and explicitly *not* proven: volume is not skill.
+- **The registry survives a quiet feed.** `merge_registry` never deletes. A
+  wallet that stops appearing keeps its entry, its evidence and its `last_seen`
+  and is marked `active_now=False`. `active_now` is metadata about visibility,
+  never a filter on inclusion. A `current_feed_observed` flag distinguishes "this
+  wallet left the feed" from "nobody looked", without which a stale
+  `active_now=True` would persist forever.
+- **Unmeasurable metrics are `None`, never `0.0`.** A fabricated `0.0` reads as
+  "measured, and it was zero". `drawdown` is always `None`: no daily equity
+  curve is stored. `realized_win_rate` is `None` unless *every* entry closed. Both
+  gaps, and the semantic caveats on the metrics that are reported, are recorded
+  in `UNSUPPORTED_METRICS` / `METRIC_CAVEATS` so a reader can tell a deliberate
+  gap from an oversight.
+- **`mae_pct` is caveated, not trusted.** `whv` computes MAE as the lowest price
+  inside the observed post-entry window, so when a wallet's only post-entry
+  observation is its exit, trough == peak and MAE comes out positive and equal to
+  MFE. It is reported, with coverage counts and an explicit warning that it is
+  never downside risk or drawdown. `whv` was not modified.
+
+Boundaries held
+- No change to `scanner.py`, `confluence_engine.py`, `risk_engine.py`,
+  `trade_readiness.py`, `paper_trading.py`, `wallet_intel_gate.py`, or any
+  threshold. `wallet_quality_engine` is touched by nothing; profiles remain 86
+  and the gate still reports live exchange execution DISABLED.
+- No protected module imports `historical_discovery`, `proven_wallet_registry`,
+  `zerion_history` or `zerion_layer`. Asserted by AST inspection in the tests, so
+  a future edit cannot quietly connect a source to scoring.
+- The registry reuses `wallet_quality_engine.build_profiles` per wallet rather than
+  reimplementing it, and per-wallet scoring was verified equal to whole-dataset
+  scoring (15 wallets, 0 mismatches).
+- `gmgn_wallet_history.json` byte-identical (md5 `ef1e23b980ae3b4cb0ad239267cbbae4`).
+  `historical_replay.json` was regenerated while validating and reverted: only its
+  `generated_at` stamp moved.
+
+Tests
+- `test_historical_discovery.py` 52 pass; `test_zerion_history.py` 45;
+  `test_zerion_layer.py` 99; `test_wallet_history_validation.py` 44.
+- `historical_replay.py`, `final_integration_gate.py` (27 modules, live execution
+  DISABLED) and `e2e_validate.py` all PASS.
+
+Blockers / open items
+- The registry is an interface with no populated artifact. Populating it is a
+  separate decision, because doing so commits a data file that then has to be
+  regenerated and re-gated on every run.
+- Nansen still has no committed archive, so its adapter is exercised by fixtures
+  only. Hyperliquid is schema-only. Neither blocks the foundation.
+- `ZERION_API_KEY` is still unset; every figure here is fixture- or
+  dataset-derived, not live.
+- `requests` is absent locally, so the wallet-history suites run against the
+  established blocking stub.
+- The repo still has no `.gitignore`, so `__pycache__/` shows up untracked after
+  any local test run. Untracked only; never committed.
+
+Recommended next task
+Run the multi-source half end to end against a real Zerion fetch: backfill one
+tracked wallet, merge it through `merge_sources`, and confirm
+`len(merged) >= len(gmgn_rows)` with the corroborated count above zero and the
+PROVEN count unmoved. Then wire the candidates into the *existing* forward-only
+evaluation only, and populate the registry as a separate reviewed commit.
+
 ## Communication
 Every completed stage must leave a concise repository-based handoff containing: status, commit SHA, changed files, tests/results, blockers, and next task.
