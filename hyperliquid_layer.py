@@ -437,6 +437,7 @@ def fetch_fills(
     result: dict[str, Any] = {
         "ok": False,
         "error": "",
+        "status": None,
         "wallet": address,
         "source": SOURCE,
         "endpoint": INFO_URL,
@@ -482,9 +483,12 @@ def fetch_fills(
         fills, outcome = _post_once(body, post=sender, timeout=timeout, sleep=sleep)
         result["requests_made"] += PROVIDER_STATE["requests_made"] - before
         result["pages"] += 1
+        # Recorded on both paths. A successful fetch that reports no status
+        # cannot be told apart from one that never reached the provider, which
+        # is exactly the distinction a verification run needs to make.
+        result["status"] = outcome.get("status")
         if not outcome["ok"]:
             result["error"] = outcome["error"] or "request failed"
-            result["status"] = outcome.get("status")
             result["attempts"] = outcome.get("attempts")
             break
 

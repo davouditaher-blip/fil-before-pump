@@ -638,7 +638,7 @@ What this stage adds
 - `read_hyperliquid_archive` was added to `historical_discovery` and registered
   in `READERS`, giving Hyperliquid the same offline archive path GMGN, Zerion and
   Nansen already had.
-- `test_hyperliquid_layer.py` covers the client in 67 tests with an injected
+- `test_hyperliquid_layer.py` covers the client in 69 tests with an injected
   transport, so the suite performs no network I/O.
 
 No account, no credentials, no connection
@@ -701,19 +701,71 @@ Boundaries held
   imported *by* discovery and by nothing protected.
 
 Tests
-- `test_hyperliquid_layer.py` 67 pass. `test_historical_discovery.py` 52;
+- `test_hyperliquid_layer.py` 69 pass. `test_historical_discovery.py` 52;
   `test_zerion_history.py` 45; `test_zerion_layer.py` 99;
   `test_wallet_history_validation.py` 44.
 - `historical_replay.py`, `final_integration_gate.py` (27 modules, live execution
   DISABLED) and `e2e_validate.py` all PASS.
 
+## Hyperliquid live verification (2026-09-30) — SUCCEEDED, EMPTY RESULT
+
+Status: the client has now been pointed at the real public API. One request, one
+already-tracked wallet, read-only, no credentials, nothing written to disk.
+
+What was sent
+- Wallet: `0xdee657bf…`, already tracked in this repository -- 228 GMGN rows, all
+  explicitly `eth`, last trade 0.7 days before the query, and referenced in nine
+  project artifacts including `wallet_quality.json` and `wallet_clusters.json`.
+- Body, exactly as emitted by `hyperliquid_layer.build_fill_request`:
+  `{"type": "userFillsByTime", "user": "0xdee657bf…", "startTime": …,
+  "endTime": …}` over a 90-day window. No key, signature, nonce, cookie or
+  `Authorization` header; the client reads no secret from the environment.
+
+What came back
+- **The request succeeded**: `ok=true`, HTTP 2xx, one page, `requests_made=1`,
+  zero retries, empty error string. The documented `Info` contract holds for a
+  real request: the address and body are accepted, and the response envelope
+  parses.
+- **0 fills returned.** The `data` array was empty, so there was nothing to
+  normalize and nothing to attribute.
+- This is the expected shape of the answer rather than a failure. The chosen
+  wallet is an Ethereum mainnet trader whose entire committed history is `eth`;
+  it has no Hyperliquid perpetual history to return. An empty account is a real
+  answer, and the client reports it as a success with an empty row list, not as
+  an error.
+
+What this proves, and what it does not
+- **Proved:** the endpoint is reachable unauthenticated; the request builder
+  produces a body the real API accepts; transport, error handling and the
+  empty-response path all behave as documented. The "auth_required: false" claim
+  is now observed rather than merely asserted.
+- **Not proved:** normalization, provenance, `tid` handling, TWAP-hash dropping
+  and timestamp conversion against a *real* response. With 0 rows, those paths
+  remain fixture-verified only. Do not report this stage as end-to-end proven.
+- One defect was found and fixed by this run: a successful fetch reported **no
+  HTTP status at all**, because `status` was only assigned on the failure path
+  and absent from the initial result. A success with no status cannot be told
+  apart from a request that never reached the provider -- precisely the
+  distinction a verification exists to make. Both paths now report it, covered
+  by two new tests.
+
+Boundaries held
+- No backfill, no archive download, no second wallet, no historical dataset
+  modified. `gmgn_wallet_history.json` byte-identical (md5
+  `ef1e23b980ae3b4cb0ad239267cbbae4`), re-checked after the run.
+- No identity, dedup, scoring or conviction rule touched; no credential created
+  or exposed. No live trading: the gate still reports live exchange execution
+  DISABLED and profiles remain 86.
+
 Blockers / open items
-- **The client has never touched the real API.** Everything above is verified
-  against fixtures shaped from the official documentation, not against a live
-  response. Treat the request and response contract as correct-until-disproven
-  rather than proven. Zerion is the cautionary precedent: its authentication
-  verified perfectly while its transaction data was empty for every wallet
-  tested.
+- **Normalization and provenance are still unverified against real data.** The
+  one wallet available from repository evidence had no Hyperliquid fills to
+  return. Closing this needs an address that is demonstrably an active
+  Hyperliquid perp trader, which this repository does not currently hold --
+  sourcing one is a separate decision, and a random address is not an acceptable
+  substitute. Zerion is the cautionary precedent in the other direction: there,
+  authentication verified perfectly while the data was empty for every wallet
+  tried.
 - `chain` is still empty for every Hyperliquid observation, so those rows report
   `chain_unknown` and `identity: unknown` in `confidence`. Hyperliquid trades on
   HyperEVM, so the value is arguably known, but setting it would change
@@ -722,47 +774,26 @@ Blockers / open items
 - No fill archive is committed yet, so `read_hyperliquid_archive` currently reads
   an empty directory by design.
 
-## Recommended next task (revised 2026-09-30, after Hyperliquid)
+## Recommended next task (revised 2026-09-30, after the live verification)
 
-**Run one read-only Hyperliquid query against a single already-tracked public
-address, and report what actually comes back.**
+**Populate `PROVEN_WALLET_REGISTRY` from the already-committed GMGN dataset and
+gate it as its own reviewed data commit.**
 
-This is the next incomplete stage because Historical Wallet Discovery is still
-not finished, and Hyperliquid is the only source in that state right now:
+The Hyperliquid live verification is done, and it is now the
+credential-free registry task that leads. Source state:
 
 | Source | State |
 | --- | --- |
 | GMGN | complete -- real committed archive, 2,215 wallets / 182,588 rows |
 | Zerion | blocked -- authentication verified, zero transactions for every wallet tested |
-| Hyperliquid | client implemented and fixture-tested, **never pointed at the real API** |
+| Hyperliquid | live-verified -- real request accepted and parsed, 0 fills for the only repo-tracked wallet; normalization/provenance still fixture-only |
 | Nansen | no committed archive; fixtures only |
 
-The Zerion result is the reason not to assume the new client is correct just
-because it passes 67 tests. There, authentication verified perfectly and the
-data was still empty for every wallet tried, including the strongest candidate
-in the repository. A fixture-shaped contract proves the request builder is
-self-consistent; it cannot prove the provider answers the way the documentation
-says. One read-only query closes that gap for the cost of a single public
-request.
-
-Rules for that query: one address that already exists in this repository's
-history, no backfill, no archive download, no new credentials, no retry against
-a second wallet without instruction, and nothing written to disk until the shape
-of the response has been seen. Report the HTTP status, the fill count, the
-earliest and latest fill times, whether `coverage_incomplete` or
-`provider_history_bounded` fired, and whether `rejected` or `zero_hash_dropped`
-are non-zero. If the real response differs from the documented shape, fix the
-client and its tests before anything else.
-
-The task that was recommended before this one -- **populate
-`PROVEN_WALLET_REGISTRY` from the committed GMGN dataset and gate it as its own
-reviewed data commit** -- is still open and still the highest-priority
-*credential-free* item. It was not done, only displaced by the higher risk of
-shipping an unverified client. Its guardrails stand unchanged:
-
+Why this is next
 - It closes the last explicitly-open blocker in the foundation: the registry is
   "an interface with no populated artifact".
-- It needs no credentials, so it does not inherit the Zerion block.
+- It needs no credentials, so it inherits neither the Zerion block nor the
+  Hyperliquid sourcing problem.
 - It exercises the merge semantics on real data instead of fixtures, which is the
   property the foundation asserted but could only demonstrate on a synthetic
   overlay.
@@ -771,21 +802,27 @@ shipping an unverified client. Its guardrails stand unchanged:
   weaker descriptive tiers, and the "output >= base, never deletes, quiet feeds
   keep their entry" invariants are exactly what a populated registry tests.
 
-Its guardrails: commit the artifact separately from any code change; re-run
+Guardrails: commit the artifact separately from any code change; re-run
 `test_historical_discovery.py`, `test_wallet_history_validation.py`,
 `historical_replay.py` and `final_integration_gate.py`; re-verify
 `gmgn_wallet_history.json` is byte-identical; confirm the PROVEN count moves only
 by what the data actually justifies, and report that number rather than assuming
 it is unchanged.
 
-Deliberately **not** the next task: wiring discovery candidates into the forward
-evaluation, and setting `chain="hyperliquid"` on Hyperliquid observations. The
-first would intentionally relax the AST guard that
-`test_historical_discovery.py` installs against protected modules importing
-`historical_discovery`, `proven_wallet_registry`, `zerion_history` or
-`zerion_layer`; the second would change `asset_identity` and the dedup key for
-this source. Both are product decisions for the project owner and must not be
-slipped in as a side effect of another task.
+Also open, and deliberately not next
+- **Verify Hyperliquid normalization against a real response.** Blocked on
+  sourcing, not on code: it needs an address that is demonstrably an active
+  Hyperliquid perp trader, and this repository holds none. Guessing an address is
+  not acceptable, and a second arbitrary wallet is not evidence either. This is a
+  decision for the owner about where such an address may legitimately come from.
+- **Zerion transaction retrieval** stays blocked as recorded above.
+- **Wiring discovery into the forward evaluation**, and **setting
+  `chain="hyperliquid"`** on Hyperliquid observations, are both owner decisions
+  and must not be slipped in as a side effect of another task: the first would
+  intentionally relax the AST guard that `test_historical_discovery.py` installs
+  against protected modules importing `historical_discovery`,
+  `proven_wallet_registry`, `zerion_history` or `zerion_layer`, and the second
+  would change `asset_identity` and the dedup key for this source.
 
 ## Communication
 Every completed stage must leave a concise repository-based handoff containing: status, commit SHA, changed files, tests/results, blockers, and next task.

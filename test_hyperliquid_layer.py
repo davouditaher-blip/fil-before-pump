@@ -572,6 +572,29 @@ class TestFetchPaginationAndCoverage(unittest.TestCase):
         result = hl.fetch_fills(WALLET, start_ms=T0_MS, post=FakePost(FakeResponse(200, [])), sleep=no_sleep)
         self.assertFalse(result["auth_required"])
 
+    def test_the_http_status_is_reported_on_success_as_well_as_on_failure(self):
+        # A successful fetch with no status cannot be told apart from one that
+        # never reached the provider. That distinction is the whole point of
+        # running a verification, so it must be readable on both paths.
+        hl.reset_state()
+        ok = hl.fetch_fills(WALLET, start_ms=T0_MS, post=FakePost(FakeResponse(200, [perp_fill()])), sleep=no_sleep)
+        self.assertTrue(ok["ok"])
+        self.assertEqual(ok["status"], 200)
+
+        hl.reset_state()
+        bad = hl.fetch_fills(WALLET, start_ms=T0_MS, post=FakePost(FakeResponse(404, text="nope")), sleep=no_sleep)
+        self.assertFalse(bad["ok"])
+        self.assertEqual(bad["status"], 404)
+
+    def test_a_successful_empty_response_still_carries_a_status_and_no_error(self):
+        hl.reset_state()
+        result = hl.fetch_fills(WALLET, start_ms=T0_MS, post=FakePost(FakeResponse(200, [])), sleep=no_sleep)
+        self.assertEqual(result["status"], 200)
+        self.assertEqual(result["error"], "")
+        self.assertEqual(result["rows"], [])
+        # An empty account is a real answer, not a silent failure.
+        self.assertEqual(result["received"], 0)
+
 
 class TestArchiveReadPath(unittest.TestCase):
     def setUp(self):
