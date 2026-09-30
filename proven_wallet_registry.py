@@ -337,7 +337,15 @@ def merge_registry(
         # metric sets rather than letting a sparse re-read blank a known score.
         combined = dict(entry)
         for field, value in prior.items():
-            if combined.get(field) is None and value is not None:
+            if field not in combined:
+                # Key presence is preserved separately from value. An absent key
+                # and an explicit None are different to validate_entry, which
+                # reports the first as a missing field, so dropping the key would
+                # let a merge turn a structurally valid entry into an invalid
+                # one. Copying the None across keeps the gap visible as an
+                # unfilled metric rather than as a deleted field.
+                combined[field] = value
+            elif combined[field] is None and value is not None:
                 combined[field] = value
         # A wallet that is not in the new current feed is no longer active, but
         # it is still here. This is the disappearing-wallet case.
