@@ -514,19 +514,143 @@ Blockers / open items
   regenerated and re-gated on every run.
 - Nansen still has no committed archive, so its adapter is exercised by fixtures
   only. Hyperliquid is schema-only. Neither blocks the foundation.
-- `ZERION_API_KEY` is still unset; every figure here is fixture- or
-  dataset-derived, not live.
+- `ZERION_API_KEY` is absent locally but *is* configured as a GitHub Actions
+  secret, and live authentication against it has now been verified. It returns no
+  usable transaction history; see "Zerion live transaction retrieval" below. Every
+  figure in this section remains fixture- or dataset-derived, not live.
 - `requests` is absent locally, so the wallet-history suites run against the
   established blocking stub.
 - The repo still has no `.gitignore`, so `__pycache__/` shows up untracked after
   any local test run. Untracked only; never committed.
 
 Recommended next task
-Run the multi-source half end to end against a real Zerion fetch: backfill one
-tracked wallet, merge it through `merge_sources`, and confirm
-`len(merged) >= len(gmgn_rows)` with the corroborated count above zero and the
-PROVEN count unmoved. Then wire the candidates into the *existing* forward-only
-evaluation only, and populate the registry as a separate reviewed commit.
+Superseded on 2026-09-30 by the "Recommended next task (revised)" section below.
+The original text was: "Run the multi-source half end to end against a real
+Zerion fetch: backfill one tracked wallet, merge it through `merge_sources`, and
+confirm `len(merged) >= len(gmgn_rows)` with the corroborated count above zero and
+the PROVEN count unmoved." That is blocked — see "Zerion live transaction
+retrieval" for the verified evidence. Do not attempt it until the transaction
+source returns data.
+
+## Zerion live transaction retrieval (2026-09-30) — BLOCKED
+
+Status: authentication verified, transaction retrieval NOT verified. The
+Zerion-dependent half of the multi-source pipeline cannot be validated yet.
+
+This section supersedes the "Recommended next task" note in the foundation
+section above, which required a real Zerion backfill.
+
+What was run
+Five read-only `Zerion API Smoke Test` dispatches against three distinct
+wallets that are all already tracked by this repository. The smallest safe
+probe was used every time: chain `eth`, `page[size]=2`, `max_pages=2`, one API
+request per run, and for four of the five runs the default 90-day window.
+
+| Wallet | Repository evidence | Window | Result |
+| --- | --- | --- | --- |
+| `0x3D457D0B…` (default) | tracked in repo, quiet | 90d | HTTP 200, 0 tx |
+| `0x43605d68…` | 190 `eth` rows, 288 hashes | 90d, then 10y | HTTP 200, 0 tx |
+| `0xdee657bf…` | 228 `eth` rows, 136 hashes, 8 artifacts | 90d | HTTP 200, 0 tx |
+
+The strongest candidate was chosen deliberately, not at random:
+`0xdee657bf65fb0da9e75c9c5c78a6881888b5a641` has 228 stored GMGN rows that are
+**all** explicitly `eth` (no empty-chain attribution), a naturally complete
+history well below the 500-row per-wallet cap, 136 distinct valid
+`0x`+64-hex `transaction_hash` values, trades as recent as 0.5 days before the
+run, and corroborating references in `wallet_quality.json`,
+`wallet_clusters.json`, `wallet_radar.json`, `wallet_signal_profiles.json`,
+`trade_readiness.json`, `paper_trades.json`, `wallet_paper_feedback.json` and
+`wallet_performance_memory.json`. A 90-day window returning zero for that
+wallet cannot be explained by a quiet feed, by chain ambiguity, by truncated
+history, or by the window being too narrow.
+
+What is verified
+- **Authentication works.** Every run returned `HTTP 200: ok` with a parsed
+  envelope. The credential is live, valid and not being rejected.
+- **No key leakage.** `Authorization: bearer …` and any key-bearing query
+  string appear zero times across the full run log bundle; the secret renders as
+  `***` via the Actions secret store.
+- **No repository mutation during the investigation.** The workflow runs with
+  `permissions: contents: read` and commits nothing. `HEAD` stayed at
+  `c542152` and `gmgn_wallet_history.json` stayed byte-identical
+  (md5 `ef1e23b980ae3b4cb0ad239267cbbae4`).
+- **No backfill was performed**, so no merge, no registry change and no
+  threshold change resulted from this investigation.
+
+What is NOT verified
+- **Non-zero transaction retrieval is NOT verified.** Every tested wallet
+  returned `transactions: 0` and `normalized: 0 row(s)`.
+- **Normalization and pagination remain unverified.** With 0 transactions there
+  is nothing to normalize and no `links.next` cursor to follow. The smoke
+  script reports `RESULT: PASS` in this case, but its own footnote defines that
+  as only "authorized and parsed, window quiet" — it is not evidence that
+  normalization or cursor traversal works.
+
+The blocker, stated precisely
+The current API key / account / endpoint combination provides **no usable
+transaction history for any wallet tested**. Authentication succeeds, the
+request shape matches the documented contract (endpoint, `filter[chain_ids]`
+chain names, 13-digit millisecond `filter[min_mined_at]`,
+`filter[operation_types]`, `filter[trash]`, `currency`, `page[size]`), the
+response envelope parses, and the data array is empty every time.
+
+This is **not** a claim that Zerion is broken, and it is **not** evidence of a
+defect in this repository's request construction — the same conclusion holds for
+a strong and a weak wallet, over a 90-day and a 10-year window, which argues the
+cause sits upstream of this code (account entitlement or plan tier, an empty-data
+rather than error response for unindexed addresses, or an environment
+difference). Diagnosing that is a separate task and needs a decision about
+whether to probe account limits.
+
+Boundaries held
+- No change to `scanner.py`, `confluence_engine.py`, `risk_engine.py`,
+  `trade_readiness.py`, `paper_trading.py`, `wallet_intel_gate.py`, any
+  threshold, or any architecture. `wallet_history_validation` still owns PROVEN
+  and its `3 / 2 / 60% / 2x` criteria are untouched.
+- No Hyperliquid connection attempted; the adapter remains schema-only.
+- No live trading. The integration gate still reports live exchange execution
+  DISABLED and profiles remain 86.
+- No automatic retries and no further wallet probes without explicit
+  instruction.
+- `PROJECT_CONTROL.md` records the limitation; no code changed.
+
+## Recommended next task (revised 2026-09-30)
+
+**Populate `PROVEN_WALLET_REGISTRY` from the already-committed GMGN dataset and
+gate it as its own reviewed data commit.**
+
+The original next task — a real Zerion backfill through `merge_sources` — is
+blocked above, and it is the only recommended item that needed a live source
+credential. Everything remaining in the foundation is reachable with data the
+repository already owns, which is what makes this the highest-priority task
+rather than merely the available one:
+
+- It closes the last explicitly-open blocker in the foundation: the registry is
+  "an interface with no populated artifact".
+- It needs no credentials, so it does not inherit the Zerion block. GMGN is the
+  only source with a real committed archive (2,215 wallets / 182,588 rows).
+- It exercises the merge semantics on real data instead of fixtures, which is the
+  property the foundation asserted but could only demonstrate on a synthetic
+  overlay.
+- It stays read-only with respect to scoring: `proven_status` is copied verbatim
+  from `wallet_history_validation.reconstruct_wallet`, discovery contributes only
+  weaker descriptive tiers, and the "output >= base, never deletes, quiet feeds
+  keep their entry" invariants are exactly what a populated registry tests.
+
+Guardrails for that task: commit the artifact separately from any code change;
+re-run `test_historical_discovery.py`, `test_wallet_history_validation.py`,
+`historical_replay.py` and `final_integration_gate.py`; re-verify
+`gmgn_wallet_history.json` is byte-identical; confirm the PROVEN count moves only
+by what the data actually justifies, and report that number rather than assuming
+it is unchanged.
+
+Deliberately **not** the next task: wiring discovery candidates into the forward
+evaluation. `test_historical_discovery.py` currently asserts by AST inspection
+that no protected module imports `historical_discovery`,
+`proven_wallet_registry`, `zerion_history` or `zerion_layer`, so connecting
+discovery to the decision gate means intentionally relaxing a guard this
+foundation installed. That is a product decision for the project owner and must
+not be slipped in as a side effect of another task.
 
 ## Communication
 Every completed stage must leave a concise repository-based handoff containing: status, commit SHA, changed files, tests/results, blockers, and next task.
