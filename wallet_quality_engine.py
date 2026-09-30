@@ -56,7 +56,17 @@ def _side(row: dict[str, Any]) -> str:
 
 
 def _ts(row: dict[str, Any]) -> int:
-    value = _int(row.get("timestamp") or row.get("time") or row.get("ts"))
+    """Event time of a row: trade time when known, observation time otherwise.
+
+    ``timestamp`` is when a row was *seen*, which trails the actual trade by
+    seconds to hours. Preferring it would move every entry forward and blur the
+    forward-only windows this engine measures, so a real ``trade_timestamp``
+    always wins. The fallbacks keep older rows working.
+    """
+    raw = row.get("trade_timestamp")
+    if raw in (None, "", 0, "0"):
+        raw = row.get("timestamp") or row.get("time") or row.get("ts")
+    value = _int(raw)
     return value // 1000 if value > 10**12 else value
 
 

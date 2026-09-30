@@ -258,40 +258,146 @@ def asset_identity(row: dict[str, Any]) -> tuple[str, str] | None:
     return (chain, address)
 
 
-def _dedupe(rows: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
+def event_hash(row: Any) -> str:
+    """The transaction hash of a row, or "" when the provider supplied none.
+
+    Provider-neutral and deliberately tolerant: GMGN omits the hash on a large
+    share of its stored rows, and treating a missing hash as a distinct value
+    keyed against a present one is what let one on-chain event be counted twice.
+    """
+    if not isinstance(row, dict):
+        return ""
+    return str(row.get("transaction_hash") or row.get("tx_hash") or "").strip()
+
+
+def event_core(row: Any) -> tuple | None:
+    """The part of the event key that does not depend on a transaction hash.
+
+    Asset identity plus event time, side, size and price. ``None`` means the row
+    has no usable identity or no timestamp, i.e. the rows every consumer
+    discards.
+    """
+    if not isinstance(row, dict):
+        return None
+    identity = asset_identity(row)
+    if identity is None:
+        return None
+    timestamp = event_ts(row)
+    if timestamp <= 0:
+        return None
+    return (
+        identity,
+        timestamp,
+        event_side(row),
+        round(event_usd(row), 6),
+        round(event_price(row), 12),
+    )
+
+
+def has_trade_timestamp(row: Any) -> bool:
+    """Whether the row's event time is a real trade time, not an observation.
+
+    ``event_ts`` falls back to ``timestamp`` (when the row was *seen*) when
+    ``trade_timestamp`` is absent. That fallback is the right thing for
+    chronological ordering, but it is weak evidence for deciding that two rows
+    are the same event: an observation time can coincide with another row's
+    trade time by accident. Legacy GMGN rows carry no trade timestamp at all, so
+    this is the discriminator that keeps cross-provider matching from collapsing
+    them.
+    """
+    if not isinstance(row, dict):
+        return False
+    raw = row.get("trade_timestamp")
+    return raw not in (None, "", 0, "0")
+
+
+def same_event(candidate: Any, existing: Any) -> bool:
+    """Whether two provider rows describe the same on-chain event.
+
+    The single, provider-neutral rule used by both the history merge and the
+    reconstruction, so a merge can never disagree with the consumer that later
+    reads what was merged.
+
+    The rule is deliberately asymmetric in what it will merge, because a false
+    merge destroys a real record:
+
+    * both rows carry a hash -> the hashes must be equal. Two different hashes
+      are two different trades, whatever else matches, and the hash is the only
+      thing that distinguishes two same-second trades of the same size. Two
+      matching hashes are conclusive, so no further check is needed.
+    * exactly one row carries a hash -> the hashless row cannot be checked
+      against the hash, so the remaining stable fields decide. This is the
+      cross-provider case that occurs whenever one provider omits the hash.
+      Additionally both rows must carry a real ``trade_timestamp``; see
+      :func:`has_trade_timestamp` for why an observation-time fallback is not
+      strong enough evidence.
+    * neither carries a hash -> the remaining fields decide, which is the
+      pre-existing behaviour for two hashless rows and is left untouched.
+    """
+    left, right = event_core(candidate), event_core(existing)
+    if left is None or right is None or left != right:
+        return False
+    left_hash, right_hash = event_hash(candidate), event_hash(existing)
+    if left_hash and right_hash:
+        return left_hash == right_hash
+    if bool(left_hash) == bool(right_hash):
+        # Both hashless: pre-existing rule, unchanged. This also means a row
+        # always matches an identical copy of itself.
+        return True
+    return has_trade_timestamp(candidate) and has_trade_timestamp(existing)
+
+
+def dedupe(rows: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
     """Drop duplicate observations while preserving chronological order.
 
     GMGN re-lists the same transaction across scans. Deduplicating is required
     for an honest hit rate, but a naive ``set`` would also drop the repeat buys
     that are the point of a "multiple buys of the same asset" test, so rows are
-    keyed on the full event identity and sorted with the original index as a
-    stable tie-breaker.
+    matched on the full event identity via :func:`same_event` and sorted with
+    the original index as a stable tie-breaker.
+
+    Two rows whose hashes are both known and differ are always kept, so two real
+    same-second trades stay two events. A hashless row is only ever collapsed
+    against a hashed one when both carry a real ``trade_timestamp``, which keeps
+    the existing stored dataset byte-identical in its counts.
     """
-    seen: set[tuple] = set()
     kept: list[tuple[int, dict[str, Any]]] = []
+    # Buckets are keyed by the hash-free core, so only rows that could possibly
+    # be the same event are ever compared. A naive pairwise scan is O(n^2) and
+    # takes minutes over the committed dataset.
+    state: dict[tuple, list[Any]] = {}
     for index, row in enumerate(rows or []):
-        if not isinstance(row, dict):
+        core = event_core(row)
+        if core is None:
             continue
-        identity = asset_identity(row)
-        if identity is None:
-            continue
-        timestamp = event_ts(row)
-        if timestamp <= 0:
-            continue
-        key = (
-            identity,
-            timestamp,
-            event_side(row),
-            round(event_usd(row), 6),
-            round(event_price(row), 12),
-            str(row.get("transaction_hash") or ""),
-        )
-        if key in seen:
-            continue
-        seen.add(key)
+        row_hash = event_hash(row)
+        row_has_trade_time = has_trade_timestamp(row)
+        bucket = state.get(core)
+        if bucket is None:
+            bucket = state[core] = [set(), False, False]
+        seen_hashes, hashless_kept, hashed_with_trade_time_kept = bucket
+        if row_hash:
+            if row_hash in seen_hashes:
+                continue
+            # A kept hashless row with a real trade timestamp is this same event.
+            if hashless_kept == "trade_time" and row_has_trade_time:
+                continue
+            seen_hashes.add(row_hash)
+            if row_has_trade_time:
+                bucket[2] = True
+        else:
+            # Identical to a kept hashless row, or to a kept hashed row that has
+            # a real trade timestamp to compare against.
+            if hashless_kept or (row_has_trade_time and hashed_with_trade_time_kept):
+                continue
+            bucket[1] = "trade_time" if row_has_trade_time else True
         kept.append((index, row))
     kept.sort(key=lambda pair: (event_ts(pair[1]), pair[0]))
     return [row for _, row in kept]
+
+
+# Retained for existing callers and tests; the implementation is now shared.
+_dedupe = dedupe
 
 
 def _position_state(buy_usd: float, sell_usd: float) -> str:
@@ -449,7 +555,7 @@ def reconstruct_wallet(
     unchanged, plus an explicit ``history_class`` and the evidence counters the
     report needs.
     """
-    clean = _dedupe(rows or [])
+    clean = dedupe(rows or [])
     grouped: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
     for row in clean:
         identity = asset_identity(row)

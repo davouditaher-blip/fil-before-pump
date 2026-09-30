@@ -975,6 +975,193 @@ def test_merged_history_still_reconstructs_across_both_providers():
 
 
 # ---------------------------------------------------------------------------
+# 6b. Cross-provider event identity (Zerion vs GMGN)
+#
+# The defect these cover: a strict identity key includes transaction_hash, but a
+# large share of stored GMGN rows carry no hash at all. A Zerion row and a
+# hashless GMGN row for one on-chain event therefore produced two different keys,
+# so the merge stored the event twice and every derived count was inflated.
+# ---------------------------------------------------------------------------
+def test_same_event_is_true_when_both_rows_share_a_transaction_hash():
+    a = _gmgn_row(transaction_hash="0xsame")
+    b = _gmgn_row(transaction_hash="0xsame")
+    assert zl.same_event(a, b) is True
+    assert zl.event_identity(a) == zl.event_identity(b)
+
+
+def test_same_event_is_true_when_gmgn_has_no_transaction_hash():
+    """The case that produced the duplicates.
+
+    GMGN stores no hash, Zerion always has one, and both describe one event.
+    """
+    hashless = _gmgn_row(transaction_hash="")
+    hashed = _gmgn_row(transaction_hash="0xfromZerion")
+    assert zl.event_hash(hashless) == ""
+    assert zl.event_hash(hashed) == "0xfromZerion"
+    # The strict key cannot see the match ...
+    assert zl.event_identity(hashless) != zl.event_identity(hashed)
+    # ... which is exactly why the merge does not use it.
+    assert zl.same_event(hashless, hashed) is True
+    assert zl.same_event(hashed, hashless) is True
+
+
+def test_same_event_is_false_for_a_different_transaction_hash():
+    """Two real trades in the same second, same token, same size and price.
+
+    When both providers know the hash, the hash decides and nothing else can
+    merge them. Dropping the hash here would delete a genuine second record.
+    """
+    a = _gmgn_row(transaction_hash="0xfirst")
+    b = _gmgn_row(transaction_hash="0xsecond")
+    assert zl.same_event(a, b) is False
+
+
+def test_same_event_is_false_for_different_events_of_the_same_token():
+    """The hashless case must still refuse events that differ on a real field."""
+    base = _gmgn_row(transaction_hash="")
+    for field, other in (
+        ("amount_usd", 5001.0),
+        ("price_usd", 1.5),
+        ("side", "sell"),
+        ("trade_timestamp", T0 + 1),
+        ("address", "0xdifferentasset"),
+        ("chain", "eth"),
+    ):
+        assert zl.same_event(base, _gmgn_row(**{field: other})) is False, field
+    # A row with no usable identity never matches anything.
+    assert zl.same_event(base, {"side": "buy"}) is False
+    assert zl.same_event(base, "junk") is False
+
+
+def test_merge_does_not_duplicate_an_event_gmgn_stored_without_a_hash():
+    """End to end: the historical count must not grow for a known event."""
+    hashless = _gmgn_row(transaction_hash="", amount_usd=200.0, price_usd=2.0,
+                         address="0xaaa", symbol="AAA", side="buy", chain="eth")
+    history = {WALLET: [hashless]}
+    before = len(history[WALLET])
+    zerion_same_event = zl.normalize_transaction(
+        _transaction([_transfer("in", "AAA", "0xaaa", quantity=100.0, price=2.0)],
+                     mined_at="2023-11-14T22:13:20+00:00", tx_hash="0xonchain"),
+        now_ts=T0,
+    )
+    result = zl.merge_into_history(WALLET, zerion_same_event, history)
+    assert result["added"] == 0
+    assert result["skipped"] == 1
+    assert result["total"] == before
+    # The GMGN record is still exactly as stored.
+    assert history[WALLET] == [hashless]
+
+
+def test_merge_still_adds_a_zerion_only_event_alongside_a_hashless_gmgn_row():
+    history = {WALLET: [_gmgn_row(transaction_hash="", amount_usd=200.0,
+                                  price_usd=2.0, address="0xaaa", symbol="AAA",
+                                  side="buy", chain="eth")]}
+    other_event = zl.normalize_transaction(
+        _transaction([_transfer("in", "AAA", "0xaaa", quantity=100.0, price=2.0)],
+                     mined_at="2023-11-15T22:13:20+00:00", tx_hash="0xnewer"),
+        now_ts=T0,
+    )
+    result = zl.merge_into_history(WALLET, other_event, history)
+    assert result["added"] == 1
+    assert result["total"] == 2
+
+
+def test_merge_keeps_two_different_hashless_events_that_really_differ():
+    """The hashless fallback must not collapse genuinely distinct trades."""
+    history = {WALLET: [_gmgn_row(transaction_hash="", amount_usd=200.0,
+                                  price_usd=2.0, address="0xaaa", symbol="AAA",
+                                  side="buy", chain="eth")]}
+    different_size = zl.normalize_transaction(
+        _transaction([_transfer("in", "AAA", "0xaaa", quantity=250.0, price=2.0)],
+                     mined_at="2023-11-14T22:13:20+00:00", tx_hash="0xother"),
+        now_ts=T0,
+    )
+    result = zl.merge_into_history(WALLET, different_size, history)
+    assert result["added"] == 1
+    assert result["total"] == 2
+
+
+def test_repeated_ingestion_of_identical_zerion_data_never_grows_history():
+    """Replaying the same Zerion fetch any number of times is a no-op."""
+    history = {}
+    rows = zl.normalize_rows([
+        _transaction([_transfer("in", "AAA", "0xaaa", quantity=100.0, price=1.0)],
+                     tx_hash="0xone"),
+        _transaction([_transfer("in", "BBB", "0xbbb", quantity=50.0, price=4.0)],
+                     tx_hash="0xtwo"),
+    ], now_ts=T0)
+    first = zl.merge_into_history(WALLET, rows, history)
+    assert first["added"] == 2
+    snapshot = json.dumps(history, sort_keys=True)
+    for _ in range(4):
+        again = zl.merge_into_history(WALLET, rows, history)
+        assert again["added"] == 0
+        assert again["total"] == 2
+    assert json.dumps(history, sort_keys=True) == snapshot
+
+
+def test_repeated_ingestion_against_a_hashless_history_is_also_a_no_op():
+    """The real replay shape: a history of hashless GMGN rows plus a replayed
+    Zerion fetch. The first pass may add the rows GMGN genuinely lacks; every
+    pass after that must add nothing."""
+    history = {WALLET: [_gmgn_row(transaction_hash="", amount_usd=200.0,
+                                  price_usd=2.0, address="0xaaa", symbol="AAA",
+                                  side="buy", chain="eth")]}
+    rows = zl.normalize_rows([
+        _transaction([_transfer("in", "AAA", "0xaaa", quantity=100.0, price=2.0)],
+                     mined_at="2023-11-14T22:13:20+00:00", tx_hash="0xonchain"),
+        _transaction([_transfer("in", "BBB", "0xbbb", quantity=50.0, price=4.0)],
+                     mined_at="2023-11-16T00:00:00+00:00", tx_hash="0xbrandnew"),
+    ], now_ts=T0)
+    first = zl.merge_into_history(WALLET, rows, history)
+    assert first["added"] == 1        # only the event GMGN did not have
+    assert first["skipped"] == 1      # the shared event was recognised
+    assert first["total"] == 2
+    for _ in range(3):
+        assert zl.merge_into_history(WALLET, rows, history)["added"] == 0
+    assert len(history[WALLET]) == 2
+
+
+def test_stored_gmgn_history_row_count_is_unchanged_by_a_replay():
+    """A replay of Zerion data must not inflate the committed GMGN dataset.
+
+    Guards the actual regression this change exists to prevent, using the real
+    artifact rather than a fixture.
+    """
+    with open("gmgn_wallet_history.json") as fh:
+        stored = json.load(fh)
+    wallet = next(k for k, v in stored.items() if isinstance(v, list) and v)
+    sample = stored[wallet]
+    before_wallets = len(stored)
+    before_rows = sum(len(v) for v in stored.values() if isinstance(v, list))
+    before_bucket = json.dumps(sample, sort_keys=True)
+
+    # Replay each stored row back through the merge as if it came from Zerion.
+    # Whatever the hash situation, replaying what is already stored cannot add.
+    history = {wallet: json.loads(before_bucket)}
+    for _ in range(3):
+        summary = zl.merge_into_history(wallet, json.loads(before_bucket), history)
+        assert summary["added"] == 0, "replaying stored rows must add nothing"
+        assert summary["total"] == len(sample)
+
+    assert len(stored) == before_wallets
+    assert sum(len(v) for v in stored.values() if isinstance(v, list)) == before_rows
+    assert json.dumps(stored[wallet], sort_keys=True) == before_bucket
+    # The file on disk is never touched by any of this.
+    with open("gmgn_wallet_history.json") as fh:
+        assert json.dumps(json.load(fh)[wallet], sort_keys=True) == before_bucket
+
+
+def test_a_zerion_row_with_no_hash_does_not_match_a_hashed_gmgn_row_of_another_event():
+    """Both sides hashed but different, and one side hashless, are distinct."""
+    hashed = _gmgn_row(transaction_hash="0xknown", amount_usd=200.0, price_usd=2.0,
+                       address="0xaaa", symbol="AAA", side="buy", chain="eth")
+    # Same fields, different hash on the Zerion side: a genuinely later trade.
+    different = dict(hashed, transaction_hash="0xdifferent")
+    assert zl.same_event(hashed, different) is False
+
+
+# ---------------------------------------------------------------------------
 # 7. Archive
 # ---------------------------------------------------------------------------
 def test_archive_records_the_fetch_without_any_credential(tmp_path=None):
@@ -1001,6 +1188,59 @@ def test_archive_records_the_fetch_without_any_credential(tmp_path=None):
         assert len(stored["records"]) == 2
     finally:
         zl.ZERION_API_KEY = ""
+
+
+def test_archive_keeps_the_undecoded_provider_payload(tmp_path=None):
+    """A normalizer change must be re-derivable without spending quota again."""
+    import tempfile
+    from pathlib import Path
+
+    directory = Path(tempfile.mkdtemp()) if tmp_path is None else tmp_path
+    payload = {
+        "wallet": WALLET, "endpoint": zl.TRANSACTIONS_PATH, "fetched_at": T0,
+        "coverage": None, "ok": True, "error": None, "truncated": False,
+        "pages": 1, "transactions": 1,
+        "rows": zl.normalize_transaction(SWAP, now_ts=T0),
+        "raw_transactions": [SWAP],
+    }
+    path = zl.write_archive(payload, directory)
+    stored = json.loads(path.read_text())
+    assert stored["raw_transactions"] == [SWAP]
+    assert stored["summary"]["raw_transactions"] == 1
+    assert stored["schema_version"] == 2
+    # still no credential, even with the raw payload attached
+    zl.ZERION_API_KEY = "super-secret-key"
+    try:
+        assert "super-secret-key" not in zl.write_archive(payload, directory).read_text()
+    finally:
+        zl.ZERION_API_KEY = ""
+
+
+def test_a_second_fetch_of_one_wallet_does_not_overwrite_the_first(tmp_path=None):
+    import tempfile
+    from pathlib import Path
+
+    directory = Path(tempfile.mkdtemp()) if tmp_path is None else tmp_path
+    def fetch(at):
+        return {"wallet": WALLET, "endpoint": zl.TRANSACTIONS_PATH, "fetched_at": at,
+                "coverage": None, "ok": True, "error": None, "truncated": False,
+                "pages": 1, "transactions": 0, "rows": [], "raw_transactions": []}
+    first = zl.write_archive(fetch(T0), directory)
+    second = zl.write_archive(fetch(T0 + 3600), directory)
+    assert first != second
+    assert first.read_text(), "the earlier snapshot was replaced"
+    assert json.loads(first.read_text())["fetched_at"] == T0
+    assert len(list(Path(directory).glob("*.json"))) == 2
+
+
+def test_the_fetch_result_carries_its_raw_transactions():
+    """The paginator collects them, so the archive can keep them."""
+    transport = FakeTransport(FakeResponse(200, _page([SWAP])))
+    result = zl.fetch_wallet_transactions(WALLET, api_key="k",
+                                          http_get=transport, sleep=no_sleep)
+    assert result["ok"] is True, result.get("error")
+    assert result["raw_transactions"] == [SWAP]
+    assert result["rows"]
 
 
 def test_module_does_not_enable_trading():

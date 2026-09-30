@@ -476,6 +476,208 @@ def test_history_update_keeps_every_record_beyond_1000_rows():
     assert len(next(iter(history.values()))) == 1500
 
 
+# --------------------------------------------------------------------------
+# 11. Cross-provider event identity
+#
+# `_dedupe` used to key strictly on transaction_hash. A hashless GMGN row and a
+# hashed Zerion row for one on-chain event therefore counted as two, and the
+# reconstructed entry was built from duplicated evidence. These tests pin the
+# shared `same_event` rule and, just as importantly, pin that it does not
+# collapse genuinely distinct trades.
+# --------------------------------------------------------------------------
+def test_two_different_transaction_hashes_stay_two_events():
+    """Same token, same second, same size, same price, different trades.
+
+    The hash is the only thing separating these. If dedupe ever stops consulting
+    it, a real second entry disappears and a wallet's history is understated.
+    """
+    a = _row(T0, 1.0, transaction_hash="0xfirst")
+    b = _row(T0, 1.0, transaction_hash="0xsecond")
+    assert whv.same_event(a, b) is False
+    assert len(whv.dedupe([a, b])) == 2
+
+
+def test_hashless_gmgn_and_hashed_zerion_of_one_event_are_one_event():
+    """The defect this change exists to fix."""
+    gmgn = _row(T0, 2.0, side="buy", usd=200.0, chain="eth", address="0xaaa")
+    assert "transaction_hash" not in gmgn
+    zerion = _row(T0, 2.0, side="buy", usd=200.0, chain="eth", address="0xaaa",
+                  transaction_hash="0xonchain", source="zerion")
+    assert whv.event_hash(gmgn) == ""
+    assert whv.same_event(gmgn, zerion) is True
+    assert whv.same_event(zerion, gmgn) is True
+    assert len(whv.dedupe([gmgn, zerion])) == 1
+
+
+def test_two_hashless_rows_of_one_event_are_one_event():
+    """The pre-existing rule is preserved: same core, no hashes, one event."""
+    a = _row(T0, 1.0)
+    b = _row(T0, 1.0)
+    assert whv.same_event(a, b) is True
+    assert len(whv.dedupe([a, b])) == 1
+
+
+def test_a_row_always_matches_an_identical_copy_of_itself():
+    """Self-identity underpins the merge's replay/idempotence guarantee."""
+    for row in (_row(T0, 1.0), _row(T0, 1.0, transaction_hash="0xh")):
+        assert whv.same_event(row, dict(row)) is True
+        assert len(whv.dedupe([row, dict(row), dict(row)])) == 1
+
+
+def test_differing_timestamp_price_usd_side_or_asset_stay_separate_events():
+    """Every field the identity depends on must actually be load-bearing."""
+    base = _row(T0, 2.0, side="buy", usd=200.0, chain="eth", address="0xaaa",
+                transaction_hash="0xh")
+    del base["transaction_hash"]
+    other = dict(base, transaction_hash="0xzerion")
+    assert whv.same_event(base, other) is True
+    for field, changed in (
+        ("trade_timestamp", T0 + 1),
+        ("price_usd", 2.5),
+        ("amount_usd", 250.0),
+        ("side", "sell"),
+        ("address", "0xbbb"),
+        ("chain", "sol"),
+    ):
+        candidate = dict(base, **{field: changed}, transaction_hash="0xzerion")
+        assert whv.same_event(base, candidate) is False, field
+
+
+def test_repeated_replay_collapses_to_one_event():
+    """Replaying the same cross-provider data many times adds nothing."""
+    gmgn = _row(T0, 2.0, side="buy", usd=200.0, chain="eth", address="0xaaa")
+    zerion = _row(T0, 2.0, side="buy", usd=200.0, chain="eth", address="0xaaa",
+                  transaction_hash="0xonchain", source="zerion")
+    payload = [gmgn, zerion, gmgn, zerion, gmgn]
+    assert len(whv.dedupe(payload)) == 1
+    assert len(whv.dedupe(whv.dedupe(payload) * 4)) == 1
+
+
+def test_a_zerion_only_event_is_preserved():
+    """Dedupe must never drop an event just because one provider saw it."""
+    zerion = _row(T0 + DAY, 3.0, side="buy", usd=900.0, chain="eth",
+                  address="0xccc", transaction_hash="0xonlyzerion",
+                  source="zerion")
+    gmgn = _row(T0, 1.0, chain="eth", address="0xaaa", transaction_hash="0xaaa1")
+    clean = whv.dedupe([gmgn, zerion])
+    assert len(clean) == 2
+    assert any(r.get("source") == "zerion" for r in clean)
+
+
+def test_a_hashless_row_without_a_trade_timestamp_is_not_guessed_at():
+    """An observation time is not evidence of a trade time.
+
+    Legacy GMGN rows carry no `trade_timestamp`, so their event time falls back
+    to when they were *seen*. Matching one of those against a hashed row on that
+    basis alone would collapse two different trades that happened to be observed
+    in the same second, which is why the cross-provider rule requires a real
+    trade timestamp on both sides.
+    """
+    legacy = _row(T0, 2.0, side="buy", usd=200.0, chain="eth", address="0xaaa")
+    del legacy["trade_timestamp"]
+    assert "transaction_hash" not in legacy
+    zerion = _row(T0, 2.0, side="buy", usd=200.0, chain="eth", address="0xaaa",
+                  transaction_hash="0xonchain")
+    assert whv.has_trade_timestamp(legacy) is False
+    assert whv.has_trade_timestamp(zerion) is True
+    assert whv.same_event(legacy, zerion) is False
+    assert len(whv.dedupe([legacy, zerion])) == 2
+
+
+def test_a_zerion_tx_hash_field_is_read_as_the_hash():
+    """Zerion reports the hash as `tx_hash`, not `transaction_hash`.
+
+    If the accessor only knew GMGN's field name, every Zerion row would look
+    hashless to the identity rule and cross-provider matching would silently
+    never fire.
+    """
+    gmgn = _row(T0, 2.0, side="buy", usd=200.0, chain="eth", address="0xaaa")
+    zerion = _row(T0, 2.0, side="buy", usd=200.0, chain="eth", address="0xaaa",
+                  tx_hash="0xonchain", source="zerion")
+    assert "transaction_hash" not in zerion
+    assert whv.event_hash(zerion) == "0xonchain"
+    assert whv.same_event(gmgn, zerion) is True
+    assert len(whv.dedupe([gmgn, zerion])) == 1
+    # And two different tx_hash values are still two trades.
+    other = _row(T0, 2.0, side="buy", usd=200.0, chain="eth", address="0xaaa",
+                 tx_hash="0xdifferent", source="zerion")
+    assert len(whv.dedupe([zerion, other])) == 2
+
+
+def test_cross_provider_merge_does_not_depend_on_which_row_arrives_first():
+    """The result must be order-independent, since scans arrive in any order."""
+    gmgn = _row(T0, 2.0, side="buy", usd=200.0, chain="eth", address="0xaaa")
+    zerion = _row(T0, 2.0, side="buy", usd=200.0, chain="eth", address="0xaaa",
+                  transaction_hash="0xonchain", source="zerion")
+    for order in ([gmgn, zerion], [zerion, gmgn], [zerion, gmgn, gmgn],
+                  [gmgn, gmgn, zerion], [zerion, zerion, gmgn]):
+        assert len(whv.dedupe(order)) == 1, order
+    assert whv.same_event(gmgn, zerion) == whv.same_event(zerion, gmgn)
+
+
+def test_dedupe_still_drops_rows_with_no_usable_identity():
+    assert whv.dedupe([{"side": "buy"}, "junk", None, _row(T0, 1.0)]) == [
+        _row(T0, 1.0)
+    ]
+
+
+def test_reconstruction_is_unaffected_by_the_shared_dedup_rule():
+    """The reconstruction path must use the same rule the merge wrote with."""
+    gmgn = _row(T0, 1.0, chain="eth", address="0xaaa", usd=1000.0)
+    zerion = _row(T0, 1.0, chain="eth", address="0xaaa", usd=1000.0,
+                  transaction_hash="0xonchain", source="zerion")
+    later = _row(T0 + DAY, 2.0, chain="eth", address="0xaaa", usd=1000.0,
+                 transaction_hash="0xlater", side="sell")
+    record = whv.reconstruct_asset(whv.dedupe([gmgn, zerion, later]))
+    assert record is not None
+    assert record["entry_price"] == 1.0
+    assert record["peak_multiple"] == 2.0
+
+
+def test_the_committed_history_dedup_count_is_unchanged_by_this_rule():
+    """The rule must not alter a single count in the committed dataset.
+
+    Every existing hashless-vs-hashed pair in `gmgn_wallet_history.json` is a
+    legacy GMGN row with no `trade_timestamp`, so the cross-provider branch must
+    decline all of them.
+    """
+    import json as _json
+
+    with open("gmgn_wallet_history.json") as fh:
+        stored = _json.load(fh)
+
+    def strict(rows):
+        """The previous strict hash-keyed rule, for comparison."""
+        seen, kept = set(), []
+        for index, row in enumerate(rows or []):
+            if not isinstance(row, dict):
+                continue
+            identity = whv.asset_identity(row)
+            if identity is None:
+                continue
+            ts = whv.event_ts(row)
+            if ts <= 0:
+                continue
+            key = (identity, ts, whv.event_side(row),
+                   round(whv.event_usd(row), 6), round(whv.event_price(row), 12),
+                   str(row.get("transaction_hash") or ""))
+            if key in seen:
+                continue
+            seen.add(key)
+            kept.append((index, row))
+        kept.sort(key=lambda pair: (whv.event_ts(pair[1]), pair[0]))
+        return [row for _, row in kept]
+
+    before = after = 0
+    for bucket in stored.values():
+        if not isinstance(bucket, list):
+            continue
+        before += len(strict(bucket))
+        after += len(whv.dedupe(bucket))
+    assert before == after
+    assert before > 0
+
+
 TESTS = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
 
 

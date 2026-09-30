@@ -774,30 +774,31 @@ def normalize_rows(
     return _sort_unique(rows)
 
 
-def event_identity(row: Any) -> tuple | None:
-    """The wallet-history event key: asset identity + time + side + size + hash.
+# The event-identity helpers live in wallet_history_validation so the merge here
+# and the reconstruction the consumer performs cannot drift apart. They are
+# re-exported because the provider's own tests and callers refer to them here.
+event_core = whv.event_core
+event_hash = whv.event_hash
+same_event = whv.same_event
 
-    This mirrors ``wallet_history_validation._dedupe`` exactly, using only that
-    module's public accessors, so a Zerion row and a GMGN row describing the same
-    on-chain event collapse to one record. Returns ``None`` for a row with no
-    usable identity or no timestamp -- the same rows the consumer discards.
+
+def event_identity(row: Any) -> tuple | None:
+    """The strict event key: asset identity + time + side + size + hash.
+
+    The hash stays in this key on purpose: two genuinely different trades in the
+    same second, same token, same size and same price are two real events, and
+    the hash is the only thing that tells them apart. Dropping it would quietly
+    delete a second entry.
+
+    This key is *too strict* to compare a hashless GMGN row against a hashed
+    Zerion row, which is exactly why :func:`whv.same_event` exists. Use this for
+    two rows that both carry a hash, and ``same_event`` when matching across
+    providers.
     """
-    if not isinstance(row, dict):
+    core = event_core(row)
+    if core is None:
         return None
-    identity = whv.asset_identity(row)
-    if identity is None:
-        return None
-    timestamp = whv.event_ts(row)
-    if timestamp <= 0:
-        return None
-    return (
-        identity,
-        timestamp,
-        whv.event_side(row),
-        round(whv.event_usd(row), 6),
-        round(whv.event_price(row), 12),
-        str(row.get("transaction_hash") or ""),
-    )
+    return core + (event_hash(row),)
 
 
 def _sort_unique(rows: Iterable[dict]) -> list[dict]:
@@ -956,6 +957,9 @@ def fetch_wallet_transactions(
             sleep(PAGE_PACING_SECONDS)
 
     result["rows"] = _sort_unique(rows)
+    # Kept for the archive. Without it a normalizer change could not be
+    # re-applied to an old fetch without spending quota a second time.
+    result["raw_transactions"] = raw_transactions
     result["ok"] = result["error"] is None
     return result
 
@@ -978,6 +982,12 @@ def merge_into_history(wallet: Any, rows: Iterable[dict], history: dict | None) 
     Rows are returned chronologically, using a stable sort, because the
     reconstruction reads them in time order. That is the same ordering
     ``gmgn_layer.update_history`` already maintains.
+
+    Duplicate detection uses :func:`same_event` rather than a strict key,
+    because a large share of stored GMGN rows carry no transaction hash. A strict
+    key would treat a Zerion row and a hashless GMGN row describing one on-chain
+    event as two records, and the resulting double count would inflate every
+    derived PROVEN/quality figure.
     """
     summary: dict[str, Any] = {
         "ok": False, "wallet": "", "history_key": "", "added": 0,
@@ -1006,23 +1016,34 @@ def merge_into_history(wallet: Any, rows: Iterable[dict], history: dict | None) 
     summary["gmgn_rows"] = len(bucket)
     summary["history_key"] = key
 
-    present: set[tuple] = set()
-    for row in bucket:
-        identity = event_identity(row)
-        if identity is not None:
-            present.add(identity)
-
+    # Existing rows are indexed by the hash-free event core, so an incoming row
+    # is only ever compared against rows that could be the same event. A strict
+    # identity key cannot see that a hashless GMGN row and a hashed Zerion row
+    # are one on-chain event, and a hash-free key cannot tell two same-second
+    # trades of the same size apart; `same_event` consults the hash when both
+    # sides have one and falls back to the remaining fields only when at least
+    # one side does not, which is the case GMGN's hashless rows create.
+    index: dict[tuple, list[dict[str, Any]]] = {}
+    for existing_row in bucket:
+        if not isinstance(existing_row, dict):
+            continue
+        core = event_core(existing_row)
+        if core is not None:
+            index.setdefault(core, []).append(existing_row)
     added = 0
     skipped = 0
     for row in rows or []:
-        identity = event_identity(row)
-        if identity is None:
+        core = event_core(row)
+        if core is None:
             skipped += 1
             continue
-        if identity in present:
+        candidates = index.get(core)
+        if candidates and any(same_event(row, other) for other in candidates):
             skipped += 1
             continue
-        present.add(identity)
+        if candidates is None:
+            candidates = index[core] = []
+        candidates.append(dict(row))
         bucket.append(dict(row))
         added += 1
 
@@ -1042,19 +1063,48 @@ def merge_into_history(wallet: Any, rows: Iterable[dict], history: dict | None) 
 # ---------------------------------------------------------------------------
 # Archive + CLI
 # ---------------------------------------------------------------------------
+def archive_path(wallet: Any, fetched_at: Any, directory: Path | str = ARCHIVE_DIR) -> Path:
+    """Deterministic, non-colliding archive path for one fetch.
+
+    ``<wallet>_<fetched_at>.json`` keeps every snapshot of a wallet instead of
+    overwriting the previous one, which is what a bare ``<wallet>.json`` did.
+    The stamp comes from the fetch result rather than the wall clock, so a
+    replayed run writes the same name and a genuinely new run does not. If two
+    fetches genuinely land in the same second, a counter suffix keeps the
+    earlier file: no archive is ever replaced.
+    """
+    folder = Path(directory)
+    safe = whv.wallet_identity(wallet) or "unknown"
+    try:
+        stamp = int(fetched_at)
+    except (TypeError, ValueError):
+        stamp = 0
+    path = folder / f"{safe}_{stamp}.json"
+    index = 2
+    while path.exists():
+        path = folder / f"{safe}_{stamp}_{index}.json"
+        index += 1
+    return path
+
+
 def write_archive(result: dict, directory: Path | str = ARCHIVE_DIR) -> Path:
     """Persist a fetch under ``wallet_archive/raw/zerion/transactions``.
 
-    Raw transactions and the normalized rows are both kept, following the layout
-    the GMGN and Nansen archives already use, so a later change to the
-    normalizer can be re-derived from the raw response without another quota
-    spend. The API key is never part of the payload.
+    The raw provider payload and the normalized rows are both kept, following
+    the layout the GMGN and Nansen archives already use, so a later change to
+    the normalizer can be re-derived from the raw response without another quota
+    spend. The raw transactions were previously collected by the fetch and then
+    dropped, which made that re-derivation impossible. The API key is never part
+    of the payload.
+
+    Each fetch writes its own file (see :func:`archive_path`), so backfilling a
+    wallet twice accumulates history instead of silently replacing it.
     """
     folder = Path(directory)
     folder.mkdir(parents=True, exist_ok=True)
-    safe = whv.wallet_identity(result.get("wallet")) or "unknown"
+    raw = result.get("raw_transactions")
     payload = {
-        "schema_version": 1,
+        "schema_version": 2,
         "source": SOURCE,
         "endpoint": result.get("endpoint"),
         "wallet": result.get("wallet"),
@@ -1067,10 +1117,14 @@ def write_archive(result: dict, directory: Path | str = ARCHIVE_DIR) -> Path:
             "pages": result.get("pages"),
             "transactions": result.get("transactions"),
             "normalized_rows": len(result.get("rows") or []),
+            "raw_transactions": len(raw) if isinstance(raw, list) else 0,
         },
         "records": result.get("rows") or [],
+        # The undecoded provider payload, so a normalizer change can be
+        # re-applied without spending quota again.
+        "raw_transactions": raw if isinstance(raw, list) else [],
     }
-    path = folder / f"{safe}.json"
+    path = archive_path(result.get("wallet"), result.get("fetched_at"), folder)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return path
 
