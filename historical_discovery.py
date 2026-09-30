@@ -49,6 +49,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
+import hyperliquid_layer as hl
 import wallet_history_validation as whv
 import wallet_quality_engine as wqe
 import zerion_history as zh
@@ -217,12 +218,13 @@ _NANSEN = SourceAdapter(
     archive_dir="wallet_archive/raw/nansen/historical_balances",
 )
 
-# Hyperliquid is declared here so the schema is fixed and testable before any
-# integration exists. There is no Hyperliquid client in this repository: this
-# adapter only describes row shapes, and it invents no endpoint or credential.
+# Hyperliquid is a real read-only source now: `hyperliquid_layer` fetches public
+# fills from the unauthenticated Info endpoint, with no account, key or signature.
+# This adapter stays the single description of the row shape, so the fetch is a
+# reader and not a second identity path.
 # A perpetual trader is a real trader, so the row kind is a trade; what is
-# genuinely unknown today is the *chain* identity, which stays empty rather than
-# being guessed at.
+# genuinely unknown is the *chain* identity, which stays empty rather than being
+# guessed at.
 _HYPERLIQUID = SourceAdapter(
     source=SOURCE_HYPERLIQUID,
     address=("coin", "asset", "symbol"),
@@ -548,12 +550,12 @@ def read_hyperliquid_rows(
     """Normalize historical perpetual-trader rows.
 
     Accepts an iterable of rows, a path to a JSON file, or an already-parsed
-    mapping, because there is no Hyperliquid client here yet and the row contract
-    should be usable from a fixture today and from a real fetch later.
+    mapping, so the row contract is usable from a fixture today and from a
+    ``hyperliquid_layer`` fetch or a committed archive at any later point.
 
-    There is no Hyperliquid client in this repository. This function exists so
-    the row contract is fixed and testable now, and so a future integration is a
-    reader plus a fetch, not a new discovery or scoring path.
+    Reads only. It takes no credentials and opens no connection of its own; the
+    fetching lives in ``hyperliquid_layer`` and the identity/dedup work is the
+    shared pipeline below, so a new source cannot become a new scoring path.
     """
     if isinstance(rows, (str, Path)):
         for path in _json_paths(Path(rows)):
@@ -571,10 +573,33 @@ def read_hyperliquid_rows(
     return normalize_rows(rows, SOURCE_HYPERLIQUID, wallet=wallet, fetched_at=fetched_at)
 
 
+def read_hyperliquid_archive(
+    directory: Path | str = hl.ARCHIVE_DIR,
+) -> dict[str, list[dict[str, Any]]]:
+    """Read committed Hyperliquid fill archives into normalized observations.
+
+    Offline path only, so discovery and replay never depend on the public API
+    being reachable. A wallet that stops appearing keeps whatever it already
+    contributed; nothing here deletes or overwrites a stored row.
+    """
+    history: dict[str, list[dict[str, Any]]] = {}
+    for wallet, rows in hl.read_archive(directory).items():
+        identity = whv.wallet_identity(wallet)
+        if not identity:
+            continue
+        observations = normalize_rows(
+            rows, SOURCE_HYPERLIQUID, wallet=identity, fetched_at=None,
+        )
+        if observations:
+            history.setdefault(identity, []).extend(observations)
+    return history
+
+
 READERS: dict[str, Callable[..., Any]] = {
     SOURCE_GMGN: read_gmgn_history,
     SOURCE_ZERION: read_zerion_archive,
     SOURCE_NANSEN: read_nansen_archive,
+    SOURCE_HYPERLIQUID: read_hyperliquid_archive,
 }
 
 

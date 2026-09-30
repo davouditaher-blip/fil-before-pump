@@ -460,10 +460,15 @@ Design decisions worth keeping
   profiler `historical-balances` response with no side, no entry price and no
   hash, so it normalizes to `KIND_BALANCE_SNAPSHOT` and contributes zero trades.
   Treating a balance as an execution would invent entries that never happened.
-- **Hyperliquid is schema-only.** There is no client in this repository. The
-  adapter fixes the row contract and invents no endpoint or credential. A
-  perpetual fill is a real trade; what is genuinely unknown is its chain
-  identity, which stays empty rather than being guessed.
+- **Hyperliquid is a real read-only source, and still needs no credentials.**
+  `hyperliquid_layer` fetches public fills from the unauthenticated
+  `https://api.hyperliquid.xyz/info` endpoint (`userFillsByTime` / `userFills`).
+  There is no account, no key, no signature and no wallet connection: the
+  documented request body carries only a `type`, a `user` address and a time
+  window. Superseded on 2026-09-30, when it was genuinely schema-only; see
+  "Hyperliquid public read-only integration" below. A perpetual fill is a real
+  trade; what is genuinely unknown is its chain identity, which stays empty
+  rather than being guessed.
 - **PROVEN is copied, never computed.** `proven_status` is `whv`'s
   `history_class` verbatim, and the criteria are untouched
   (`3 / 2 / 60% / 2x`). Discovery adds only weaker descriptive tiers below
@@ -513,7 +518,9 @@ Blockers / open items
   separate decision, because doing so commits a data file that then has to be
   regenerated and re-gated on every run.
 - Nansen still has no committed archive, so its adapter is exercised by fixtures
-  only. Hyperliquid is schema-only. Neither blocks the foundation.
+  only. Hyperliquid now has a working public client but has never been pointed at
+  a real wallet, so it is likewise unexercised against the live API. Neither
+  blocks the foundation.
 - `ZERION_API_KEY` is absent locally but *is* configured as a GitHub Actions
   secret, and live authentication against it has now been verified. It returns no
   usable transaction history; see "Zerion live transaction retrieval" below. Every
@@ -607,28 +614,155 @@ Boundaries held
   `trade_readiness.py`, `paper_trading.py`, `wallet_intel_gate.py`, any
   threshold, or any architecture. `wallet_history_validation` still owns PROVEN
   and its `3 / 2 / 60% / 2x` criteria are untouched.
-- No Hyperliquid connection attempted; the adapter remains schema-only.
+- No Hyperliquid connection was made during the *Zerion* investigation, and no
+  wallet has been queried against Hyperliquid at any point. Its client is
+  implemented and fixture-tested only.
 - No live trading. The integration gate still reports live exchange execution
   DISABLED and profiles remain 86.
 - No automatic retries and no further wallet probes without explicit
   instruction.
 - `PROJECT_CONTROL.md` records the limitation; no code changed.
 
-## Recommended next task (revised 2026-09-30)
+## Hyperliquid public read-only integration (2026-09-30)
 
-**Populate `PROVEN_WALLET_REGISTRY` from the already-committed GMGN dataset and
-gate it as its own reviewed data commit.**
+Status: implemented, validated, committed. Read-only. No account was used and no
+credentials exist. **No wallet has been queried yet.**
 
-The original next task — a real Zerion backfill through `merge_sources` — is
-blocked above, and it is the only recommended item that needed a live source
-credential. Everything remaining in the foundation is reachable with data the
-repository already owns, which is what makes this the highest-priority task
-rather than merely the available one:
+What this stage adds
+- `hyperliquid_layer.py` is a client for Hyperliquid's public `Info` endpoint,
+  `POST https://api.hyperliquid.xyz/info`, using the documented `userFillsByTime`
+  and `userFills` request types. It is the fetch and the row preparation only:
+  every observation is still produced by the shared `historical_discovery`
+  pipeline, so Hyperliquid did not become a second identity, dedup or scoring
+  path.
+- `read_hyperliquid_archive` was added to `historical_discovery` and registered
+  in `READERS`, giving Hyperliquid the same offline archive path GMGN, Zerion and
+  Nansen already had.
+- `test_hyperliquid_layer.py` covers the client in 67 tests with an injected
+  transport, so the suite performs no network I/O.
+
+No account, no credentials, no connection
+- Hyperliquid's `Info` endpoint is an unauthenticated `POST`. The request body
+  carries exactly `type`, `user` and (for the by-time form) `startTime` /
+  `endTime`. There is no key, signature, nonce or wallet connection anywhere in
+  the path, and the client reads no secret from the environment -- asserted
+  directly by tests that scan the request body and the module source.
+- `auth_required` is reported as `False` on every result, and a `401` is
+  surfaced as an error rather than treated as a prompt for a credential.
+
+Design decisions worth keeping
+- **The notional is derived, not invented.** Hyperliquid reports `px` and `sz`
+  and no USD value at all. The client multiplies the two, which is arithmetic on
+  reported fields, and leaves the result `None` whenever either is missing or
+  unparseable. It is never `0.0`, because a fabricated zero reads as "measured,
+  and it was zero". The shared normalizer was left alone, so a fixture with no
+  USD still reports `no_usd_value` rather than gaining a backdoor.
+- **The TWAP placeholder hash is dropped, and stays auditable.** Hyperliquid
+  returns an all-zero `hash` for TWAP slice fills. Storing it would collapse
+  every TWAP fill of every wallet onto one bogus transaction id, so the client
+  nulls it. The original payload is preserved in the observation's `raw`, so the
+  dropped value is still recoverable and the drop is counted in
+  `zero_hash_dropped`.
+- **`tid` is the fill identity.** It is carried as `source_record_id`, and
+  intra-response dedup keys on it together with hash and time, so a provider
+  that ever reused a `tid` could not silently collapse two different fills.
+- **"Incomplete" means "we know we are short", not "the data looks short".** A
+  first version flagged `coverage_incomplete` whenever the oldest returned fill
+  was later than the requested `startTime`. That is wrong: a wallet with no fills
+  for the first hour of a requested day is perfectly complete, and the flag
+  would have cried wolf on nearly every healthy response. It now fires only on
+  real truncation -- a full page at the page limit, a cursor that cannot
+  advance, or the retained-fill ceiling.
+- **The retained-history limit is stated, never inferred.** Hyperliquid keeps
+  only the 10,000 most recent fills per user, and no single reply can reveal
+  whether an older window has already aged out. That is reported as a standing
+  property of the source (`provider_history_bounded`,
+  `retained_fills_ceiling`) rather than guessed per response, so a caller can
+  never mistake a short history for a complete one.
+- **Spot and HIP-3 asset ids are kept verbatim.** `coin` arrives as `@107` for
+  spot and `xyz:XYZ100` for HIP-3. These are real identities, so they are
+  preserved rather than rewritten into a ticker guess.
+- **Terminal statuses are not retried.** `400/401/403/404/405/422` fail
+  immediately; only `429/5xx` are retried, with `Retry-After` honoured and the
+  per-run request budget acting as a hard stop.
+
+Boundaries held
+- No change to `scanner.py`, `confluence_engine.py`, `risk_engine.py`,
+  `trade_readiness.py`, `paper_trading.py`, `wallet_intel_gate.py`, any
+  threshold, or any architecture. `wallet_history_validation` still owns PROVEN
+  and its `3 / 2 / 60% / 2x` criteria are untouched.
+- `gmgn_wallet_history.json` byte-identical (md5 `ef1e23b980ae3b4cb0ad239267cbbae4`).
+  Re-read after the change: 2,215 wallets / 182,588 rows, unchanged.
+- No wallet was queried, no backfill was run, and no archive was downloaded.
+- No live trading. The integration gate still reports live exchange execution
+  DISABLED and profiles remain 86.
+- The AST guards still hold, including
+  `test_no_protected_module_imports_discovery_or_zerion`: `hyperliquid_layer` is
+  imported *by* discovery and by nothing protected.
+
+Tests
+- `test_hyperliquid_layer.py` 67 pass. `test_historical_discovery.py` 52;
+  `test_zerion_history.py` 45; `test_zerion_layer.py` 99;
+  `test_wallet_history_validation.py` 44.
+- `historical_replay.py`, `final_integration_gate.py` (27 modules, live execution
+  DISABLED) and `e2e_validate.py` all PASS.
+
+Blockers / open items
+- **The client has never touched the real API.** Everything above is verified
+  against fixtures shaped from the official documentation, not against a live
+  response. Treat the request and response contract as correct-until-disproven
+  rather than proven. Zerion is the cautionary precedent: its authentication
+  verified perfectly while its transaction data was empty for every wallet
+  tested.
+- `chain` is still empty for every Hyperliquid observation, so those rows report
+  `chain_unknown` and `identity: unknown` in `confidence`. Hyperliquid trades on
+  HyperEVM, so the value is arguably known, but setting it would change
+  `asset_identity` and the dedup key for this source. That is a deliberate
+  decision for the owner, not a side effect to slip in here.
+- No fill archive is committed yet, so `read_hyperliquid_archive` currently reads
+  an empty directory by design.
+
+## Recommended next task (revised 2026-09-30, after Hyperliquid)
+
+**Run one read-only Hyperliquid query against a single already-tracked public
+address, and report what actually comes back.**
+
+This is the next incomplete stage because Historical Wallet Discovery is still
+not finished, and Hyperliquid is the only source in that state right now:
+
+| Source | State |
+| --- | --- |
+| GMGN | complete -- real committed archive, 2,215 wallets / 182,588 rows |
+| Zerion | blocked -- authentication verified, zero transactions for every wallet tested |
+| Hyperliquid | client implemented and fixture-tested, **never pointed at the real API** |
+| Nansen | no committed archive; fixtures only |
+
+The Zerion result is the reason not to assume the new client is correct just
+because it passes 67 tests. There, authentication verified perfectly and the
+data was still empty for every wallet tried, including the strongest candidate
+in the repository. A fixture-shaped contract proves the request builder is
+self-consistent; it cannot prove the provider answers the way the documentation
+says. One read-only query closes that gap for the cost of a single public
+request.
+
+Rules for that query: one address that already exists in this repository's
+history, no backfill, no archive download, no new credentials, no retry against
+a second wallet without instruction, and nothing written to disk until the shape
+of the response has been seen. Report the HTTP status, the fill count, the
+earliest and latest fill times, whether `coverage_incomplete` or
+`provider_history_bounded` fired, and whether `rejected` or `zero_hash_dropped`
+are non-zero. If the real response differs from the documented shape, fix the
+client and its tests before anything else.
+
+The task that was recommended before this one -- **populate
+`PROVEN_WALLET_REGISTRY` from the committed GMGN dataset and gate it as its own
+reviewed data commit** -- is still open and still the highest-priority
+*credential-free* item. It was not done, only displaced by the higher risk of
+shipping an unverified client. Its guardrails stand unchanged:
 
 - It closes the last explicitly-open blocker in the foundation: the registry is
   "an interface with no populated artifact".
-- It needs no credentials, so it does not inherit the Zerion block. GMGN is the
-  only source with a real committed archive (2,215 wallets / 182,588 rows).
+- It needs no credentials, so it does not inherit the Zerion block.
 - It exercises the merge semantics on real data instead of fixtures, which is the
   property the foundation asserted but could only demonstrate on a synthetic
   overlay.
@@ -637,20 +771,21 @@ rather than merely the available one:
   weaker descriptive tiers, and the "output >= base, never deletes, quiet feeds
   keep their entry" invariants are exactly what a populated registry tests.
 
-Guardrails for that task: commit the artifact separately from any code change;
-re-run `test_historical_discovery.py`, `test_wallet_history_validation.py`,
+Its guardrails: commit the artifact separately from any code change; re-run
+`test_historical_discovery.py`, `test_wallet_history_validation.py`,
 `historical_replay.py` and `final_integration_gate.py`; re-verify
 `gmgn_wallet_history.json` is byte-identical; confirm the PROVEN count moves only
 by what the data actually justifies, and report that number rather than assuming
 it is unchanged.
 
 Deliberately **not** the next task: wiring discovery candidates into the forward
-evaluation. `test_historical_discovery.py` currently asserts by AST inspection
-that no protected module imports `historical_discovery`,
-`proven_wallet_registry`, `zerion_history` or `zerion_layer`, so connecting
-discovery to the decision gate means intentionally relaxing a guard this
-foundation installed. That is a product decision for the project owner and must
-not be slipped in as a side effect of another task.
+evaluation, and setting `chain="hyperliquid"` on Hyperliquid observations. The
+first would intentionally relax the AST guard that
+`test_historical_discovery.py` installs against protected modules importing
+`historical_discovery`, `proven_wallet_registry`, `zerion_history` or
+`zerion_layer`; the second would change `asset_identity` and the dedup key for
+this source. Both are product decisions for the project owner and must not be
+slipped in as a side effect of another task.
 
 ## Communication
 Every completed stage must leave a concise repository-based handoff containing: status, commit SHA, changed files, tests/results, blockers, and next task.
