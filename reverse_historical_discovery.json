@@ -1,0 +1,83 @@
+{
+  "candidate_count": 0,
+  "candidates": {},
+  "definitions": {
+    "asset_identity": "wallet_history_validation.asset_identity (chain + contract)",
+    "confirmation": "the first later observation with price >= start_price * (1 + move_threshold)",
+    "dedup": "wallet_history_validation.dedupe per wallet; identical (ts,price) observations collapsed per asset",
+    "event_identity": "(chain, asset_address, move_start_ts, confirmation_ts)",
+    "event_time": "wallet_history_validation.event_ts (trade_timestamp, else timestamp)",
+    "independent_event_rule": "moves are segmented at confirmation: after a move is recorded, no new move may begin until after that confirmation, so a continuous rise yields one event no matter how many entries it contains",
+    "min_asset_history_days": 90,
+    "move_start": "the first observation of a segment",
+    "move_threshold": 0.2,
+    "move_threshold_basis": "percentage rise between two observed trade prices",
+    "one_event_per_wallet": "a wallet contributes at most one record per event identity",
+    "pre_move_entry_window": "entry_ts >= move_start_ts and entry_ts < confirmation_ts; the strict inequality is the no-look-ahead guard",
+    "price": "wallet_history_validation.event_price (price_usd, else price, else priceUsd)"
+  },
+  "determinism": {
+    "digest": "sha256 over the envelope minus generated_at",
+    "non_deterministic_fields": [
+      "generated_at"
+    ],
+    "note": "generated_at is the only wall-clock field. payload_sha256 covers every other field, so rebuilding from an unchanged archive reproduces it exactly.",
+    "payload_sha256": "f2b85643ac2fdf27de143205515b7556aa6e87a1850910b1618fb9850150be8b"
+  },
+  "diagnostics": {
+    "asset_history_span_days": {
+      "max": 5.0628,
+      "p50": 0.0023,
+      "p90": 1.6182,
+      "p99": 4.6974
+    },
+    "assets_scanned": 17271,
+    "candidate_count": 1667,
+    "plus20_events": 11193,
+    "purpose": "measurement only: the same algorithm with the asset-history gate removed, to quantify how much history is missing. Not a deliverable.",
+    "required_days": 90,
+    "wallets_observed_before_moves": 1667,
+    "wallets_with_repeated_independent_events": 1382
+  },
+  "eligibility": {
+    "gate_applied": true,
+    "min_asset_history_days": 90,
+    "note": "Assets need this much observed history before their moves are considered. Assets below it are counted in assets_rejected_short_history and are not scanned for moves."
+  },
+  "generated_at": "2026-09-30T22:47:15.555323+00:00",
+  "limitations": {
+    "discovery_is_not_conviction": "A candidate here is evidence, not a rating. proven_status is copied read-only from the committed registry and is never written, and no PROVEN threshold was added, relaxed or reused as a discovery cut.",
+    "entry_window_is_defined_not_inferred": "A pre-move entry is a buy at or after the move's start observation and strictly before its +20% confirmation. Requiring entry before confirmation is what prevents look-ahead; a wallet that bought after the move was already +20% is not counted as early.",
+    "no_intra_asset_intraday_path": "Multiple observations share a second across different wallets. They are collapsed deterministically, so sub-second ordering is not available.",
+    "no_ohlc_price_series": "The archive stores the price a wallet transacted at, not an OHLC or tick series. A move is confirmed at the first observed trade at or above 1.2x the start price, so the exact moment price crossed +20% is unknown and only bounded by the surrounding trades. No price is interpolated, carried forward or invented.",
+    "observation_time_fallback": "38.6% of rows carry no trade_timestamp and fall back to the collector's timestamp. Entry ordering for those rows is approximate; an entry could therefore be attributed slightly late or early relative to a move.",
+    "prices_only_where_wallets_traded": "A price observation exists only where some wallet traded the asset. A move between two distant trades is not evidence of a continuous rise.",
+    "provider_move_fields_unusable": "The archive carries peak_multiple, first_1_2x_timestamp, first_1_5x_timestamp and first_2x_timestamp on 92,767 rows, but every value is 0 and every timestamp is null, and the fields are absent on the remaining 89,821 rows. They are schema placeholders and were not used. The provider's own move confirmations would be the ideal source and are simply not populated in this dataset."
+  },
+  "mode": "REVERSE_HISTORICAL_DISCOVERY_READ_ONLY",
+  "orders_enabled": false,
+  "schema_version": 1,
+  "source": {
+    "artifact": "gmgn_wallet_history.json",
+    "bytes": 104839390,
+    "md5": "ef1e23b980ae3b4cb0ad239267cbbae4",
+    "proven_status_mutated": false,
+    "proven_status_source": "proven_wallet_registry.json",
+    "provider": "gmgn",
+    "rows_in_source": 182588,
+    "wallets_in_source": 2215
+  },
+  "totals": {
+    "assets_eligible": 0,
+    "assets_eligible_with_moves": 0,
+    "assets_rejected_short_history": 17271,
+    "assets_with_priced_history": 11765,
+    "moves_with_no_pre_move_entry": 0,
+    "total_assets_scanned": 17271,
+    "total_plus20_events": 0,
+    "total_pre_move_entries": 0,
+    "total_wallets_observed_before_moves": 0,
+    "total_wallets_scanned": 2215,
+    "wallets_with_repeated_independent_events": 0
+  }
+}
