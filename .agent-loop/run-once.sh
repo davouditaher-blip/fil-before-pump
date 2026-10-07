@@ -65,8 +65,11 @@ EOF
 
 if command -v agy >/dev/null 2>&1; then
   AGENT="agy"
-  if ! agy -p "$PROMPT" --output-format json --dangerously-skip-permissions >"$TMP"; then
-    RC=$?
+  set +e
+  agy -p "$PROMPT" --output-format json --dangerously-skip-permissions >"$TMP"
+  RC=$?
+  set -e
+  if [[ $RC -ne 0 ]]; then
     printf 'STATUS=FAILED\n\nAgent: agy\nExit code: %s\n\n%s\n' "$RC" "$(cat "$TMP")" > "$REPORT"
     sed -i 's/^STATUS=PENDING$/STATUS=FAILED/' "$TASK"
     git add .agent-loop/TASK.md .agent-loop/REPORT.md
@@ -76,8 +79,11 @@ if command -v agy >/dev/null 2>&1; then
   fi
 elif command -v gemini >/dev/null 2>&1; then
   AGENT="gemini"
-  if ! gemini -p "$PROMPT" --output-format json --approval-mode=yolo >"$TMP"; then
-    RC=$?
+  set +e
+  gemini -p "$PROMPT" --output-format json --approval-mode=yolo >"$TMP"
+  RC=$?
+  set -e
+  if [[ $RC -ne 0 ]]; then
     printf 'STATUS=FAILED\n\nAgent: gemini\nExit code: %s\n\n%s\n' "$RC" "$(cat "$TMP")" > "$REPORT"
     sed -i 's/^STATUS=PENDING$/STATUS=FAILED/' "$TASK"
     git add .agent-loop/TASK.md .agent-loop/REPORT.md
