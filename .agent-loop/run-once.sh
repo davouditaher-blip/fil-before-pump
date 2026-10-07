@@ -26,6 +26,9 @@ if [[ "$BRANCH" != "main" ]]; then
   exit 2
 fi
 
+# Python bytecode caches are disposable runtime artifacts; remove them before the clean-tree gate.
+find "$ROOT" -type d -name __pycache__ -prune -exec rm -rf {} +
+
 if [[ -n "$(git status --porcelain)" ]]; then
   echo "BLOCKED: working tree is not clean"
   git status --short
@@ -128,6 +131,9 @@ if grep -q '^STATUS=SUCCESS$' "$REPORT"; then
 else
   sed -i 's/^STATUS=PENDING$/STATUS=FAILED/' "$TASK"
 fi
+
+# Do not commit disposable Python bytecode caches produced during the run.
+find "$ROOT" -type d -name __pycache__ -prune -exec rm -rf {} +
 
 git add -A
 git commit -m "agent-loop: complete $(awk -F= '/^ID=/{print $2; exit}' "$TASK")" >/dev/null
