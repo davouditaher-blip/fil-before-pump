@@ -19,6 +19,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -110,3 +113,16 @@ jobs:
 
           echo "Unable to push GMGN history after 5 attempts."
           exit 1
+
+      - name: Preserve GMGN history if persistence fails
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gmgn-history-failure-${{ github.run_id }}
+          path: |
+            gmgn_wallet_history.json.gz
+            gmgn_wallet_history.json
+            gmgn_wallet_history.baseline.json
+            gmgn_wallet_history.json.gz.tmp
+          if-no-files-found: ignore
+          retention-days: 90
