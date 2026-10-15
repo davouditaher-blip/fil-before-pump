@@ -56,7 +56,11 @@ def _metadata_losses(old: dict[str, Any], new: dict[str, Any]) -> list[str]:
         if _nonempty(old_value) and not _nonempty(new_value):
             losses.append(key)
         elif _nonempty(old_value) and _nonempty(new_value):
-            if whv._identity_value(old_value) != whv._identity_value(new_value):
+            old_stable = whv._identity_value(old_value)
+            new_stable = whv._identity_value(new_value)
+            if key in ("transaction_hash", "tx_hash", "transactionHash"):
+                old_stable, new_stable = old_stable.lower(), new_stable.lower()
+            if old_stable != new_stable:
                 losses.append(key)
     old_peak = whv._num(old.get("peak_multiple"), 0.0)
     new_peak = whv._num(new.get("peak_multiple"), 0.0)
