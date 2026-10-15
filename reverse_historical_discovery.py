@@ -152,6 +152,30 @@ def file_md5(path: Path) -> str:
     return digest.hexdigest()
 
 
+def read_primary_archive(
+    raw_path: Path = SOURCE_ARCHIVE,
+    compressed_path: Path = SOURCE_ARCHIVE_GZ,
+) -> tuple[dict[str, list[dict[str, Any]]], str, int, str]:
+    """Read the current wallet history from raw JSON or its committed gzip archive.
+
+    The MD5 and byte count describe the decompressed JSON payload, so they stay
+    comparable regardless of whether the checkout stores raw JSON or gzip.
+    If both files exist during a workflow run, raw JSON is authoritative because
+    the scanner may have appended rows that have not been recompressed yet.
+    """
+    if raw_path.exists():
+        raw = raw_path.read_bytes()
+    elif compressed_path.exists():
+        raw = gzip.decompress(compressed_path.read_bytes())
+    else:
+        raise FileNotFoundError("Neither gmgn_wallet_history.json nor .json.gz exists")
+    history = json.loads(raw)
+    if not isinstance(history, dict):
+        raise ValueError("GMGN history root must be a wallet-to-rows object")
+    artifact_name = compressed_path.name if compressed_path.exists() else raw_path.name
+    return history, hashlib.md5(raw).hexdigest(), len(raw), artifact_name
+
+
 def load_supplemental_activity(
     history: dict[str, list[dict[str, Any]]],
     directory: Path = SUPPLEMENTAL_ACTIVITY_DIR,
@@ -590,6 +614,7 @@ def build(
     min_history_days: float = MIN_ASSET_HISTORY_DAYS,
     source_md5: str = "",
     source_bytes: int = 0,
+    source_artifact: str = SOURCE_ARCHIVE.name,
     rows_total: int = 0,
     supplemental_sources: Sequence[Mapping[str, Any]] = (),
 ) -> dict[str, Any]:
@@ -610,7 +635,7 @@ def build(
         "definitions": DEFINITIONS,
         "limitations": LIMITATIONS,
         "source": {
-            "artifact": SOURCE_ARCHIVE.name,
+            "artifact": source_artifact,
             "md5": source_md5,
             "bytes": source_bytes,
             "provider": hd.SOURCE_GMGN,
@@ -721,8 +746,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    before = file_md5(SOURCE_ARCHIVE)
-    history = json.loads(SOURCE_ARCHIVE.read_text(encoding="utf-8"))
+    history, before, source_bytes, source_artifact = read_primary_archive()
     primary_rows_total = sum(len(v) for v in history.values())
     supplemental_sources = load_supplemental_activity(history)
     proven = load_proven_status()
@@ -731,7 +755,8 @@ def main(argv: list[str] | None = None) -> int:
         history, proven,
         min_history_days=0 if args.no_gate else MIN_ASSET_HISTORY_DAYS,
         source_md5=before,
-        source_bytes=SOURCE_ARCHIVE.stat().st_size,
+        source_bytes=source_bytes,
+        source_artifact=source_artifact,
         rows_total=primary_rows_total,
         supplemental_sources=supplemental_sources,
     )
@@ -779,7 +804,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"OK: deterministic reproduction confirmed ({got[:16]}...)")
         return 0
 
-    after = file_md5(SOURCE_ARCHIVE)
+    _, after, _, _ = read_primary_archive()
     if after != before:
         raise SystemExit(
             f"source archive changed during the run: {before} -> {after}"
