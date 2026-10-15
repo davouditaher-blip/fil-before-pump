@@ -217,7 +217,7 @@ def update_history(trades, history):
                 if existing.get("transaction_hash") == tx:
                     match = existing
                     break
-        if match is None:
+        if match is None and not tx:
             for existing in bucket:
                 if (
                     existing.get("trade_timestamp") == trade_ts
@@ -225,6 +225,7 @@ def update_history(trades, history):
                     and existing.get("address") == address
                     and existing.get("side") == row["side"]
                     and abs(float(existing.get("amount_usd") or 0) - row["amount_usd"]) < 0.01
+                    and abs(float(existing.get("price_usd") or 0) - row["price_usd"]) < 1e-12
                 ):
                     match = existing
                     break
