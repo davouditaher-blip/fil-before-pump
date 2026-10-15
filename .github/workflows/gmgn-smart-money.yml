@@ -86,6 +86,10 @@ jobs:
           fi
           python validate_gmgn_history_preservation.py --baseline gmgn_wallet_history.baseline.json --current gmgn_wallet_history.json
           python -m json.tool gmgn_wallet_history.json >/dev/null
+          history_changed=false
+          if ! cmp -s gmgn_wallet_history.baseline.json gmgn_wallet_history.json; then
+            history_changed=true
+          fi
           gzip -n -9 -c gmgn_wallet_history.json > gmgn_wallet_history.json.gz.tmp
           gzip -t gmgn_wallet_history.json.gz.tmp
           archive_bytes="$(wc -c < gmgn_wallet_history.json.gz.tmp)"
@@ -98,7 +102,10 @@ jobs:
           git rm --cached -f --ignore-unmatch gmgn_wallet_history.json
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add gmgn_wallet_history.json.gz gmgn_history_recovery_done.json reverse_historical_discovery.json
+          git add gmgn_wallet_history.json.gz gmgn_history_recovery_done.json
+          if [ "$history_changed" = true ]; then
+            git add reverse_historical_discovery.json
+          fi
           if git diff --cached --quiet; then
             echo "No GMGN history changes."
             exit 0
