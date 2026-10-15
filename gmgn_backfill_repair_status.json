@@ -150,21 +150,23 @@
     "assets_with_at_least_365_days": 0,
     "matches_legacy_historical_audit_digest": false,
     "legacy_historical_audit_md5": "ef1e23b980ae3b4cb0ad239267cbbae4",
-    "note": "This is a measured snapshot at 183,505 rows. Two subsequent successful end-to-end runs increased the committed archive to 183,735 rows (see latest_end_to_end_validation); the remaining chain-attribution and 90-day coverage findings are unchanged. Later scheduled runs may append further rows."
+    "note": "The earlier 183,505-row audit predates one-time recovery and duplicate compaction. The latest committed post-recovery archive contains 180,176 rows and 180,176 stable event identities across 2,318 wallet keys; the recovery and metadata-aware preservation checks passed with zero missing identities and zero missing metadata fields. A CI audit of this exact post-recovery snapshot is being triggered by this report update."
   },
   "latest_end_to_end_validation": {
-    "workflow_run_id": 38822575732,
-    "workflow_run_url": "https://github.com/davouditaher-blip/fil-before-pump/actions/runs/38822575732",
-    "conclusion": "scan_job_success",
-    "scanner_commit": "84b3e80",
-    "baseline_wallets": 2294,
-    "current_wallets": 2300,
-    "baseline_rows": 183629,
-    "current_rows": 183735,
-    "baseline_unique_event_identities": 179653,
-    "current_unique_event_identities": 179759,
+    "workflow_run_id": 38823663178,
+    "workflow_run_url": "https://github.com/davouditaher-blip/fil-before-pump/actions/runs/38823663178",
+    "conclusion": "success",
+    "scanner_commit": "7ad9605",
+    "baseline_wallets": 2315,
+    "current_wallets": 2318,
+    "baseline_rows": 180071,
+    "current_rows": 180176,
+    "baseline_unique_event_identities": 180071,
+    "current_unique_event_identities": 180176,
     "missing_unique_event_identities": 0,
-    "result": "The latest-main checkout (ref: main, fetch-depth 10) completed the full scanner pipeline, regenerated historical discovery, passed the final integration gate, preserved every prior unique event identity, added 106 rows and 6 wallet keys, and pushed successfully.",
+    "missing_metadata_fields": 0,
+    "metadata_preserved": true,
+    "result": "One-time metadata recovery from four trusted committed archive snapshots completed; duplicate events were compacted without losing unique identities or baseline metadata. The subsequent scan added 105 new unique event identities, passed the metadata-aware preservation guard and final integration gate, and pushed successfully.",
     "final_integration_gate": "passed",
     "live_orders_enabled": false
   },
@@ -249,5 +251,39 @@
       "missing_unique_event_identities": 0,
       "conclusion": "success"
     }
-  ]
+  ],
+  "metadata_recovery": {
+    "workflow_run_id": 38823663178,
+    "workflow_run_url": "https://github.com/davouditaher-blip/fil-before-pump/actions/runs/38823663178",
+    "status": "success",
+    "source_archive_commits": [
+      "c7c578a51788203a9f4e700e0f1bb927645eec53",
+      "1fdd9792c37b68826781c9eaebf650c27023e00c",
+      "29f6b41bdfb873c2332529febdf324e3fc51722b",
+      "985757038fa88268c6a300829f3672f8c4eb487c"
+    ],
+    "rows_before_recovery": 184047,
+    "unique_event_identities_before_recovery": 180071,
+    "rows_after_recovery": 180071,
+    "unique_event_identities_after_recovery": 180071,
+    "duplicate_rows_compacted": 3976,
+    "trade_timestamp_rows_before": 112492,
+    "trade_timestamp_rows_after": 108535,
+    "explanation": "The row-level trade_timestamp count fell because 3,976 duplicate event rows were compacted into one row per stable event identity. The lossless merge combines metadata before compaction; the post-scan metadata-preservation guard reported zero lost metadata fields.",
+    "post_scan_rows": 180176,
+    "post_scan_wallets": 2318,
+    "post_scan_unique_event_identities": 180176,
+    "missing_event_identities": 0,
+    "missing_metadata_fields": 0,
+    "live_orders_enabled": false
+  },
+  "latest_ci_verification_pending": {
+    "trigger": "Report-only commit; scanner workflow excludes gmgn_backfill_repair_status.json from push triggers.",
+    "expected_checks": [
+      "archive audit",
+      "reverse_historical_discovery.py --verify",
+      "history-preservation tests",
+      "metadata-merge tests"
+    ]
+  }
 }
