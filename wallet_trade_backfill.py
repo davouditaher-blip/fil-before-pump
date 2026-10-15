@@ -44,11 +44,19 @@ def run_cli(chain,wallet,limit,cursor=None):
     if p.returncode: raise BackfillError("GMGN CLI exited with status "+str(p.returncode),p.returncode,p.stderr)
     return parse_output(p.stdout)
 
+def wallet_key(chain,wallet):
+    # EVM addresses are case-insensitive; Solana base58 addresses are not.
+    value=str(wallet or "").strip()
+    return value.lower() if chain in ("bsc","base","eth") else value
+
 def identity(row):
     tx=row.get("tx_hash") or row.get("transaction_hash") or row.get("transactionHash") or row.get("id")
     if tx: return ("tx",str(tx).lower())
     token=row.get("token") if isinstance(row.get("token"),dict) else {}
-    return ("fallback",str(row.get("timestamp") or row.get("trade_timestamp") or ""),str(row.get("side") or row.get("event_type") or row.get("type") or "").lower(),str(row.get("token_address") or row.get("base_address") or row.get("address") or token.get("address") or "").lower(),str(row.get("cost_usd") or row.get("buy_cost_usd") or row.get("amount_usd") or ""))
+    chain=str(row.get("chain") or "").lower()
+    address=str(row.get("token_address") or row.get("base_address") or row.get("address") or token.get("address") or "")
+    if chain in ("bsc","base","eth"): address=address.lower()
+    return ("fallback",str(row.get("timestamp") or row.get("trade_timestamp") or ""),str(row.get("side") or row.get("event_type") or row.get("type") or "").lower(),address,str(row.get("cost_usd") or row.get("buy_cost_usd") or row.get("amount_usd") or ""))
 
 def merge_rows(*groups):
     merged={}
@@ -61,24 +69,27 @@ def merge_rows(*groups):
     return sorted(merged.values(),key=lambda r:int(r.get("timestamp") or r.get("trade_timestamp") or 0))
 
 def fetch_chain(chain,wallet,limit,out_dir=OUT,runner=run_cli):
-    out_dir=Path(out_dir); out_dir.mkdir(parents=True,exist_ok=True); stem=f"{chain}_{wallet.lower()}"
+    out_dir=Path(out_dir); out_dir.mkdir(parents=True,exist_ok=True); stem=f"{chain}_{wallet_key(chain,wallet)}"
     archive=out_dir/f"{stem}.json"; checkpoint=out_dir/f"{stem}.partial.json"; status=out_dir/f"{stem}.status.json"
     old_rows=[]
     if archive.exists():
         try:
             old=json.loads(archive.read_text(encoding="utf-8"))
-            if old.get("wallet","").lower()==wallet.lower() and old.get("chain")==chain and isinstance(old.get("records"),list): old_rows=old["records"]
+            if wallet_key(chain,old.get("wallet",""))==wallet_key(chain,wallet) and old.get("chain")==chain and isinstance(old.get("records"),list): old_rows=old["records"]
         except Exception as exc: raise BackfillError("Existing archive unreadable; refusing overwrite: "+str(exc))
     rows=[]; cursor=None
     if checkpoint.exists():
         try:
             saved=json.loads(checkpoint.read_text(encoding="utf-8"))
-            if saved.get("wallet","").lower()==wallet.lower() and saved.get("chain")==chain and isinstance(saved.get("records"),list): rows=saved["records"]; cursor=saved.get("next_cursor")
+            if wallet_key(chain,saved.get("wallet",""))==wallet_key(chain,wallet) and saved.get("chain")==chain and isinstance(saved.get("records"),list): rows=saved["records"]; cursor=saved.get("next_cursor")
         except Exception as exc: raise BackfillError("Checkpoint unreadable; refusing discard: "+str(exc))
     seen={cursor} if cursor else set(); pages=0
     while True:
         if pages>=MAX_PAGES: raise BackfillError(f"Pagination safety limit reached ({MAX_PAGES})")
-        obj=runner(chain,wallet,limit,cursor); page,next_cursor,more,last=extract_rows_cursor(obj); pages+=1; rows=merge_rows(rows,page)
+        obj=runner(chain,wallet,limit,cursor); page,next_cursor,more,last=extract_rows_cursor(obj); pages+=1
+        for item in page:
+            if isinstance(item,dict): item.setdefault("chain",chain); item.setdefault("wallet",wallet)
+        rows=merge_rows(rows,page)
         atomic_json_write(checkpoint,{"schema_version":2,"source":"gmgn","endpoint":"portfolio/activity","wallet":wallet,"chain":chain,"fetched_at":int(time.time()),"pages_fetched_this_run":pages,"next_cursor":next_cursor,"records":rows})
         print(f"{chain}: page={pages} page_rows={len(page)} accumulated={len(rows)}")
         if next_cursor:
@@ -98,7 +109,7 @@ def main():
     if not os.environ.get("GMGN_API_KEY", "").strip():
         OUT.mkdir(parents=True, exist_ok=True)
         for chain in CHAINS:
-            atomic_json_write(OUT/f"{chain}_{WALLET.lower()}.status.json", {"schema_version":1,"source":"gmgn","endpoint":"portfolio/activity","wallet":WALLET,"chain":chain,"status":"failed_or_incomplete","fetched_at":int(time.time()),"error":"GMGN_API_KEY is missing","returncode":None,"stderr":""})
+            atomic_json_write(OUT/f"{chain}_{wallet_key(chain,WALLET)}.status.json", {"schema_version":1,"source":"gmgn","endpoint":"portfolio/activity","wallet":WALLET,"chain":chain,"status":"failed_or_incomplete","fetched_at":int(time.time()),"error":"GMGN_API_KEY is missing","returncode":None,"stderr":""})
         raise SystemExit("GMGN_API_KEY is missing; no provider requests were made")
     OUT.mkdir(parents=True,exist_ok=True); results=[]; errors=[]
     for chain in CHAINS:
