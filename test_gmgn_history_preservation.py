@@ -29,6 +29,20 @@ class GMGNHistoryPreservationTests(unittest.TestCase):
         self.assertFalse(result["preserved"])
         self.assertEqual(result["missing_row_instances"], 1)
 
+    def test_exact_duplicate_compaction_is_allowed(self):
+        event = {"chain": "eth", "address": "0xabc", "timestamp": 1000, "side": "buy", "amount_usd": 5, "price_usd": 0.5}
+        before = {"wallet": [dict(event), dict(event)]}
+        after = {"wallet": [dict(event)]}
+        self.assertTrue(guard.compare_histories(before, after)["preserved"])
+
+    def test_distinct_price_observation_is_not_silently_removed(self):
+        before = {"wallet": [
+            {"chain": "sol", "address": "TokenABC", "timestamp": 1000, "side": "buy", "amount_usd": 5, "price_usd": 0.5},
+            {"chain": "sol", "address": "TokenABC", "timestamp": 1000, "side": "buy", "amount_usd": 5, "price_usd": 0.6},
+        ]}
+        after = {"wallet": [before["wallet"][0]]}
+        self.assertFalse(guard.compare_histories(before, after)["preserved"])
+
     def test_solana_token_address_case_is_preserved(self):
         before = {"wallet": [
             {"chain": "sol", "address": "AbC", "timestamp": 1000, "side": "buy", "amount_usd": 5, "price_usd": 0.5}
