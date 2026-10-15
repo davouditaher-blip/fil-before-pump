@@ -35,6 +35,7 @@ def extract_rows_cursor(obj):
     data=None
     for key in ("activities","list","data"):
         if key in obj and obj.get(key) is not None: data=obj.get(key); break
+    nested={}
     if isinstance(data,dict):
         nested=data; data=next((nested[k] for k in ("activities","list","data") if isinstance(nested.get(k),list)),None)
     if not isinstance(data,list): raise BackfillError("GMGN response has no activity list; refusing to record empty history")
