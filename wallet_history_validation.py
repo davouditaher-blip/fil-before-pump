@@ -63,7 +63,9 @@ posts to manufacture a count.
 from __future__ import annotations
 
 import json
+import os
 import re
+import tempfile
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -195,6 +197,143 @@ def wallet_identity(value: Any) -> str:
     if _EVM_ADDRESS.fullmatch(text):
         return text.lower()
     return text
+
+
+def _identity_value(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, float):
+        return format(value, ".12g")
+    return str(value).strip()
+
+
+def history_event_identity(wallet: Any, row: dict[str, Any]) -> tuple:
+    """Stable identity shared by deduplication, merging, and preservation checks."""
+    wallet_key = wallet_identity(wallet) or str(wallet or "").strip()
+    chain = _identity_value(row.get("chain")).lower()
+    tx = _identity_value(
+        row.get("transaction_hash") or row.get("tx_hash") or
+        row.get("transactionHash") or row.get("id")
+    )
+    if tx:
+        return (wallet_key, chain, "tx", tx.lower())
+    address = _identity_value(row.get("address") or row.get("base_address"))
+    if chain in ("eth", "ethereum", "bsc", "bnb", "base", "eth-mainnet", "bsc-mainnet", "base-mainnet"):
+        address = address.lower()
+    timestamp = _identity_value(row.get("trade_timestamp") or row.get("timestamp"))
+    side = _identity_value(row.get("side") or row.get("type")).lower()
+    amount = _identity_value(
+        row.get("amount_usd") or row.get("usd") or row.get("usd_value") or row.get("value_usd")
+    )
+    price = _identity_value(row.get("price_usd") or row.get("price") or row.get("priceUsd"))
+    return (wallet_key, chain, "fallback", address, timestamp, side, amount, price)
+
+
+def _timestamp_value(value: Any) -> int:
+    try:
+        number = int(float(value or 0))
+    except (TypeError, ValueError):
+        try:
+            number = int(datetime.fromisoformat(str(value).replace("Z", "+00:00")).timestamp())
+        except (TypeError, ValueError, OverflowError):
+            return 0
+    return number // 1000 if number > 10**12 else number
+
+
+def _merge_tag_values(old: Any, new: Any) -> Any:
+    def values(value):
+        if isinstance(value, (list, tuple, set)):
+            return [str(x).strip() for x in value if str(x).strip()]
+        if isinstance(value, str):
+            return [x.strip() for x in value.split(",") if x.strip()]
+        return []
+    combined = list(dict.fromkeys(values(old) + values(new)))
+    if not combined:
+        return old if old not in (None, "", [], {}) else new
+    if isinstance(old, list) or isinstance(new, list):
+        return combined
+    return ", ".join(combined)
+
+
+def merge_history_record(existing: dict[str, Any], incoming: dict[str, Any]) -> dict[str, Any]:
+    """Merge two observations of one event without erasing historical evidence."""
+    merged = dict(existing)
+    first_time_fields = {
+        "first_1_2x_timestamp", "first_1_5x_timestamp", "first_2x_timestamp"
+    }
+    static_fields = {
+        "timestamp", "trade_timestamp", "transaction_hash", "tx_hash", "transactionHash", "id",
+        "chain", "address", "base_address", "side", "type", "symbol", "amount_usd", "usd",
+        "usd_value", "value_usd", "price_usd", "price", "priceUsd", "is_open_or_close",
+    }
+    for key, value in incoming.items():
+        if value in (None, "", [], {}):
+            continue
+        old = merged.get(key)
+        if key == "peak_multiple":
+            old_num, new_num = _num(old, 0.0), _num(value, 0.0)
+            merged[key] = max(old_num, new_num)
+        elif key in first_time_fields:
+            old_ts, new_ts = _timestamp_value(old), _timestamp_value(value)
+            if not old_ts or (new_ts and new_ts < old_ts):
+                merged[key] = value
+        elif key == "maker_tags":
+            merged[key] = _merge_tag_values(old, value)
+        elif key == "maker_info" and isinstance(value, dict):
+            old_dict = old if isinstance(old, dict) else {}
+            merged[key] = {**old_dict, **{k: v for k, v in value.items() if v not in (None, "", [], {})}}
+        elif key in static_fields:
+            if old in (None, "", [], {}, 0, "0") and value not in (0, "0"):
+                merged[key] = value
+        else:
+            merged[key] = value
+    return merged
+
+
+def merge_history_data(*histories: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
+    """Union histories by event identity, preserving fields and restoring missing events."""
+    merged: dict[str, list[dict[str, Any]]] = {}
+    wallet_keys: dict[str, str] = {}
+    positions: dict[tuple, tuple[str, int]] = {}
+    for history in histories:
+        for wallet, rows in history.items():
+            canonical = wallet_identity(wallet) or str(wallet or "").strip()
+            out_wallet = wallet_keys.setdefault(canonical, wallet)
+            merged.setdefault(out_wallet, [])
+            for row in rows:
+                if not isinstance(row, dict):
+                    raise ValueError(f"Non-object history row for wallet {wallet}")
+                identity = history_event_identity(wallet, row)
+                position = positions.get(identity)
+                if position is None:
+                    positions[identity] = (out_wallet, len(merged[out_wallet]))
+                    merged[out_wallet].append(dict(row))
+                else:
+                    target_wallet, index = position
+                    merged[target_wallet][index] = merge_history_record(merged[target_wallet][index], row)
+    return merged
+
+
+def atomic_write_history(path: Path, history: dict[str, Any]) -> None:
+    """Atomically replace a JSON history file after a successful merge."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temp_name = tempfile.mkstemp(prefix=path.name + ".", suffix=".tmp", dir=str(path.parent))
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(history, handle, ensure_ascii=False, indent=2)
+            handle.write("\\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_name, path)
+        dir_fd = os.open(str(path.parent), os.O_RDONLY)
+        try:
+            os.fsync(dir_fd)
+        finally:
+            os.close(dir_fd)
+    finally:
+        if os.path.exists(temp_name):
+            os.unlink(temp_name)
 
 
 def wallet_index(history: dict[str, Any]) -> dict[str, str]:
