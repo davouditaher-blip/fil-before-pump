@@ -52,7 +52,7 @@ class TestSupplementalGMGNActivity(unittest.TestCase):
                 "schema_version": 2,
                 "source": "gmgn",
                 "endpoint": "portfolio/activity",
-                "wallet": "0xABC",
+                "wallet": "0x" + "A" * 40,
                 "chain": "base",
                 "records": [{
                     "tx_hash": "0xTX1",
@@ -70,12 +70,13 @@ class TestSupplementalGMGNActivity(unittest.TestCase):
                 "endpoint": "profiler/address/historical-balances",
                 "wallet": "0xABC", "chain": "base", "records": [{"balance": 10}],
             }), encoding="utf-8")
-            history = {"0xabc": [buy("0xabc", "0xOld", 1_700_000_000, 1.0)]}
+            wallet = "0x" + "a" * 40
+            history = {wallet: [buy(wallet, "0xOld", 1_700_000_000, 1.0)]}
             sources = rhd.load_supplemental_activity(history, root)
             self.assertEqual(len(sources), 1)
             self.assertEqual(sources[0]["records_loaded"], 1)
-            self.assertEqual(len(history["0xabc"]), 2)
-            row = history["0xabc"][-1]
+            self.assertEqual(len(history[wallet]), 2)
+            row = history[wallet][-1]
             self.assertEqual(row["chain"], "base")
             self.assertEqual(row["base_address"], "0xToken")
             self.assertEqual(row["side"], "buy")
