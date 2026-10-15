@@ -36,7 +36,7 @@ def _stable(value):
 def row_identity(wallet: str, row: dict[str, Any]) -> tuple:
     wallet_key = whv.wallet_identity(wallet)
     chain = _stable(row.get("chain")).lower()
-    tx = _stable(row.get("transaction_hash") or row.get("tx_hash") or row.get("transactionHash"))
+    tx = _stable(row.get("transaction_hash") or row.get("tx_hash") or row.get("transactionHash") or row.get("id"))
     if tx:
         return (wallet_key, chain, "tx", tx.lower())
     address = _stable(row.get("address") or row.get("base_address"))
