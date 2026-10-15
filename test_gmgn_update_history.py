@@ -1,6 +1,7 @@
 import unittest
 
 import gmgn_layer
+import scanner
 
 
 def trade(tx="", price=1.0):
@@ -32,6 +33,16 @@ class GMGNHistoryMergeTests(unittest.TestCase):
         gmgn_layer.update_history([trade("", 1.0), trade("", 1.1)], history)
         self.assertEqual(len(history["wallet"]), 2)
         self.assertEqual({row["price_usd"] for row in history["wallet"]}, {1.0, 1.1})
+
+    def test_scanner_identity_keeps_distinct_transaction_hashes(self):
+        first = {"chain": "eth", "tx_hash": "tx-1", "timestamp": 1000, "address": "0xabc"}
+        second = {"chain": "eth", "tx_hash": "tx-2", "timestamp": 1000, "address": "0xabc"}
+        self.assertNotEqual(scanner._gmgn_history_key(first), scanner._gmgn_history_key(second))
+
+    def test_scanner_identity_keeps_distinct_same_second_prices(self):
+        first = {"chain": "sol", "address": "Token", "timestamp": 1000, "side": "buy", "amount_usd": 5, "price_usd": 0.5}
+        second = dict(first, price_usd=0.6)
+        self.assertNotEqual(scanner._gmgn_history_key(first), scanner._gmgn_history_key(second))
 
     def test_exact_duplicate_without_transaction_hash_is_compacted(self):
         history = {}
