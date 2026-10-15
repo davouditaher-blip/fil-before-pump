@@ -131,15 +131,25 @@ def fetch_chain(chain,wallet,limit,out_dir=OUT,runner=run_cli):
     atomic_json_write(status,{"schema_version":1,"source":"gmgn","endpoint":"portfolio/activity","wallet":wallet,"chain":chain,"status":"complete","pages_fetched":pages,"records_fetched":len(rows),"archive_records":len(combined),"fetched_at":int(time.time()),"error":None})
     return {"chain":chain,"pages":pages,"fetched":len(rows),"archive":len(combined)}
 
+def selected_chains():
+    requested = os.environ.get("BACKFILL_CHAIN", "").strip().lower()
+    if not requested:
+        return CHAINS
+    if requested not in CHAINS:
+        raise SystemExit(f"BACKFILL_CHAIN must be one of: {', '.join(CHAINS)}")
+    return (requested,)
+
+
 def main():
     if not WALLET: raise SystemExit("BACKFILL_WALLET is required")
+    chains = selected_chains()
     if not os.environ.get("GMGN_API_KEY", "").strip():
         OUT.mkdir(parents=True, exist_ok=True)
-        for chain in CHAINS:
+        for chain in chains:
             atomic_json_write(OUT/f"{chain}_{wallet_key(chain,WALLET)}.status.json", {"schema_version":1,"source":"gmgn","endpoint":"portfolio/activity","wallet":WALLET,"chain":chain,"status":"failed_or_incomplete","fetched_at":int(time.time()),"error":"GMGN_API_KEY is missing","returncode":None,"stderr":""})
         raise SystemExit("GMGN_API_KEY is missing; no provider requests were made")
     OUT.mkdir(parents=True,exist_ok=True); results=[]; errors=[]
-    for chain in CHAINS:
+    for chain in chains:
         try: results.append(fetch_chain(chain,WALLET,LIMIT))
         except Exception as exc:
             atomic_json_write(OUT/f"{chain}_{WALLET.lower()}.status.json",{"schema_version":1,"source":"gmgn","endpoint":"portfolio/activity","wallet":WALLET,"chain":chain,"status":"failed_or_incomplete","fetched_at":int(time.time()),"error":str(exc),"returncode":getattr(exc,"returncode",None),"stderr":getattr(exc,"stderr","")})
