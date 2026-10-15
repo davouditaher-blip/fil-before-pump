@@ -45,6 +45,12 @@ class GMGNBackfillTests(unittest.TestCase):
         ])
         self.assertEqual(len(rows), 2)
 
+    def test_numeric_formatting_does_not_create_duplicate_event_identity(self):
+        rows = b.merge_rows([
+            {"chain": "eth", "transaction_hash": "0xabc", "address": "0xTokenA", "side": "buy", "amount_usd": 10, "price_usd": 1},
+            {"chain": "eth", "transaction_hash": "0xabc", "address": "0xTokenA", "side": "buy", "amount_usd": 10.0, "price_usd": 1.0},
+        ])
+        self.assertEqual(len(rows), 1)
     def test_same_transaction_asset_leg_keeps_distinct_prices(self):
         rows = b.merge_rows([
             {"chain": "eth", "transaction_hash": "0xabc", "address": "0xTokenA", "side": "buy", "amount_usd": 10, "price_usd": 1.0},
