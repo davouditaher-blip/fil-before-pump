@@ -311,6 +311,8 @@ def merge_history_data(*histories: dict[str, Any]) -> dict[str, list[dict[str, A
                 else:
                     target_wallet, index = position
                     merged[target_wallet][index] = merge_history_record(merged[target_wallet][index], row)
+    for rows in merged.values():
+        rows.sort(key=lambda row: _timestamp_value(row.get("trade_timestamp") or row.get("timestamp")))
     return merged
 
 
