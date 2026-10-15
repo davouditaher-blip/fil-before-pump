@@ -1881,25 +1881,11 @@ def _history_sort_timestamp(value):
     return number // 1000 if number > 10**12 else number
 
 
-def _gmgn_history_key(row):
-    chain = str(row.get("chain") or "").strip().lower()
-    tx_hash = str(row.get("transaction_hash") or row.get("tx_hash") or row.get("id") or "").strip().lower()
-    if tx_hash:
-        return ("tx", chain, tx_hash)
-    address = str(row.get("address") or row.get("base_address") or "").strip()
-    if chain in ("eth", "ethereum", "bsc", "bnb", "base"):
-        address = address.lower()
-    return (
-        "fallback",
-        _history_sort_timestamp(row),
-        chain,
-        address,
-        str(row.get("symbol") or "").upper(),
-        str(row.get("side") or "").lower(),
-        round(float(row.get("amount_usd") or 0), 8),
-        round(float(row.get("price_usd") or row.get("price") or 0), 12),
-    )
-
+def _gmgn_history_key(row, wallet=None):
+    # Use the same canonical identity as history merging and preservation.
+    # Transaction hash alone can collapse multiple asset legs or fills.
+    wallet_key = wallet or row.get("wallet") or row.get("maker") or ""
+    return whv.history_event_identity(wallet_key, row)
 
 def _trade_price(trade):
     for key in ("price_usd", "price", "base_price", "token_price", "priceUsd"):
@@ -2013,7 +1999,7 @@ def gmgn_enrichment():
         for wallet, rows in list(gmgn_history.items()):
             dedup = {}
             for row in rows:
-                key = _gmgn_history_key(row)
+                key = _gmgn_history_key(row, wallet)
                 if key in dedup:
                     dedup[key] = whv.merge_history_record(dedup[key], row)
                 else:
