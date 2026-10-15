@@ -90,7 +90,7 @@ def main() -> int:
             done = json.loads(done_path.read_text(encoding="utf-8"))
         except Exception:
             done = {}
-        # Version 2 changes event identity to include asset+side alongside the
+        # Version 3 adds amount and execution price to the transaction event identity,
         # transaction hash. Re-run once against the trusted snapshots so any
         # distinct asset legs collapsed by the old tx-only key can be restored.
         if done.get("status") == "complete" and int(done.get("recovery_version", 0)) >= 3:
@@ -117,7 +117,7 @@ def main() -> int:
 
     report = {
         "status": "complete",
-        "recovery_version": 2,
+        "recovery_version": 3,
         "event_identity_scheme": "wallet+chain+transaction+asset+side+amount+price (fallback: asset+time+side+amount+price)",
         "recovery_commits": RECOVERY_COMMITS,
         "rows_before": rows_before,
