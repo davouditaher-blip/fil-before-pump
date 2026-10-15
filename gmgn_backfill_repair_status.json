@@ -20,14 +20,16 @@
       "changes": [
         "Rows fetched from each chain are tagged with that requested chain if the provider omits chain metadata.",
         "Live portfolio/activity reads now follow cursor pages with a three-page per-wallet cap and count every page against the existing 300-call budget.",
-        "An incomplete live cursor window is discarded and falls back to stored history rather than being treated as complete evidence."
+        "An incomplete live cursor window is discarded and falls back to stored history rather than being treated as complete evidence.",
+        "History merging never falls back to timestamp/amount matching when a transaction ID exists; fallback matching also requires the same price to avoid merging distinct same-second trades."
       ]
     },
     {
       "file": "scanner.py",
       "changes": [
         "GMGN rows are tagged with the requested chain before signals/history are built.",
-        "History deduplication includes price so two same-second events at different prices are not silently collapsed."
+        "History deduplication includes price so two same-second events at different prices are not silently collapsed.",
+        "Deduplication now keys on transaction hash when present; fallback identity includes chain, contract, timestamp, side, amount, and price. ISO/millisecond timestamps sort safely."
       ]
     },
     {
@@ -117,37 +119,71 @@
     "interpretation": "This verifies some Nansen historical-balance access, but credits ran out. These are balance snapshots, not trade events, and they are excluded from trade reconstruction."
   },
   "current_archive_audit": {
-    "measured_at_utc": "2026-10-15T23:00:10Z",
-    "workflow_run_id": 38820805757,
-    "workflow_run_url": "https://github.com/davouditaher-blip/fil-before-pump/actions/runs/38820805757",
-    "compressed_bytes": 12805815,
-    "decompressed_bytes": 105205151,
-    "decompressed_md5": "2f41bfdd3c13e168eac8f28543d39644",
-    "decompressed_sha256": "fbca0e086ab7d2ab5445757c2b15269d2a51b8fba13def4db6125a5f6a962dc5",
-    "wallets": 2273,
-    "rows": 183194,
+    "measured_at_utc": "2026-10-15T23:11:14Z",
+    "workflow_run_id": 38822005846,
+    "workflow_run_url": "https://github.com/davouditaher-blip/fil-before-pump/actions/runs/38822005846",
+    "compressed_bytes": 12820979,
+    "decompressed_bytes": 105371353,
+    "decompressed_md5": "cb0281a46318558feb51a4ef62d21fc7",
+    "decompressed_sha256": "cf5004f661a0b7df56bcf3e58d955a4900a8c44148b63393f090178851c4f822",
+    "wallets": 2288,
+    "rows": 183505,
     "rows_with_trade_timestamp": 112364,
-    "rows_with_price": 164007,
+    "rows_with_price": 164318,
     "earliest_event_utc": "2026-09-21T04:48:21Z",
-    "latest_event_utc": "2026-10-15T22:54:36Z",
-    "archive_span_days": 24.75434,
-    "known_chain_contract_assets": 6439,
+    "latest_event_utc": "2026-10-15T23:09:10Z",
+    "archive_span_days": 24.764456,
+    "known_chain_contract_assets": 6477,
     "distinct_contract_addresses_with_unknown_chain": 12605,
     "rows_missing_chain": 123184,
     "rows_by_chain": {
       "(none)": 123184,
-      "base": 316,
-      "bsc": 19779,
-      "eth": 20423,
-      "sol": 19492
+      "base": 333,
+      "bsc": 19873,
+      "eth": 20523,
+      "sol": 19592
     },
-    "assets_with_at_least_two_timestamps": 4404,
-    "maximum_single_known_chain_asset_history_days": 17.900556,
+    "assets_with_at_least_two_timestamps": 4435,
+    "maximum_single_known_chain_asset_history_days": 17.910278,
     "assets_with_at_least_90_days": 0,
     "assets_with_at_least_180_days": 0,
     "assets_with_at_least_365_days": 0,
     "matches_legacy_historical_audit_digest": false,
     "legacy_historical_audit_md5": "ef1e23b980ae3b4cb0ad239267cbbae4",
-    "note": "This is a measured snapshot; scheduled runs may append new rows after it."
+    "note": "Snapshot taken after the first successful post-repair scanner run; scheduled runs may append further rows."
+  },
+  "latest_end_to_end_validation": {
+    "workflow_run_id": 38821661055,
+    "workflow_run_url": "https://github.com/davouditaher-blip/fil-before-pump/actions/runs/38821661055",
+    "conclusion": "success",
+    "scanner_commit": "eb81d00",
+    "baseline_wallets": 2273,
+    "current_wallets": 2288,
+    "baseline_rows": 183194,
+    "current_rows": 183505,
+    "baseline_unique_event_identities": 179091,
+    "current_unique_event_identities": 179402,
+    "missing_unique_event_identities": 0,
+    "result": "History preservation guard passed; 311 new rows and 15 new wallet keys were added without deleting any unique prior event identity.",
+    "reverse_historical_discovery": "completed and persisted successfully",
+    "final_integration_gate": "passed",
+    "live_orders_enabled": false
+  },
+  "latest_ci_verification": {
+    "workflow_run_id": 38822064889,
+    "workflow_run_url": "https://github.com/davouditaher-blip/fil-before-pump/actions/runs/38822064889",
+    "conclusion": "success",
+    "checks": [
+      "compressed archive inventory",
+      "reverse_historical_discovery.py --verify",
+      "GMGN backfill pagination/resume tests",
+      "history preservation and workflow safety tests",
+      "chain attribution tests",
+      "live activity cursor pagination tests",
+      "transaction-safe history merge tests",
+      "wallet history validation tests",
+      "historical discovery tests",
+      "smoke_test.py"
+    ]
   }
 }
