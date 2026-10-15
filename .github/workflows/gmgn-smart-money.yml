@@ -47,6 +47,9 @@ jobs:
             echo "No compressed archive yet; using legacy JSON history."
           fi
 
+      - name: Recover legacy GMGN history metadata once
+        run: python recover_gmgn_history_metadata.py
+
       - name: Capture baseline GMGN history
         run: |
           set -euo pipefail
@@ -57,6 +60,9 @@ jobs:
           fi
           python validate_gmgn_history_preservation.py --baseline gmgn_wallet_history.baseline.json --current gmgn_wallet_history.baseline.json
 
+      - name: Validate history merge modules
+        run: python -m py_compile wallet_history_validation.py merge_gmgn_history_metadata.py recover_gmgn_history_metadata.py validate_gmgn_history_preservation.py gmgn_layer.py
+
       - name: Run GMGN Smart Money layer
         env:
           GMGN_API_KEY: ${{ secrets.GMGN_API_KEY }}
@@ -64,6 +70,9 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python gmgn_layer.py
+
+      - name: Restore baseline GMGN metadata after smart-money update
+        run: python merge_gmgn_history_metadata.py --baseline gmgn_wallet_history.baseline.json --current gmgn_wallet_history.json
 
       - name: Save GMGN wallet history
         run: |
@@ -86,7 +95,7 @@ jobs:
           git rm --cached -f --ignore-unmatch gmgn_wallet_history.json
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add gmgn_wallet_history.json.gz
+          git add gmgn_wallet_history.json.gz gmgn_history_recovery_done.json
           if git diff --cached --quiet; then
             echo "No GMGN history changes."
             exit 0
@@ -124,5 +133,6 @@ jobs:
             gmgn_wallet_history.json
             gmgn_wallet_history.baseline.json
             gmgn_wallet_history.json.gz.tmp
+            gmgn_history_recovery_done.json
           if-no-files-found: ignore
           retention-days: 90
