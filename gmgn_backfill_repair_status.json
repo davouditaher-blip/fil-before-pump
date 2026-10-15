@@ -153,20 +153,18 @@
     "note": "Snapshot taken after the first successful post-repair scanner run; scheduled runs may append further rows."
   },
   "latest_end_to_end_validation": {
-    "workflow_run_id": 38821661055,
-    "workflow_run_url": "https://github.com/davouditaher-blip/fil-before-pump/actions/runs/38821661055",
+    "workflow_run_id": 38822195566,
+    "workflow_run_url": "https://github.com/davouditaher-blip/fil-before-pump/actions/runs/38822195566",
     "conclusion": "success",
-    "scanner_commit": "eb81d00",
-    "baseline_wallets": 2273,
-    "current_wallets": 2288,
-    "baseline_rows": 183194,
-    "current_rows": 183505,
-    "baseline_unique_event_identities": 179091,
-    "current_unique_event_identities": 179402,
+    "scanner_commit": "e8b2f15",
+    "baseline_wallets": 2288,
+    "current_wallets": 2294,
+    "baseline_rows": 183505,
+    "current_rows": 183629,
+    "baseline_unique_event_identities": 179402,
+    "current_unique_event_identities": 179653,
     "missing_unique_event_identities": 0,
-    "result": "History preservation guard passed; 311 new rows and 15 new wallet keys were added without deleting any unique prior event identity.",
-    "reverse_historical_discovery": "completed and persisted successfully",
-    "final_integration_gate": "passed",
+    "result": "Latest completed scan preserved all prior unique history identities, appended 124 rows and 6 wallet keys, regenerated historical discovery, passed the final integration gate, and pushed successfully.",
     "live_orders_enabled": false
   },
   "latest_ci_verification": {
@@ -184,6 +182,39 @@
       "wallet history validation tests",
       "historical discovery tests",
       "smoke_test.py"
+    ]
+  },
+  "additional_end_to_end_validation": {
+    "workflow_run_id": 38822195566,
+    "workflow_run_url": "https://github.com/davouditaher-blip/fil-before-pump/actions/runs/38822195566",
+    "conclusion": "success",
+    "scanner_commit": "e8b2f15",
+    "baseline_wallets": 2288,
+    "current_wallets": 2294,
+    "baseline_rows": 183505,
+    "current_rows": 183629,
+    "baseline_unique_event_identities": 179402,
+    "current_unique_event_identities": 179653,
+    "missing_unique_event_identities": 0,
+    "result": "Second completed end-to-end scanner run started from the latest committed archive and appended 124 rows / 6 wallet keys while preserving all 179,402 prior unique event identities."
+  },
+  "concurrent_writer_failure": {
+    "workflow_run_id": 38821920739,
+    "workflow_run_url": "https://github.com/davouditaher-blip/fil-before-pump/actions/runs/38821920739",
+    "conclusion": "failure_safe",
+    "baseline_rows": 183194,
+    "attempted_rows": 183323,
+    "baseline_unique_event_identities": 179091,
+    "attempted_unique_event_identities": 179347,
+    "missing_unique_event_identities": 0,
+    "failure": "Git rebase conflict on the compressed archive because this queued run checked out an older event SHA before a previous writer's archive commit.",
+    "remote_archive_effect": "No push occurred; the previously committed archive remained intact.",
+    "recovery_limit": "This failed run had no artifact-upload step yet, so its exact incremental rows cannot be proven recoverable from the run. The subsequent successful latest-archive run added 124 rows; exact overlap with the failed run cannot be established from aggregate logs.",
+    "fix_applied": [
+      "History-writing workflows now checkout ref: main instead of a potentially stale push-event SHA.",
+      "Shallow checkout depth is limited to 10 commits and rebase fetch deepens by 20, avoiding expensive full-history clones while preserving a bounded safe rebase window.",
+      "All GMGN history and supplemental-archive writers share the scanner-history-writer concurrency group.",
+      "Failure-only artifact uploads preserve local compressed/raw history and discovery output if persistence fails."
     ]
   }
 }
