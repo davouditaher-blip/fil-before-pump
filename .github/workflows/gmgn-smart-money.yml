@@ -50,7 +50,7 @@ jobs:
           if [ -f gmgn_wallet_history.json ]; then
             cp gmgn_wallet_history.json gmgn_wallet_history.baseline.json
           else
-            printf '{}\\n' > gmgn_wallet_history.baseline.json
+            printf '{}\n' > gmgn_wallet_history.baseline.json
           fi
           python validate_gmgn_history_preservation.py --baseline gmgn_wallet_history.baseline.json --current gmgn_wallet_history.baseline.json
 
