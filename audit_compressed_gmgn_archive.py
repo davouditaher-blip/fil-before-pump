@@ -2,6 +2,7 @@
 import gzip
 import hashlib
 import json
+from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -36,6 +37,12 @@ def main():
     rows = []
     assets = set()
     chains = {}
+    asset_times = defaultdict(list)
+    chain_field_presence = Counter()
+    chain_field_values = {name: Counter() for name in ("chain", "network", "chain_name", "chain_id", "chainId", "blockchain")}
+    missing_chain_keys = Counter()
+    rows_missing_chain = 0
+    rows_missing_contract = 0
     trade_timestamps = 0
     priced_rows = 0
     for wallet, records in history.items():
@@ -49,7 +56,20 @@ def main():
             address = str(row.get("address") or row.get("base_address") or "").strip()
             if address:
                 assets.add((chain, address))
+            else:
+                rows_missing_contract += 1
             chains[chain or "(none)"] = chains.get(chain or "(none)", 0) + 1
+            if not chain:
+                rows_missing_chain += 1
+                missing_chain_keys.update(row.keys())
+            for field in chain_field_values:
+                value = row.get(field)
+                if value not in (None, "", 0, "0"):
+                    chain_field_presence[field] += 1
+                    chain_field_values[field][str(value)] += 1
+            ts_for_asset = as_ts(row.get("trade_timestamp") or row.get("timestamp"))
+            if address and ts_for_asset > 0:
+                asset_times[(chain, address)].append(ts_for_asset)
             if row.get("trade_timestamp") not in (None, "", 0, "0"):
                 trade_timestamps += 1
             if row.get("price_usd") not in (None, "", 0, "0") or row.get("price") not in (None, "", 0, "0"):
@@ -66,6 +86,11 @@ def main():
     expected_md5 = expected.get("primary_archive_md5")
     expected_bytes = expected.get("primary_archive_bytes")
     span_days = (times[-1] - times[0]) / 86400 if len(times) > 1 else 0
+    asset_spans = [
+        (max(values) - min(values)) / 86400
+        for values in asset_times.values() if len(values) >= 2
+    ]
+    asset_spans.sort()
     result = {
         "mode": "READ_ONLY_CURRENT_GMGN_ARCHIVE_AUDIT",
         "archive_path": source_path.name,
@@ -82,6 +107,18 @@ def main():
         "latest_event_utc": datetime.fromtimestamp(times[-1], timezone.utc).isoformat() if times else None,
         "archive_span_days": round(span_days, 6),
         "rows_by_chain": dict(sorted(chains.items())),
+        "rows_missing_chain": rows_missing_chain,
+        "rows_missing_contract_address": rows_missing_contract,
+        "candidate_chain_field_presence": dict(chain_field_presence),
+        "candidate_chain_field_top_values": {
+            field: dict(counter.most_common(10)) for field, counter in chain_field_values.items()
+        },
+        "common_keys_on_rows_missing_chain": dict(missing_chain_keys.most_common(30)),
+        "assets_with_at_least_two_timestamps": len(asset_spans),
+        "max_single_asset_history_days": round(asset_spans[-1], 6) if asset_spans else 0,
+        "assets_with_at_least_90_days": sum(span >= 90 for span in asset_spans),
+        "assets_with_at_least_180_days": sum(span >= 180 for span in asset_spans),
+        "assets_with_at_least_365_days": sum(span >= 365 for span in asset_spans),
         "historical_depth_audit_primary_archive_md5": expected_md5,
         "historical_depth_audit_primary_archive_bytes": expected_bytes,
         "historical_depth_audit_matches_current_archive": (
