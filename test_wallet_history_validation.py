@@ -210,12 +210,13 @@ def test_same_symbol_different_chain_stays_separate():
     assert profile["pre_pump_win_rate"] == 50.0
 
 
-def test_chain_scoped_evaluation_keeps_unattributed_rows():
-    """Only 17% of stored rows carry a chain; unknown chain is not a mismatch."""
+def test_chain_scoped_evaluation_excludes_unattributed_rows():
+    """Missing chain provenance is UNKNOWN, never silently assigned to eth."""
     rows = _triple("0xaaa", [1.1], chain="", symbol="AAA")
     profile = whv.reconstruct_wallet("untagged", rows, chain="eth")
-    assert profile["opportunities"] == 1
-    assert profile["observed_opportunities"] == 1
+    assert profile["opportunities"] == 0
+    assert profile["observed_opportunities"] == 0
+    assert profile["history_class"] == whv.NO_HISTORY
 
 
 def test_chain_scoped_evaluation_drops_a_known_mismatch():
