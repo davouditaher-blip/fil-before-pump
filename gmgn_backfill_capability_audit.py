@@ -510,7 +510,7 @@ def audit_wallet_archive() -> dict[str, Any]:
         "unique_wallets": sorted(w for w in wallets if w),
         "total_records": total_records,
         "root_cause": {
-            "summary": ("The committed per-wallet archive still contains zero activity records. Its old files do not record return code, stderr, or a reliable completion status, so the precise historical failure mode cannot be proven. The current backfill has since been hardened: it validates the API key, paginates with checkpoints, refuses incomplete full pages, preserves the prior archive, and writes failed_or_incomplete status details on errors."),
+            "summary": (f"The committed per-wallet archive currently contains {total_records} activity records across {len(wallets)} wallets. The old files do not record return code, stderr, or a reliable completion status, so the precise historical failure mode cannot be proven. The current backfill has since been hardened: it validates the API key, paginates with checkpoints, refuses incomplete full pages, preserves the prior archive, and writes failed_or_incomplete status details on errors."),
             "traced_path": [
                 "wallet_trade_backfill.py:146-150 checks GMGN_API_KEY before any provider request.",
                 "wallet_trade_backfill.py:113-127 paginates, writes checkpoints and refuses a full page without a completion signal.",
