@@ -1931,9 +1931,10 @@ def gmgn_enrichment():
     """Build the Smart Money layer and persist cross-asset wallet history.
 
     Current-scan overlap is useful, but the Fil strategy also needs wallets
-    that bought other assets in previous scans. We therefore retain a bounded
-    180-day GMGN trade history and calculate overlap/status from both the
-    current feed and that history. This is additive: a strong Smart Money
+    that bought other assets in previous scans. Retain the lifetime GMGN trade
+    archive and calculate overlap/status from current and persisted observations.
+    The history file is compressed by the workflow for repository storage. This
+    is additive: a strong Smart Money
     candidate is never removed just because historical wallet data is absent.
     """
     if not GMGN_API_KEY:
@@ -1948,22 +1949,18 @@ def gmgn_enrichment():
             gmgn_history = {}
 
         now_ts = int(datetime.now(timezone.utc).timestamp())
-        cutoff = now_ts - 180 * 86400
-
         trades = []
         for chain in ('sol', 'bsc', 'base', 'eth'):
             trades.extend(run_gmgn(chain))
 
-        # Persist the raw, read-only GMGN trade observations by wallet.
-        # Keep a bounded history so the repository does not grow forever.
+        # Persist raw GMGN observations by wallet without a time-based cutoff.
+        # The workflow compresses the lifetime archive before committing it.
         for trade in trades:
             wallet = trade.get('maker')
             symbol = ((trade.get('base_token') or {}).get('symbol') or '').upper()
             if not wallet or not symbol:
                 continue
             trade_ts = int(trade.get('timestamp') or now_ts)
-            if trade_ts < cutoff:
-                continue
             gmgn_history.setdefault(wallet, []).append({
                 'timestamp': trade_ts,
                 'chain': trade.get('chain') or '',
@@ -1977,7 +1974,7 @@ def gmgn_enrichment():
                 'price_change': trade.get('price_change'),
             })
 
-        # Deduplicate and cap each wallet's history.
+        # Deduplicate each wallet's history without deleting older observations.
         for wallet, rows in list(gmgn_history.items()):
             dedup = {}
             for row in rows:
@@ -1991,8 +1988,7 @@ def gmgn_enrichment():
                 )
                 dedup[key] = row
             rows = sorted(dedup.values(), key=lambda x: int(x.get('timestamp') or 0))
-            rows = [x for x in rows if int(x.get('timestamp') or 0) >= cutoff]
-            gmgn_history[wallet] = rows[-500:]
+            gmgn_history[wallet] = rows
         gmgn_history = {w: rows for w, rows in gmgn_history.items() if rows}
 
         # Do not overwrite a populated history file with an empty snapshot
@@ -2030,8 +2026,8 @@ def gmgn_enrichment():
                 signal['reasons'] = list(signal.get('reasons') or [])
                 signal['reasons'].append(f"proven wallet trail {len(proven)}")
 
-        # Build the cross-asset wallet map from current trades + the last
-        # 180 days of persisted GMGN observations.
+        # Build the cross-asset wallet map from current trades + all
+        # persisted GMGN observations.
         wallet_asset_rows = {}
         for wallet, rows in gmgn_history.items():
             for row in rows:
