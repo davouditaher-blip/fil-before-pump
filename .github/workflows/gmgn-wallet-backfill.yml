@@ -57,6 +57,28 @@ jobs:
             exit 0
           fi
           git commit -m "Add GMGN wallet trade backfill"
-          git fetch origin main
-          git rebase origin/main
-          git push origin HEAD:main
+          for attempt in 1 2 3 4 5; do
+            echo "GMGN archive push attempt $attempt/5"
+            git fetch origin main
+            if ! git rebase origin/main; then
+              echo "Rebase conflict; refusing to overwrite a historical activity archive."
+              git rebase --abort || true
+              exit 1
+            fi
+            if git push origin HEAD:main; then
+              echo "GMGN archive push succeeded."
+              exit 0
+            fi
+            echo "Push raced with another writer; retrying."
+            sleep 10
+          done
+          exit 1
+
+      - name: Preserve backfill artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gmgn-wallet-backfill-${{ github.run_id }}
+          path: wallet_archive/raw/gmgn/activity/
+          if-no-files-found: ignore
+          retention-days: 90
