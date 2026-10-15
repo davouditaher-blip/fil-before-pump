@@ -150,21 +150,22 @@
     "assets_with_at_least_365_days": 0,
     "matches_legacy_historical_audit_digest": false,
     "legacy_historical_audit_md5": "ef1e23b980ae3b4cb0ad239267cbbae4",
-    "note": "Snapshot taken after the first successful post-repair scanner run; scheduled runs may append further rows."
+    "note": "This is a measured snapshot at 183,505 rows. Two subsequent successful end-to-end runs increased the committed archive to 183,735 rows (see latest_end_to_end_validation); the remaining chain-attribution and 90-day coverage findings are unchanged. Later scheduled runs may append further rows."
   },
   "latest_end_to_end_validation": {
-    "workflow_run_id": 38822195566,
-    "workflow_run_url": "https://github.com/davouditaher-blip/fil-before-pump/actions/runs/38822195566",
-    "conclusion": "success",
-    "scanner_commit": "e8b2f15",
-    "baseline_wallets": 2288,
-    "current_wallets": 2294,
-    "baseline_rows": 183505,
-    "current_rows": 183629,
-    "baseline_unique_event_identities": 179402,
-    "current_unique_event_identities": 179653,
+    "workflow_run_id": 38822575732,
+    "workflow_run_url": "https://github.com/davouditaher-blip/fil-before-pump/actions/runs/38822575732",
+    "conclusion": "scan_job_success",
+    "scanner_commit": "84b3e80",
+    "baseline_wallets": 2294,
+    "current_wallets": 2300,
+    "baseline_rows": 183629,
+    "current_rows": 183735,
+    "baseline_unique_event_identities": 179653,
+    "current_unique_event_identities": 179759,
     "missing_unique_event_identities": 0,
-    "result": "Latest completed scan preserved all prior unique history identities, appended 124 rows and 6 wallet keys, regenerated historical discovery, passed the final integration gate, and pushed successfully.",
+    "result": "The latest-main checkout (ref: main, fetch-depth 10) completed the full scanner pipeline, regenerated historical discovery, passed the final integration gate, preserved every prior unique event identity, added 106 rows and 6 wallet keys, and pushed successfully.",
+    "final_integration_gate": "passed",
     "live_orders_enabled": false
   },
   "latest_ci_verification": {
@@ -209,12 +210,44 @@
     "missing_unique_event_identities": 0,
     "failure": "Git rebase conflict on the compressed archive because this queued run checked out an older event SHA before a previous writer's archive commit.",
     "remote_archive_effect": "No push occurred; the previously committed archive remained intact.",
-    "recovery_limit": "This failed run had no artifact-upload step yet, so its exact incremental rows cannot be proven recoverable from the run. The subsequent successful latest-archive run added 124 rows; exact overlap with the failed run cannot be established from aggregate logs.",
+    "recovery_limit": "The failed run's exact incremental rows cannot be proven recoverable from aggregate logs because that run predated failure-artifact uploads. Two subsequent successful scans added 124 and 106 rows respectively from the latest archive; this likely recaptured some current feed observations, but exact overlap with the failed run cannot be established.",
     "fix_applied": [
       "History-writing workflows now checkout ref: main instead of a potentially stale push-event SHA.",
       "Shallow checkout depth is limited to 10 commits and rebase fetch deepens by 20, avoiding expensive full-history clones while preserving a bounded safe rebase window.",
       "All GMGN history and supplemental-archive writers share the scanner-history-writer concurrency group.",
       "Failure-only artifact uploads preserve local compressed/raw history and discovery output if persistence fails."
     ]
-  }
+  },
+  "successful_end_to_end_runs": [
+    {
+      "workflow_run_id": 38821661055,
+      "url": "https://github.com/davouditaher-blip/fil-before-pump/actions/runs/38821661055",
+      "baseline_rows": 183194,
+      "current_rows": 183505,
+      "baseline_unique_event_identities": 179091,
+      "current_unique_event_identities": 179402,
+      "missing_unique_event_identities": 0,
+      "conclusion": "success"
+    },
+    {
+      "workflow_run_id": 38822195566,
+      "url": "https://github.com/davouditaher-blip/fil-before-pump/actions/runs/38822195566",
+      "baseline_rows": 183505,
+      "current_rows": 183629,
+      "baseline_unique_event_identities": 179402,
+      "current_unique_event_identities": 179653,
+      "missing_unique_event_identities": 0,
+      "conclusion": "success"
+    },
+    {
+      "workflow_run_id": 38822575732,
+      "url": "https://github.com/davouditaher-blip/fil-before-pump/actions/runs/38822575732",
+      "baseline_rows": 183629,
+      "current_rows": 183735,
+      "baseline_unique_event_identities": 179653,
+      "current_unique_event_identities": 179759,
+      "missing_unique_event_identities": 0,
+      "conclusion": "success"
+    }
+  ]
 }
