@@ -15,7 +15,7 @@ class BackfillError(RuntimeError):
 
 def atomic_json_write(path,payload):
     path=Path(path); path.parent.mkdir(parents=True,exist_ok=True); tmp=path.with_suffix(path.suffix+".tmp")
-    tmp.write_text(json.dumps(payload,ensure_ascii=False,indent=2)+"\\n",encoding="utf-8"); os.replace(tmp,path)
+    tmp.write_text(json.dumps(payload,ensure_ascii=False,indent=2)+"\n",encoding="utf-8"); os.replace(tmp,path)
 
 def parse_output(stdout):
     for line in reversed(str(stdout or "").splitlines()):
