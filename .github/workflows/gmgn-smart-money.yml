@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: gmgn-history-writer
+  group: scanner-history-writer
   cancel-in-progress: false
 
 jobs:
@@ -31,6 +31,19 @@ jobs:
       - name: Install GMGN CLI
         run: npm install -g gmgn-cli
 
+      - name: Restore GMGN wallet history archive
+        run: |
+          set -euo pipefail
+          if [ -f gmgn_wallet_history.json.gz ]; then
+            gzip -t gmgn_wallet_history.json.gz
+            gzip -dc gmgn_wallet_history.json.gz > gmgn_wallet_history.json.tmp
+            python -m json.tool gmgn_wallet_history.json.tmp >/dev/null
+            mv gmgn_wallet_history.json.tmp gmgn_wallet_history.json
+            echo "Restored compressed lifetime GMGN history."
+          else
+            echo "No compressed archive yet; using legacy JSON history."
+          fi
+
       - name: Run GMGN Smart Money layer
         env:
           GMGN_API_KEY: ${{ secrets.GMGN_API_KEY }}
@@ -41,9 +54,24 @@ jobs:
 
       - name: Save GMGN wallet history
         run: |
+          set -euo pipefail
+          if [ ! -f gmgn_wallet_history.json ]; then
+            echo "GMGN history file missing; refusing to overwrite the archive."
+            exit 1
+          fi
+          gzip -n -9 -c gmgn_wallet_history.json > gmgn_wallet_history.json.gz.tmp
+          gzip -t gmgn_wallet_history.json.gz.tmp
+          archive_bytes="$(wc -c < gmgn_wallet_history.json.gz.tmp)"
+          if [ "$archive_bytes" -ge 90000000 ]; then
+            echo "Compressed GMGN archive is unexpectedly large (${archive_bytes} bytes); refusing to commit."
+            exit 1
+          fi
+          mv gmgn_wallet_history.json.gz.tmp gmgn_wallet_history.json.gz
+          rm -f gmgn_wallet_history.json
+          git rm --cached -f --ignore-unmatch gmgn_wallet_history.json
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add gmgn_wallet_history.json
+          git add gmgn_wallet_history.json.gz
           if git diff --cached --quiet; then
             echo "No GMGN history changes."
             exit 0

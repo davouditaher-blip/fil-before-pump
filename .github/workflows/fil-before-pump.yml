@@ -9,6 +9,7 @@ on:
       - "wallet_events.json"
       - "futures_volume_history.json"
       - "gmgn_wallet_history.json"
+      - "gmgn_wallet_history.json.gz"
       - "wallet_quality.json"
       - "wallet_clusters.json"
       - "wallet_radar.json"
@@ -74,6 +75,19 @@ jobs:
           python -m pip install requests
           npm install -g gmgn-cli
 
+      - name: Restore GMGN wallet history archive
+        run: |
+          set -euo pipefail
+          if [ -f gmgn_wallet_history.json.gz ]; then
+            gzip -t gmgn_wallet_history.json.gz
+            gzip -dc gmgn_wallet_history.json.gz > gmgn_wallet_history.json.tmp
+            python -m json.tool gmgn_wallet_history.json.tmp >/dev/null
+            mv gmgn_wallet_history.json.tmp gmgn_wallet_history.json
+            echo "Restored compressed lifetime GMGN history."
+          else
+            echo "No compressed archive yet; using legacy JSON history."
+          fi
+
       - name: Validate Python modules
         run: |
           python -m py_compile scanner.py gmgn_layer.py wallet_quality_engine.py
@@ -132,10 +146,24 @@ jobs:
 
       - name: Persist scanner history
         run: |
-          set -e
+          set -euo pipefail
+          if [ ! -f gmgn_wallet_history.json ]; then
+            echo "GMGN history file missing; refusing to overwrite the archive."
+            exit 1
+          fi
+          gzip -n -9 -c gmgn_wallet_history.json > gmgn_wallet_history.json.gz.tmp
+          gzip -t gmgn_wallet_history.json.gz.tmp
+          archive_bytes="$(wc -c < gmgn_wallet_history.json.gz.tmp)"
+          if [ "$archive_bytes" -ge 90000000 ]; then
+            echo "Compressed GMGN archive is unexpectedly large (${archive_bytes} bytes); refusing to commit."
+            exit 1
+          fi
+          mv gmgn_wallet_history.json.gz.tmp gmgn_wallet_history.json.gz
+          rm -f gmgn_wallet_history.json
+          git rm --cached -f --ignore-unmatch gmgn_wallet_history.json
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add historical_replay.json volume_history.json wallet_history.json wallet_events.json futures_volume_history.json gmgn_wallet_history.json wallet_quality.json wallet_clusters.json wallet_radar.json wallet_signal_profiles.json trade_readiness.json paper_trades.json paper_performance.json wallet_paper_feedback.json wallet_performance_memory.json
+          git add historical_replay.json volume_history.json wallet_history.json wallet_events.json futures_volume_history.json gmgn_wallet_history.json.gz wallet_quality.json wallet_clusters.json wallet_radar.json wallet_signal_profiles.json trade_readiness.json paper_trades.json paper_performance.json wallet_paper_feedback.json wallet_performance_memory.json
           if git diff --cached --quiet; then
             echo "No history changes to commit."
             exit 0
