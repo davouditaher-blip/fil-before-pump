@@ -6,7 +6,7 @@ WALLET=os.environ.get("BACKFILL_WALLET","0x7bf30399dba8051c2bf191afe2cd07ea4e064
 try: LIMIT=int(os.environ.get("GMGN_ACTIVITY_LIMIT","100"))
 except ValueError: LIMIT=100
 if not 1 <= LIMIT <= 200: raise SystemExit("GMGN_ACTIVITY_LIMIT must be between 1 and 200")
-MAX_PAGES=100
+MAX_PAGES=1000
 OUT=Path("wallet_archive/raw/gmgn/activity")
 
 class BackfillError(RuntimeError):
@@ -95,6 +95,11 @@ def fetch_chain(chain,wallet,limit,out_dir=OUT,runner=run_cli):
 
 def main():
     if not WALLET: raise SystemExit("BACKFILL_WALLET is required")
+    if not os.environ.get("GMGN_API_KEY", "").strip():
+        OUT.mkdir(parents=True, exist_ok=True)
+        for chain in CHAINS:
+            atomic_json_write(OUT/f"{chain}_{WALLET.lower()}.status.json", {"schema_version":1,"source":"gmgn","endpoint":"portfolio/activity","wallet":WALLET,"chain":chain,"status":"failed_or_incomplete","fetched_at":int(time.time()),"error":"GMGN_API_KEY is missing","returncode":None,"stderr":""})
+        raise SystemExit("GMGN_API_KEY is missing; no provider requests were made")
     OUT.mkdir(parents=True,exist_ok=True); results=[]; errors=[]
     for chain in CHAINS:
         try: results.append(fetch_chain(chain,WALLET,LIMIT))
