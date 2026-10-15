@@ -36,6 +36,7 @@ def main():
 
     rows = []
     assets = set()
+    unknown_chain_assets = set()
     chains = {}
     asset_times = defaultdict(list)
     chain_field_presence = Counter()
@@ -54,8 +55,10 @@ def main():
             rows.append(row)
             chain = str(row.get("chain") or "").strip().lower()
             address = str(row.get("address") or row.get("base_address") or "").strip()
-            if address:
+            if address and chain:
                 assets.add((chain, address))
+            elif address:
+                unknown_chain_assets.add(address)
             else:
                 rows_missing_contract += 1
             chains[chain or "(none)"] = chains.get(chain or "(none)", 0) + 1
@@ -68,7 +71,7 @@ def main():
                     chain_field_presence[field] += 1
                     chain_field_values[field][str(value)] += 1
             ts_for_asset = as_ts(row.get("trade_timestamp") or row.get("timestamp"))
-            if address and ts_for_asset > 0:
+            if address and chain and ts_for_asset > 0:
                 asset_times[(chain, address)].append(ts_for_asset)
             if row.get("trade_timestamp") not in (None, "", 0, "0"):
                 trade_timestamps += 1
@@ -106,6 +109,7 @@ def main():
         "wallet_count": len(history),
         "row_count": len(rows),
         "unique_chain_contract_assets": len(assets),
+        "unique_contract_addresses_with_unknown_chain": len(unknown_chain_assets),
         "rows_with_trade_timestamp": trade_timestamps,
         "rows_with_price": priced_rows,
         "earliest_event_utc": datetime.fromtimestamp(times[0], timezone.utc).isoformat() if times else None,
