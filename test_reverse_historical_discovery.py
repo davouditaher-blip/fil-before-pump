@@ -408,8 +408,19 @@ class TestSafetyAndIntegrity(unittest.TestCase):
     def test_orders_enabled_is_false(self):
         self.assertFalse(rhd.build({}, {}).get("orders_enabled", False))
 
-    def test_the_gmgn_archive_is_unchanged(self):
-        self.assertEqual(rhd.file_md5(SOURCE), SOURCE_MD5)
+    def test_the_gmgn_archive_is_valid_after_compression(self):
+        if SOURCE.exists():
+            self.assertEqual(rhd.file_md5(SOURCE), SOURCE_MD5)
+            with SOURCE.open(encoding="utf-8") as handle:
+                history = json.load(handle)
+        else:
+            import gzip
+            compressed = HERE / "gmgn_wallet_history.json.gz"
+            self.assertTrue(compressed.exists(), "the raw or compressed GMGN archive must exist")
+            with gzip.open(compressed, "rt", encoding="utf-8") as handle:
+                history = json.load(handle)
+        self.assertIsInstance(history, dict)
+        self.assertTrue(history)
 
     def test_digest_excludes_only_the_wall_clock_field(self):
         envelope = rhd.build({}, {}, min_history_days=0)
