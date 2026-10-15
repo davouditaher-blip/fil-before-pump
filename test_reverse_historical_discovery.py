@@ -43,6 +43,56 @@ def sell(wallet, address, ts, price, usd=1_000.0, chain="eth", symbol="TOK"):
     return row
 
 
+class TestSupplementalGMGNActivity(unittest.TestCase):
+    def test_completed_activity_archive_is_normalized_and_merged(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            payload = {
+                "schema_version": 2,
+                "source": "gmgn",
+                "endpoint": "portfolio/activity",
+                "wallet": "0xABC",
+                "chain": "base",
+                "records": [{
+                    "tx_hash": "0xTX1",
+                    "timestamp": 1_800_000_000,
+                    "event_type": "buy",
+                    "token": {"address": "0xToken", "symbol": "tok"},
+                    "cost_usd": 42.5,
+                    "price_usd": 0.25,
+                }],
+            }
+            (root / "base_wallet.json").write_text(json.dumps(payload), encoding="utf-8")
+            (root / "base_wallet.partial.json").write_text(json.dumps(payload), encoding="utf-8")
+            (root / "nansen_balances.json").write_text(json.dumps({
+                "schema_version": 2, "source": "nansen",
+                "endpoint": "profiler/address/historical-balances",
+                "wallet": "0xABC", "chain": "base", "records": [{"balance": 10}],
+            }), encoding="utf-8")
+            history = {"0xabc": [buy("0xabc", "0xOld", 1_700_000_000, 1.0)]}
+            sources = rhd.load_supplemental_activity(history, root)
+            self.assertEqual(len(sources), 1)
+            self.assertEqual(sources[0]["records_loaded"], 1)
+            self.assertEqual(len(history["0xabc"]), 2)
+            row = history["0xabc"][-1]
+            self.assertEqual(row["chain"], "base")
+            self.assertEqual(row["base_address"], "0xToken")
+            self.assertEqual(row["side"], "buy")
+            self.assertEqual(row["amount_usd"], 42.5)
+            self.assertEqual(row["trade_timestamp"], 1_800_000_000)
+            self.assertEqual(row["transaction_hash"], "0xTX1")
+            self.assertEqual(row["source"], "gmgn_portfolio_activity")
+
+    def test_no_supplemental_sources_leaves_primary_history_unchanged(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as temp:
+            history = {"0xabc": [buy("0xabc", "0xToken", 1000, 1.0)]}
+            before = json.loads(json.dumps(history))
+            self.assertEqual(rhd.load_supplemental_activity(history, Path(temp)), [])
+            self.assertEqual(history, before)
+
+
 class TestMoveDetection(unittest.TestCase):
     def test_a_twenty_percent_rise_is_detected(self):
         series = [(1_000, 1.00), (2_000, 1.10), (3_000, 1.20)]
