@@ -809,6 +809,14 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit(
             f"source archive changed during the run: {before} -> {after}"
         )
+    if ARTIFACT.exists():
+        try:
+            committed = json.loads(ARTIFACT.read_text(encoding="utf-8"))
+            committed_digest = (committed.get("determinism") or {}).get("payload_sha256")
+            if committed_digest == envelope["determinism"]["payload_sha256"]:
+                envelope["generated_at"] = committed.get("generated_at", envelope["generated_at"])
+        except Exception:
+            pass
     ARTIFACT.write_text(
         json.dumps(envelope, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
