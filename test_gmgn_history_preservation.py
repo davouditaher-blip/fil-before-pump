@@ -52,6 +52,29 @@ class GMGNHistoryPreservationTests(unittest.TestCase):
         ]}
         self.assertFalse(guard.compare_histories(before, after)["preserved"])
 
+    def test_metadata_loss_fails_closed_even_when_event_identity_survives(self):
+        before = {"wallet": [{
+            "chain": "eth",
+            "transaction_hash": "tx-1",
+            "timestamp": 1000,
+            "trade_timestamp": 1000,
+            "peak_multiple": 4.0,
+            "maker_tags": ["smart_money"],
+        }]}
+        after = {"wallet": [{
+            "chain": "eth",
+            "transaction_hash": "tx-1",
+            "timestamp": 1000,
+            "peak_multiple": 1.0,
+            "maker_tags": [],
+        }]}
+        result = guard.compare_histories(before, after)
+        self.assertFalse(result["preserved"])
+        self.assertFalse(result["metadata_preserved"])
+        self.assertIn("trade_timestamp", result["metadata_loss_counts_by_field"])
+        self.assertIn("peak_multiple", result["metadata_loss_counts_by_field"])
+        self.assertIn("maker_tags", result["metadata_loss_counts_by_field"])
+
     def test_invalid_history_root_is_rejected(self):
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / "bad.json"
