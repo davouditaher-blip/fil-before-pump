@@ -1868,6 +1868,38 @@ def apply_wallet_signals(result, layer):
 
 GMGN_API_KEY = os.environ.get("GMGN_API_KEY", "")
 
+def _history_sort_timestamp(value):
+    value = (value.get("timestamp") or value.get("trade_timestamp")) if isinstance(value, dict) else value
+    try:
+        number = int(float(value or 0))
+    except (TypeError, ValueError):
+        try:
+            number = int(datetime.fromisoformat(str(value).replace("Z", "+00:00")).timestamp())
+        except (TypeError, ValueError, OverflowError):
+            return 0
+    return number // 1000 if number > 10**12 else number
+
+
+def _gmgn_history_key(row):
+    chain = str(row.get("chain") or "").strip().lower()
+    tx_hash = str(row.get("transaction_hash") or row.get("tx_hash") or row.get("id") or "").strip().lower()
+    if tx_hash:
+        return ("tx", chain, tx_hash)
+    address = str(row.get("address") or row.get("base_address") or "").strip()
+    if chain in ("eth", "ethereum", "bsc", "bnb", "base"):
+        address = address.lower()
+    return (
+        "fallback",
+        _history_sort_timestamp(row),
+        chain,
+        address,
+        str(row.get("symbol") or "").upper(),
+        str(row.get("side") or "").lower(),
+        round(float(row.get("amount_usd") or 0), 8),
+        round(float(row.get("price_usd") or row.get("price") or 0), 12),
+    )
+
+
 def _trade_price(trade):
     for key in ("price_usd", "price", "base_price", "token_price", "priceUsd"):
         try:
@@ -1965,6 +1997,7 @@ def gmgn_enrichment():
                 'timestamp': trade_ts,
                 'chain': trade.get('chain') or '',
                 'address': trade.get('base_address') or '',
+                'transaction_hash': trade.get('transaction_hash') or trade.get('tx_hash') or trade.get('id') or '',
                 'symbol': symbol,
                 'side': str(trade.get('side') or '').lower(),
                 'amount_usd': float(trade.get('amount_usd') or 0),
@@ -1974,21 +2007,12 @@ def gmgn_enrichment():
                 'price_change': trade.get('price_change'),
             })
 
-        # Deduplicate each wallet's history without deleting older observations.
+        # Deduplicate exact events without collapsing distinct transactions.
         for wallet, rows in list(gmgn_history.items()):
             dedup = {}
             for row in rows:
-                key = (
-                    int(row.get('timestamp') or 0),
-                    row.get('chain') or '',
-                    row.get('address') or '',
-                    row.get('symbol') or '',
-                    row.get('side') or '',
-                    round(float(row.get('amount_usd') or 0), 8),
-                    round(float(row.get('price_usd') or 0), 12),
-                )
-                dedup[key] = row
-            rows = sorted(dedup.values(), key=lambda x: int(x.get('timestamp') or 0))
+                dedup[_gmgn_history_key(row)] = row
+            rows = sorted(dedup.values(), key=_history_sort_timestamp)
             gmgn_history[wallet] = rows
         gmgn_history = {w: rows for w, rows in gmgn_history.items() if rows}
 
