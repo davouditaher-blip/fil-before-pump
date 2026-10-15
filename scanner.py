@@ -1985,6 +1985,7 @@ def gmgn_enrichment():
                     row.get('symbol') or '',
                     row.get('side') or '',
                     round(float(row.get('amount_usd') or 0), 8),
+                    round(float(row.get('price_usd') or 0), 12),
                 )
                 dedup[key] = row
             rows = sorted(dedup.values(), key=lambda x: int(x.get('timestamp') or 0))
