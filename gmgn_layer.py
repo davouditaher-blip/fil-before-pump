@@ -367,6 +367,7 @@ def run_gmgn_cli(args, timeout=60):
 # which is exactly what the Actions logs showed).
 ACTIVITY_CALL_BUDGET = 300
 ACTIVITY_CALL_PACING_SECONDS = 0.5
+MAX_ACTIVITY_PAGES_PER_WALLET = 3
 _ACTIVITY_CALLS = {"count": 0, "exhausted": False}
 
 
@@ -379,24 +380,87 @@ def activity_budget_exhausted():
 
 
 def portfolio_activity(chain, wallet, limit=200):
+    """Fetch a bounded cursor window; incomplete pages never become proof."""
     if chain not in CHAINS or not wallet:
         return []
-    if activity_budget_exhausted():
+    collected = []
+    cursor = None
+    seen_cursors = set()
+    complete = False
+    for page_number in range(MAX_ACTIVITY_PAGES_PER_WALLET):
+        if activity_budget_exhausted():
+            break
+        if int(_ACTIVITY_CALLS.get("count", 0)) >= ACTIVITY_CALL_BUDGET:
+            _ACTIVITY_CALLS["exhausted"] = True
+            print(f"GMGN ACTIVITY BUDGET: hit {ACTIVITY_CALL_BUDGET} page calls for this run; further calls skipped.")
+            break
+        _ACTIVITY_CALLS["count"] = int(_ACTIVITY_CALLS.get("count", 0)) + 1
+        time.sleep(ACTIVITY_CALL_PACING_SECONDS)
+        args = [
+            "portfolio", "activity", "--chain", chain, "--wallet", wallet,
+            "--limit", str(limit), "--type", "buy", "--type", "sell"
+        ]
+        if cursor:
+            args.extend(["--cursor", cursor])
+        obj = run_gmgn_cli(args, timeout=75)
+        if not isinstance(obj, dict) or not obj:
+            break
+
+        data = obj.get("activities")
+        if data is None:
+            data = obj.get("list")
+        if data is None:
+            data = obj.get("data")
+        nested = data if isinstance(data, dict) else {}
+        if isinstance(data, dict):
+            data = nested.get("activities")
+            if data is None:
+                data = nested.get("list")
+            if data is None:
+                data = nested.get("data")
+        if not isinstance(data, list):
+            print(f"GMGN ACTIVITY: invalid activity-list response for {chain}; falling back to stored history.")
+            break
+
+        collected.extend(data)
+        pagination = obj.get("pagination") if isinstance(obj.get("pagination"), dict) else {}
+        if not pagination and isinstance(nested.get("pagination"), dict):
+            pagination = nested["pagination"]
+        next_cursor = (
+            obj.get("next") or obj.get("next_cursor") or obj.get("nextCursor")
+            or obj.get("next_page_token") or pagination.get("next")
+            or pagination.get("next_cursor") or pagination.get("nextCursor")
+            or nested.get("next") or nested.get("next_cursor") or nested.get("nextCursor")
+        )
+        has_more = obj.get("has_more")
+        if has_more is None:
+            has_more = pagination.get("has_more")
+        is_last = obj.get("is_last_page")
+        if is_last is None:
+            is_last = pagination.get("is_last_page")
+
+        if is_last is True or has_more is False:
+            complete = True
+            break
+        if next_cursor:
+            next_cursor = str(next_cursor)
+            if next_cursor in seen_cursors:
+                print(f"GMGN ACTIVITY: repeated cursor for {chain}; discarding incomplete live window.")
+                break
+            seen_cursors.add(next_cursor)
+            cursor = next_cursor
+            continue
+        if len(data) < limit:
+            complete = True
+            break
+        print(f"GMGN ACTIVITY: full page without next cursor for {chain}; discarding incomplete live window.")
+        break
+
+    if not complete:
+        if collected:
+            print(f"GMGN ACTIVITY: incomplete cursor window for {chain}; using stored history instead of partial live rows.")
         return []
-    if int(_ACTIVITY_CALLS.get("count", 0)) >= ACTIVITY_CALL_BUDGET:
-        _ACTIVITY_CALLS["exhausted"] = True
-        print(f"GMGN ACTIVITY BUDGET: hit {ACTIVITY_CALL_BUDGET} portfolio calls for this run; further calls skipped.")
-        return []
-    _ACTIVITY_CALLS["count"] = int(_ACTIVITY_CALLS.get("count", 0)) + 1
-    time.sleep(ACTIVITY_CALL_PACING_SECONDS)
-    obj = run_gmgn_cli([
-        "portfolio", "activity", "--chain", chain, "--wallet", wallet,
-        "--limit", str(limit), "--type", "buy", "--type", "sell"
-    ], timeout=75)
-    data = obj.get("list") or obj.get("data") or []
-    if isinstance(data, dict):
-        data = data.get("list") or data.get("data") or data.get("activities") or []
-    return data if isinstance(data, list) else []
+    return collected
 
 
 def token_kline(chain, address, start_ts, end_ts):
