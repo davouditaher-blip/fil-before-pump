@@ -57,7 +57,7 @@ def _md5(path: Path) -> str:
 class TestAuditReadsTheCodeAccurately(unittest.TestCase):
     """Re-derive the audit's claims from source, independently of the report."""
 
-    def test_portfolio_activity_sends_no_time_or_pagination_flag(self):
+    def test_portfolio_activity_sends_cursor_but_no_time_range(self):
         """The central claim. Verified by reading the argv the code builds."""
         tree = ast.parse(LAYER.read_text(encoding="utf-8"))
         activity = None
@@ -76,23 +76,21 @@ class TestAuditReadsTheCodeAccurately(unittest.TestCase):
         self.assertIn("--wallet", flags)
         self.assertNotIn("--from", flags, "no time-range flag is actually sent")
         self.assertNotIn("--to", flags, "no time-range flag is actually sent")
-        self.assertNotIn("--cursor", flags, "production sends no cursor")
+        self.assertIn("--cursor", flags, "live activity now follows provider cursors")
         self.assertNotIn("--page", flags, "production sends no page number")
 
-    def test_production_code_contains_no_cursor_or_page_argument(self):
-        for path in (LAYER, BACKFILL):
-            tree = ast.parse(path.read_text(encoding="utf-8"))
-            sent: set[str] = set()
-            for node in ast.walk(tree):
-                if isinstance(node, ast.Constant) and isinstance(node.value, str):
-                    if node.value in ("--cursor", "--page", "--offset"):
-                        sent.add(node.value)
-            self.assertEqual(
-                sent, set(),
-                f"{path.name} must not send a pagination flag: {sent}")
+    def test_backfill_and_runtime_wrapper_both_have_cursor_pagination(self):
+        tree = ast.parse(LAYER.read_text(encoding="utf-8"))
+        activity = next(node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef) and node.name == "portfolio_activity")
+        flags = {node.value for node in ast.walk(activity) if isinstance(node, ast.Constant) and isinstance(node.value, str)}
+        self.assertIn("--cursor", flags)
+        source = BACKFILL.read_text(encoding="utf-8")
+        self.assertIn('"--cursor"', source)
+        self.assertIn("while True:", source)
+        self.assertIn("MAX_PAGES=1000", source)
 
     def test_the_probe_does_implement_cursor_pagination(self):
-        # The contrast that matters: cursor support exists, but only in the probe.
+        # The read-only probe also supports cursor and page pagination.
         tree = ast.parse(PROBE.read_text(encoding="utf-8"))
         sent = {
             node.value for node in ast.walk(tree)
@@ -119,56 +117,41 @@ class TestAuditReadsTheCodeAccurately(unittest.TestCase):
         self.assertIn("--from", flags)
         self.assertIn("--to", flags)
 
-    def test_backfill_makes_one_call_per_chain_with_no_loop(self):
+    def test_backfill_paginates_each_chain_until_provider_completion(self):
         source = BACKFILL.read_text(encoding="utf-8")
-        # CHAINS is a 4-tuple and the loop body calls run_cli exactly once.
-        self.assertIn('CHAINS = ("sol", "bsc", "base", "eth")', source)
-        self.assertEqual(source.count("obj = run_cli(chain)"), 1)
+        self.assertIn('CHAINS=("sol","bsc","base","eth")', source)
+        self.assertIn("runner(chain,wallet,limit,cursor)", source)
+        self.assertIn("next_cursor", source)
+        self.assertIn("MAX_PAGES=1000", source)
 
-    def test_backfill_writes_the_file_even_when_rows_are_empty(self):
-        """The wallet_archive root cause, verified in the source."""
+    def test_backfill_refuses_malformed_or_empty_error_responses(self):
         source = BACKFILL.read_text(encoding="utf-8")
-        self.assertIn('rows = obj.get("list") or obj.get("data") or []', source)
-        # The write is not inside any conditional on rows being non-empty.
-        write_at = source.index("raw_path.write_text")
-        rows_at = source.index('rows = obj.get("list")')
-        between = source[rows_at:write_at]
-        self.assertNotIn("if rows", between)
-        self.assertNotIn("if not rows", between)
+        self.assertIn("refusing to record empty history", source)
+        self.assertIn("Existing archive unreadable; refusing overwrite", source)
+        self.assertIn("failed_or_incomplete", source)
+        self.assertIn("partial.json", source)
 
-    def test_backfill_records_no_error_state(self):
+    def test_backfill_persists_error_state(self):
         source = BACKFILL.read_text(encoding="utf-8")
-        for persisted in ('"error"', '"returncode"', '"stderr"'):
-            self.assertNotIn(
-                persisted, source,
-                f"{persisted} would mean the failure cause is persisted")
+        for persisted in ('"error"', '"returncode"', '"stderr"', '"status"'):
+            self.assertIn(persisted, source)
 
     def test_backfill_has_no_rate_limit_detection(self):
         source = BACKFILL.read_text(encoding="utf-8")
         self.assertNotIn("detect_rate_limit", source)
         self.assertNotIn("RATE_LIMIT", source)
 
-    def test_backfill_has_no_api_key_preflight(self):
+    def test_backfill_has_api_key_preflight(self):
         source = BACKFILL.read_text(encoding="utf-8")
-        self.assertNotIn("GMGN_API_KEY", source)
+        self.assertIn('os.environ.get("GMGN_API_KEY", "").strip()', source)
+        self.assertIn("GMGN_API_KEY is missing", source)
 
-    def test_backfill_does_not_guard_the_subprocess_call(self):
-        tree = ast.parse(BACKFILL.read_text(encoding="utf-8"))
-        run_cli = None
-        for node in ast.walk(tree):
-            if isinstance(node, ast.FunctionDef) and node.name == "run_cli":
-                run_cli = node
-        self.assertIsNotNone(run_cli)
-        # Only the JSON parse loop may have a try; the subprocess call may not be
-        # wrapped, which is why a missing npx raises instead of returning {}.
-        guarded = []
-        for node in ast.walk(run_cli):
-            if isinstance(node, ast.Try):
-                for inner in ast.walk(node):
-                    if isinstance(inner, ast.Call) and isinstance(inner.func, ast.Attribute):
-                        guarded.append(inner.func.attr)
-        self.assertNotIn("run", guarded)
-
+    def test_backfill_guards_subprocess_and_preserves_failure_details(self):
+        source = BACKFILL.read_text(encoding="utf-8")
+        self.assertIn("subprocess.run(cmd", source)
+        self.assertIn("except Exception as exc: raise BackfillError", source)
+        self.assertIn("returncode", source)
+        self.assertIn("stderr", source)
 
 class TestArchiveRootCauseIsEvidenceBased(unittest.TestCase):
     def setUp(self):
@@ -376,7 +359,7 @@ class TestReportIsReadOnlyAndHonest(unittest.TestCase):
         self.assertEqual(maturity["gmgn_test_files"], [])
         self.assertIn("no unit tests", maturity["note"])
 
-    def test_the_audit_excludes_its_own_test_and_says_so(self):
+    def test_historical_audit_explicitly_excludes_its_own_test(self):
         # Regression: the audit globs test_*.py for "gmgn", which matches its own
         # test file. Without an explicit exclusion the coverage finding flips to
         # True the moment this file exists, silently.
@@ -387,10 +370,13 @@ class TestReportIsReadOnlyAndHonest(unittest.TestCase):
                          maturity["gmgn_test_files"])
         self.assertIn("covers the audit and not GMGN production code",
                       maturity["note"])
-        # And the exclusion must be real, not a hardcoded literal: assert it
-        # against a directory that genuinely has no other gmgn test.
-        globbed = [p.name for p in HERE.glob("test_*.py") if "gmgn" in p.name]
-        self.assertEqual(sorted(globbed), excluded)
+        # The report is a historical snapshot. New repair tests are expected
+        # to exist now and are documented in gmgn_backfill_repair_status.json.
+        globbed = {p.name for p in HERE.glob("test_*.py") if "gmgn" in p.name}
+        self.assertIn("test_gmgn_backfill_capability_audit.py", globbed)
+        self.assertIn("test_gmgn_chain_attribution.py", globbed)
+        self.assertIn("test_gmgn_history_preservation.py", globbed)
+        self.assertIn("test_gmgn_portfolio_activity.py", globbed)
 
     def test_the_missing_probe_result_is_recorded(self):
         self.assertFalse(self.report["demonstrated_depth"]["gmgn_depth_probe_result"]["present"])
@@ -453,8 +439,21 @@ class TestProtectedFilesUntouched(unittest.TestCase):
         for name in MUST_BE_UNTOUCHED:
             self.assertIn(name, gba.READ_ONLY_FILES)
 
-    def test_the_primary_archive_still_matches_its_known_digest(self):
-        self.assertEqual(_md5(HERE / "gmgn_wallet_history.json"), HISTORY_MD5)
+    def test_primary_archive_is_valid_after_compression(self):
+        raw_path = HERE / "gmgn_wallet_history.json"
+        if raw_path.exists():
+            self.assertEqual(_md5(raw_path), HISTORY_MD5)
+            with raw_path.open(encoding="utf-8") as handle:
+                data = json.load(handle)
+        else:
+            import gzip
+            compressed = HERE / "gmgn_wallet_history.json.gz"
+            self.assertTrue(compressed.exists(), "either raw JSON or compressed archive must exist")
+            with gzip.open(compressed, "rt", encoding="utf-8") as handle:
+                data = json.load(handle)
+        self.assertIsInstance(data, dict)
+        self.assertTrue(data)
+        self.assertGreater(sum(len(rows) for rows in data.values() if isinstance(rows, list)), 0)
 
     def test_the_wallet_archive_still_holds_one_wallet_and_zero_records(self):
         files = sorted(ARCHIVE_DIR.glob("*.json"))

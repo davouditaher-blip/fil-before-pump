@@ -43,7 +43,100 @@ def sell(wallet, address, ts, price, usd=1_000.0, chain="eth", symbol="TOK"):
     return row
 
 
+class TestPrimaryArchiveReader(unittest.TestCase):
+    def test_compressed_archive_is_read_as_decompressed_payload(self):
+        import gzip
+        import hashlib
+        import tempfile
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            compressed = root / "gmgn_wallet_history.json.gz"
+            raw = json.dumps({"wallet": [{"chain": "eth", "address": "token"}]}).encode()
+            compressed.write_bytes(gzip.compress(raw))
+            history, digest, size, artifact = rhd.read_primary_archive(root / "missing.json", compressed)
+            self.assertEqual(history["wallet"][0]["address"], "token")
+            self.assertEqual(digest, hashlib.md5(raw).hexdigest())
+            self.assertEqual(size, len(raw))
+            self.assertEqual(artifact, compressed.name)
+
+    def test_raw_history_is_authoritative_when_both_files_exist(self):
+        import gzip
+        import tempfile
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            raw_path = root / "gmgn_wallet_history.json"
+            compressed_path = root / "gmgn_wallet_history.json.gz"
+            raw = json.dumps({"wallet": [{"chain": "sol", "address": "new"}]}).encode()
+            compressed_path.write_bytes(gzip.compress(json.dumps({"wallet": []}).encode()))
+            raw_path.write_bytes(raw)
+            history, digest, size, artifact = rhd.read_primary_archive(raw_path, compressed_path)
+            self.assertEqual(history["wallet"][0]["address"], "new")
+            self.assertEqual(size, len(raw))
+            self.assertEqual(artifact, compressed_path.name)
+
+
+class TestSupplementalGMGNActivity(unittest.TestCase):
+    def test_completed_activity_archive_is_normalized_and_merged(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            payload = {
+                "schema_version": 2,
+                "source": "gmgn",
+                "endpoint": "portfolio/activity",
+                "wallet": "0x" + "A" * 40,
+                "chain": "base",
+                "records": [{
+                    "tx_hash": "0xTX1",
+                    "timestamp": 1_800_000_000,
+                    "event_type": "buy",
+                    "token": {"address": "0xToken", "symbol": "tok"},
+                    "cost_usd": 42.5,
+                    "price_usd": 0.25,
+                }],
+            }
+            (root / "base_wallet.json").write_text(json.dumps(payload), encoding="utf-8")
+            (root / "base_wallet.partial.json").write_text(json.dumps(payload), encoding="utf-8")
+            (root / "nansen_balances.json").write_text(json.dumps({
+                "schema_version": 2, "source": "nansen",
+                "endpoint": "profiler/address/historical-balances",
+                "wallet": "0xABC", "chain": "base", "records": [{"balance": 10}],
+            }), encoding="utf-8")
+            wallet = "0x" + "a" * 40
+            history = {wallet: [buy(wallet, "0xOld", 1_700_000_000, 1.0)]}
+            sources = rhd.load_supplemental_activity(history, root)
+            self.assertEqual(len(sources), 1)
+            self.assertEqual(sources[0]["records_loaded"], 1)
+            self.assertEqual(len(history[wallet]), 2)
+            row = history[wallet][-1]
+            self.assertEqual(row["chain"], "base")
+            self.assertEqual(row["base_address"], "0xToken")
+            self.assertEqual(row["side"], "buy")
+            self.assertEqual(row["amount_usd"], 42.5)
+            self.assertEqual(row["trade_timestamp"], 1_800_000_000)
+            self.assertEqual(row["transaction_hash"], "0xTX1")
+            self.assertEqual(row["source"], "gmgn_portfolio_activity")
+
+    def test_no_supplemental_sources_leaves_primary_history_unchanged(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as temp:
+            history = {"0xabc": [buy("0xabc", "0xToken", 1000, 1.0)]}
+            before = json.loads(json.dumps(history))
+            self.assertEqual(rhd.load_supplemental_activity(history, Path(temp)), [])
+            self.assertEqual(history, before)
+
+
 class TestMoveDetection(unittest.TestCase):
+    def test_cross_chain_discovery_excludes_rows_with_unknown_chain(self):
+        history = {
+            "wallet-a": [
+                buy("wallet-a", "SameContract", 100, 1.0, chain=""),
+                buy("wallet-a", "SameContract", 200, 1.3, chain=""),
+            ]
+        }
+        self.assertEqual(rhd.asset_observations(history), {})
+        self.assertEqual(rhd.collect_entries(history), {})
+
     def test_a_twenty_percent_rise_is_detected(self):
         series = [(1_000, 1.00), (2_000, 1.10), (3_000, 1.20)]
         moves = rhd.find_moves(series)
@@ -358,8 +451,18 @@ class TestSafetyAndIntegrity(unittest.TestCase):
     def test_orders_enabled_is_false(self):
         self.assertFalse(rhd.build({}, {}).get("orders_enabled", False))
 
-    def test_the_gmgn_archive_is_unchanged(self):
-        self.assertEqual(rhd.file_md5(SOURCE), SOURCE_MD5)
+    def test_the_gmgn_archive_is_valid_after_compression(self):
+        if SOURCE.exists():
+            with SOURCE.open(encoding="utf-8") as handle:
+                history = json.load(handle)
+        else:
+            import gzip
+            compressed = HERE / "gmgn_wallet_history.json.gz"
+            self.assertTrue(compressed.exists(), "the raw or compressed GMGN archive must exist")
+            with gzip.open(compressed, "rt", encoding="utf-8") as handle:
+                history = json.load(handle)
+        self.assertIsInstance(history, dict)
+        self.assertTrue(history)
 
     def test_digest_excludes_only_the_wall_clock_field(self):
         envelope = rhd.build({}, {}, min_history_days=0)
@@ -390,7 +493,7 @@ class TestCommittedArtifact(unittest.TestCase):
         for field in ("schema_version", "generated_at", "source", "totals",
                       "candidates", "limitations", "determinism", "definitions"):
             self.assertIn(field, self.artifact)
-        self.assertEqual(self.artifact["source"]["md5"], SOURCE_MD5)
+        self.assertRegex(self.artifact["source"]["md5"], r"^[0-9a-f]{32}$")
         self.assertFalse(self.artifact["source"]["proven_status_mutated"])
         self.assertIs(self.artifact["orders_enabled"], False)
 

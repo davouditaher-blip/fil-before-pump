@@ -1,0 +1,153 @@
+{
+  "schema_version": 1,
+  "report_type": "GMGN_BACKFILL_REPAIR_STATUS",
+  "generated_at": "2026-10-16",
+  "scope": "Repository source audit and committed-archive measurements from GitHub Actions. GMGN live backfill has not been run.",
+  "completed_code_repairs": [
+    {
+      "file": "wallet_trade_backfill.py",
+      "changes": [
+        "Cursor pagination supports activities/list/data response shapes, including nested cursors and multiline JSON output.",
+        "Checkpoint/resume persists each successful page; a completed archive is merged with prior records and replaced only after completeness checks.",
+        "Malformed responses, command failures, repeated cursors, and full pages without a cursor are marked failed_or_incomplete; prior completed archives are left untouched.",
+        "API-key preflight prevents unauthenticated requests; page limit is validated; the run is capped at 1000 pages with resumable checkpoints.",
+        "Wallet-specific backfill can target one explicit chain; Solana wallet/token identity preserves base58 case while EVM identity is normalized.",
+        "JSON writes are atomic and timestamp sorting accepts numeric, millisecond, and ISO timestamps."
+      ]
+    },
+    {
+      "file": "gmgn_layer.py",
+      "changes": [
+        "Rows fetched from each chain are tagged with that requested chain if the provider omits chain metadata.",
+        "Live portfolio/activity reads now follow cursor pages with a three-page per-wallet cap and count every page against the existing 300-call budget.",
+        "An incomplete live cursor window is discarded and falls back to stored history rather than being treated as complete evidence."
+      ]
+    },
+    {
+      "file": "scanner.py",
+      "changes": [
+        "GMGN rows are tagged with the requested chain before signals/history are built.",
+        "History deduplication includes price so two same-second events at different prices are not silently collapsed."
+      ]
+    },
+    {
+      "file": "validate_gmgn_history_preservation.py and both history-writer workflows",
+      "changes": [
+        "A baseline snapshot is taken before a run; before compression, every distinct prior event identity must still exist in the new history.",
+        "Exact duplicate compaction is allowed, but missing unique events, malformed JSON, invalid history shape, or a destructive rebase conflict fail closed without replacing the remote archive.",
+        "Removed git rebase -X theirs from the main scanner and GMGN smart-money writers; conflicts no longer prefer a potentially stale local archive.",
+        "The raw history is JSON-validated before compression and the compressed archive is validated before commit."
+      ]
+    },
+    {
+      "file": "reverse_historical_discovery.py",
+      "changes": [
+        "Completed schema-v2 GMGN portfolio/activity archives are normalized into historical discovery with chain+contract identity and per-file hashes.",
+        "Partial checkpoints, status files, old placeholder artifacts, and Nansen balance snapshots are excluded.",
+        "Rows with no known chain are excluded from cross-chain asset observations, preventing a bare contract address from being incorrectly treated as a chain+contract identity."
+      ]
+    },
+    {
+      "file": "nansen_backfill.py",
+      "changes": [
+        "Fixed JSON newline escaping so checkpoints and archives remain parseable."
+      ]
+    },
+    {
+      "file": "CI and regression tests",
+      "changes": [
+        "Added offline tests for pagination, resume/merge safety, chain attribution, case sensitivity, incomplete live windows, baseline preservation, compressed archive validity, and supplemental discovery ingestion.",
+        "Pull-request CI runs the new tests and a read-only inventory of the committed compressed archive."
+      ]
+    },
+    {
+      "file": ".github/workflows/fil-before-pump.yml and reverse_historical_discovery.py",
+      "changes": [
+        "The scanner workflow now regenerates and commits reverse_historical_discovery.json from the updated archive, including completed supplemental GMGN activity archives.",
+        "The discovery script reads either raw JSON or the committed gzip archive, records the decompressed payload checksum, and keeps generated_at stable when evidence is unchanged to avoid unnecessary commits."
+      ]
+    }
+  ],
+  "historical_data_facts": {
+    "source_artifact": "gmgn_wallet_history.json.gz",
+    "current_committed_archive_bytes": 12778811,
+    "previous_audit_snapshot": {
+      "raw_rows": 182588,
+      "unique_wallets": 2215,
+      "unique_assets": 17271,
+      "whole_archive_span_days": 8.9714,
+      "widest_asset_span_days": 5.0628,
+      "assets_with_at_least_90_days": 0,
+      "assets_with_at_least_180_days": 0,
+      "assets_with_at_least_365_days": 0,
+      "note": "These are the committed audit's measured values for the historical snapshot, not a fresh provider query."
+    }
+  },
+  "not_yet_verified_or_not_yet_solved": [
+    "No live GMGN backfill has been run. The secret value is not inspectable here, and actual GMGN cursor responses, quota, and available historical depth remain unverified.",
+    "The manual backfill handles one wallet and one selected chain per run; automatic enumeration and batch backfill of the full discovered-wallet population is not implemented.",
+    "The current archive spans about 24.75 days overall, and the longest observed history for a known-chain contract is about 17.9 days. No asset has 90/180/365 days, so the existing archive cannot satisfy the 90-day discovery gate.",
+    "123,184 existing rows have no usable chain attribution and the rows contain no alternative network/chain-id field. Their chain cannot be inferred safely from the current archive; they are retained but excluded from cross-chain historical discovery. New scanner and GMGN-layer rows now inherit the requested chain.",
+    "The legacy historical-depth audit's source digest does not match the current compressed archive; the legacy report is a prior snapshot, not a current measurement.",
+    "Nansen historical-balance backfill stopped after 1,000 rows because the provider returned HTTP 403 insufficient_credits; balance snapshots are not substitute trade history.",
+    "The code and offline tests are repaired, but historical coverage cannot be declared complete until a successful live GMGN backfill provides and verifies older trade events."
+  ],
+  "safety": {
+    "orders_enabled": false,
+    "live_trading_enabled": false,
+    "note": "No live-order setting was enabled or changed."
+  },
+  "observed_provider_run": {
+    "workflow": "Nansen Historical Backfill v1",
+    "run_id": 38819700669,
+    "url": "https://github.com/davouditaher-blip/fil-before-pump/actions/runs/38819700669",
+    "outcome": "failed_after_partial_data",
+    "endpoint": "profiler/address/historical-balances",
+    "requested_window_utc": [
+      "2026-08-25T00:00:00Z",
+      "2026-09-24T23:59:59Z"
+    ],
+    "successful_pages": 10,
+    "rows_received": 1000,
+    "failure_page": 11,
+    "http_status": 403,
+    "provider_error": "insufficient_credits",
+    "partial_checkpoint_committed_to_main": "wallet_archive/raw/nansen/historical_balances/ethereum/0x28c6c06298d514db089934071355e5743bf21d60.partial.json",
+    "commit": "20cda76",
+    "interpretation": "This verifies some Nansen historical-balance access, but credits ran out. These are balance snapshots, not trade events, and they are excluded from trade reconstruction."
+  },
+  "current_archive_audit": {
+    "measured_at_utc": "2026-10-15T23:00:10Z",
+    "workflow_run_id": 38820805757,
+    "workflow_run_url": "https://github.com/davouditaher-blip/fil-before-pump/actions/runs/38820805757",
+    "compressed_bytes": 12805815,
+    "decompressed_bytes": 105205151,
+    "decompressed_md5": "2f41bfdd3c13e168eac8f28543d39644",
+    "decompressed_sha256": "fbca0e086ab7d2ab5445757c2b15269d2a51b8fba13def4db6125a5f6a962dc5",
+    "wallets": 2273,
+    "rows": 183194,
+    "rows_with_trade_timestamp": 112364,
+    "rows_with_price": 164007,
+    "earliest_event_utc": "2026-09-21T04:48:21Z",
+    "latest_event_utc": "2026-10-15T22:54:36Z",
+    "archive_span_days": 24.75434,
+    "known_chain_contract_assets": 6439,
+    "distinct_contract_addresses_with_unknown_chain": 12605,
+    "rows_missing_chain": 123184,
+    "rows_by_chain": {
+      "(none)": 123184,
+      "base": 316,
+      "bsc": 19779,
+      "eth": 20423,
+      "sol": 19492
+    },
+    "assets_with_at_least_two_timestamps": 4404,
+    "maximum_single_known_chain_asset_history_days": 17.900556,
+    "assets_with_at_least_90_days": 0,
+    "assets_with_at_least_180_days": 0,
+    "assets_with_at_least_365_days": 0,
+    "matches_legacy_historical_audit_digest": false,
+    "legacy_historical_audit_md5": "ef1e23b980ae3b4cb0ad239267cbbae4",
+    "note": "This is a measured snapshot; scheduled runs may append new rows after it."
+  }
+}

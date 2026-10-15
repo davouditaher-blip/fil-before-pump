@@ -44,6 +44,16 @@ jobs:
             echo "No compressed archive yet; using legacy JSON history."
           fi
 
+      - name: Capture baseline GMGN history
+        run: |
+          set -euo pipefail
+          if [ -f gmgn_wallet_history.json ]; then
+            cp gmgn_wallet_history.json gmgn_wallet_history.baseline.json
+          else
+            printf '{}\n' > gmgn_wallet_history.baseline.json
+          fi
+          python validate_gmgn_history_preservation.py --baseline gmgn_wallet_history.baseline.json --current gmgn_wallet_history.baseline.json
+
       - name: Run GMGN Smart Money layer
         env:
           GMGN_API_KEY: ${{ secrets.GMGN_API_KEY }}
@@ -59,6 +69,8 @@ jobs:
             echo "GMGN history file missing; refusing to overwrite the archive."
             exit 1
           fi
+          python validate_gmgn_history_preservation.py --baseline gmgn_wallet_history.baseline.json --current gmgn_wallet_history.json
+          python -m json.tool gmgn_wallet_history.json >/dev/null
           gzip -n -9 -c gmgn_wallet_history.json > gmgn_wallet_history.json.gz.tmp
           gzip -t gmgn_wallet_history.json.gz.tmp
           archive_bytes="$(wc -c < gmgn_wallet_history.json.gz.tmp)"
@@ -67,7 +79,7 @@ jobs:
             exit 1
           fi
           mv gmgn_wallet_history.json.gz.tmp gmgn_wallet_history.json.gz
-          rm -f gmgn_wallet_history.json
+          rm -f gmgn_wallet_history.json gmgn_wallet_history.baseline.json
           git rm --cached -f --ignore-unmatch gmgn_wallet_history.json
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -83,16 +95,16 @@ jobs:
           for attempt in 1 2 3 4 5; do
             echo "GMGN history push attempt $attempt/5"
             git fetch origin main
-            if git rebase -X theirs origin/main; then
-              if git push origin HEAD:main; then
-                echo "GMGN history push succeeded."
-                exit 0
-              fi
-              echo "Push raced with another writer; retrying."
-            else
-              echo "Rebase conflict; aborting rebase before retry."
+            if ! git rebase origin/main; then
+              echo "Rebase conflict; refusing to prefer either history archive."
               git rebase --abort || true
+              exit 1
             fi
+            if git push origin HEAD:main; then
+              echo "GMGN history push succeeded."
+              exit 0
+            fi
+            echo "Push raced with another writer; retrying without choosing either archive."
             sleep 10
           done
 

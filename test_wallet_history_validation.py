@@ -345,6 +345,7 @@ def test_row_without_contract_address_has_no_identity():
     assert whv.asset_identity({"symbol": "AAA", "chain": "sol"}) is None
 
 
+
 # --------------------------------------------------------------------------
 # Summary reporting
 # --------------------------------------------------------------------------
@@ -643,8 +644,15 @@ def test_the_committed_history_dedup_count_is_unchanged_by_this_rule():
     """
     import json as _json
 
-    with open("gmgn_wallet_history.json") as fh:
-        stored = _json.load(fh)
+    import gzip
+    from pathlib import Path
+    raw_path = Path("gmgn_wallet_history.json")
+    if raw_path.exists():
+        with raw_path.open(encoding="utf-8") as fh:
+            stored = _json.load(fh)
+    else:
+        with gzip.open("gmgn_wallet_history.json.gz", "rt", encoding="utf-8") as fh:
+            stored = _json.load(fh)
 
     def strict(rows):
         """The previous strict hash-keyed rule, for comparison."""
