@@ -33,6 +33,9 @@ class HistoryPersistenceWorkflowTests(unittest.TestCase):
             self.assertIn("recover_gmgn_history_metadata.py", source, name)
             self.assertIn("merge_gmgn_history_metadata.py --baseline", source, name)
             self.assertIn("gmgn_history_recovery_done.json", source, name)
+            self.assertIn("python build_proven_wallet_registry.py", source, name)
+            self.assertIn("historical_depth_audit.py", source, name)
+            self.assertIn("gmgn_backfill_capability_audit.py", source, name)
             if name == ".github/workflows/gmgn-smart-money.yml":
                 self.assertIn("python reverse_historical_discovery.py", source, name)
                 self.assertIn('id: reverse_discovery', source, name)
