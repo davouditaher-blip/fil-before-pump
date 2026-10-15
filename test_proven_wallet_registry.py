@@ -26,7 +26,7 @@ ARTIFACT = HERE / "proven_wallet_registry.json"
 SOURCE = HERE / "gmgn_wallet_history.json"
 def current_source_md5() -> str:
     if SOURCE.exists():
-        return pwr.file_md5(SOURCE)
+        return hashlib.md5(SOURCE.read_bytes()).hexdigest()
     with gzip.open(HERE / "gmgn_wallet_history.json.gz", "rb") as handle:
         return hashlib.md5(handle.read()).hexdigest()
 
