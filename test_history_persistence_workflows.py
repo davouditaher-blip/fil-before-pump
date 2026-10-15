@@ -32,6 +32,9 @@ class HistoryPersistenceWorkflowTests(unittest.TestCase):
             self.assertIn("python -m json.tool gmgn_wallet_history.json", source, name)
         backfill = (ROOT / ".github/workflows/gmgn-wallet-backfill.yml").read_text(encoding="utf-8")
         self.assertIn("refusing to overwrite a historical activity archive", backfill)
+        self.assertIn("group: scanner-history-writer", backfill)
+        self.assertIn("cancel-in-progress: false", backfill)
+        self.assertIn("ref: main", backfill)
         self.assertIn("actions/upload-artifact@v4", backfill)
 
     def test_scanner_dedup_keeps_different_prices_as_distinct_events(self):
