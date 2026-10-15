@@ -2,7 +2,7 @@
   "schema_version": 1,
   "report_type": "GMGN_BACKFILL_REPAIR_STATUS",
   "generated_at": "2026-10-16",
-  "scope": "Repository source and committed artifacts; no live provider request was executed by this repair.",
+  "scope": "Repository source audit plus observed GitHub Actions runs. The Nansen workflow was automatically triggered by changing nansen_backfill.py; no GMGN backfill was run.",
   "completed_code_repairs": [
     {
       "file": "wallet_trade_backfill.py",
@@ -56,6 +56,7 @@
     }
   },
   "not_yet_verified_or_not_yet_solved": [
+    "GMGN was not queried during this repair; GMGN_API_KEY validity, live cursor responses, provider rate limits, and available historical depth remain unverified.",
     "No live GMGN backfill was run during this code repair; actual API-key validity, cursor values returned by the user's account, rate limits, and available historical depth remain unverified.",
     "The current backfill workflow accepts one wallet per run. It does not yet enumerate the full discovered-wallet population or automatically populate the historical-discovery engine.",
     "gmgn_layer.portfolio_activity still makes a single non-paginated runtime call; the new pagination is in the dedicated wallet backfill path, not the live signal path.",
@@ -68,5 +69,24 @@
     "orders_enabled": false,
     "live_trading_enabled": false,
     "note": "No order execution code or live-order setting was enabled or changed by this repair."
+  },
+  "observed_provider_run": {
+    "workflow": "Nansen Historical Backfill v1",
+    "run_id": 38819700669,
+    "url": "https://github.com/davouditaher-blip/fil-before-pump/actions/runs/38819700669",
+    "outcome": "failed_after_partial_data",
+    "endpoint": "profiler/address/historical-balances",
+    "requested_window_utc": [
+      "2026-08-25T00:00:00Z",
+      "2026-09-24T23:59:59Z"
+    ],
+    "successful_pages": 10,
+    "rows_received": 1000,
+    "failure_page": 11,
+    "http_status": 403,
+    "provider_error": "insufficient_credits",
+    "partial_checkpoint_committed_to_main": "wallet_archive/raw/nansen/historical_balances/ethereum/0x28c6c06298d514db089934071355e5743bf21d60.partial.json",
+    "commit": "20cda76",
+    "interpretation": "This verifies the configured Nansen credential can fetch some historical-balance pages, but credit exhaustion stopped the run. These are balance snapshots, not trade events, and cannot be used as trade-history evidence."
   }
 }
