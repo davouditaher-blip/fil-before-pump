@@ -89,6 +89,19 @@ def save_history(history):
     HISTORY_FILE.write_text(json.dumps(history, indent=2))
 
 
+def with_chain_context(rows, requested_chain):
+    """Attach the chain requested from GMGN when the provider omits it."""
+    result = []
+    for raw in rows or []:
+        if not isinstance(raw, dict):
+            continue
+        row = dict(raw)
+        if not row.get("chain"):
+            row["chain"] = requested_chain
+        result.append(row)
+    return result
+
+
 def build_signals(trades):
     by_token = defaultdict(list)
     for t in trades:
@@ -716,7 +729,7 @@ def main():
 
     trades = []
     for chain in CHAINS:
-        rows = run_gmgn(chain)
+        rows = with_chain_context(run_gmgn(chain), chain)
         print(f"GMGN {chain}: {len(rows)} records")
         trades.extend(rows)
         time.sleep(0.25)
