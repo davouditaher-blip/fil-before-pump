@@ -38,6 +38,14 @@
       "changes": [
         "Fixes JSON output newline escaping so successful checkpoints and final archives remain parseable JSON."
       ]
+    },
+    {
+      "file": "reverse_historical_discovery.py",
+      "changes": [
+        "Completed schema-v2 GMGN portfolio/activity archives are now normalized and merged into historical discovery with chain+contract identity.",
+        "Partial checkpoints, status files, legacy placeholder artifacts, and Nansen historical-balance snapshots are excluded.",
+        "Supplemental archive file hashes and record counts are embedded in the deterministic discovery provenance."
+      ]
     }
   ],
   "historical_data_facts": {
@@ -56,9 +64,9 @@
     }
   },
   "not_yet_verified_or_not_yet_solved": [
+    "The new historical-discovery adapter is covered by offline fixtures but has not yet been exercised against a successful live GMGN portfolio/activity archive; actual provider data and 90-day depth remain unverified.",
     "GMGN was not queried during this repair; GMGN_API_KEY validity, live cursor responses, provider rate limits, and available historical depth remain unverified.",
     "No live GMGN backfill was run during this code repair; actual API-key validity, cursor values returned by the user's account, rate limits, and available historical depth remain unverified.",
-    "The current backfill workflow accepts one wallet per run. It does not yet enumerate the full discovered-wallet population or automatically populate the historical-discovery engine.",
     "gmgn_layer.portfolio_activity still makes a single non-paginated runtime call; the new pagination is in the dedicated wallet backfill path, not the live signal path.",
     "The existing GMGN smart-money archive is a forward feed and its measured span remains under 9 days; code changes cannot manufacture missing older events.",
     "Nansen historical-balances data is not trade history and must not be mixed into trade-event reconstruction.",
