@@ -95,6 +95,16 @@ class TestSupplementalGMGNActivity(unittest.TestCase):
 
 
 class TestMoveDetection(unittest.TestCase):
+    def test_cross_chain_discovery_excludes_rows_with_unknown_chain(self):
+        history = {
+            "wallet-a": [
+                buy("wallet-a", "SameContract", 100, 1.0, chain=""),
+                buy("wallet-a", "SameContract", 200, 1.3, chain=""),
+            ]
+        }
+        self.assertEqual(rhd.asset_observations(history), {})
+        self.assertEqual(rhd.collect_entries(history), {})
+
     def test_a_twenty_percent_rise_is_detected(self):
         series = [(1_000, 1.00), (2_000, 1.10), (3_000, 1.20)]
         moves = rhd.find_moves(series)
