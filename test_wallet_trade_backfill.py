@@ -4,7 +4,7 @@ import wallet_trade_backfill as b
 
 class GMGNBackfillTests(unittest.TestCase):
     def test_parse_cli_output(self):
-        obj = b.parse_output('progress\\n{"activities": [], "next": null}\\n')
+        obj = b.parse_output("progress" + chr(10) + '{"activities": [], "next": null}' + chr(10))
         self.assertEqual(obj["activities"], [])
 
     def test_documented_activities_and_cursor(self):
