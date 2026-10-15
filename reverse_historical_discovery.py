@@ -184,6 +184,7 @@ def load_supplemental_activity(
         if not canonical_wallet:
             raise ValueError(f"Invalid wallet identity in supplemental archive: {path.name}")
         target_wallet = wallet_index.get(canonical_wallet, wallet)
+        wallet_index[canonical_wallet] = target_wallet
         normalized_count = 0
         target_rows = history.setdefault(target_wallet, [])
         for raw in records:
