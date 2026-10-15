@@ -702,7 +702,15 @@ def reconstruct_wallet(
     unchanged, plus an explicit ``history_class`` and the evidence counters the
     report needs.
     """
-    clean = dedupe(rows or [])
+    source_rows = [row for row in (rows or []) if isinstance(row, dict)]
+    unattributed_chain_rows = sum(
+        1 for row in source_rows
+        if not str(row.get("chain") or "").strip()
+        and bool(str(row.get("address") or row.get("base_address") or "").strip())
+        and event_ts(row) > 0
+        and event_side(row) in {"buy", "sell"}
+    )
+    clean = dedupe(source_rows)
     grouped: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
     for row in clean:
         identity = asset_identity(row)
@@ -725,6 +733,11 @@ def reconstruct_wallet(
         opportunities = [o for o in opportunities if o["chain"] == wanted]
 
     history_class, observed, successes, unknown, win_rate = classify(opportunities)
+    # Unknown-chain trades are real activity but cannot prove performance.
+    # Preserve that distinction: report historical activity as unproven rather
+    # than incorrectly calling the wallet a cold start.
+    if history_class == NO_HISTORY and unattributed_chain_rows:
+        history_class = ACTIVITY_BUT_UNPROVEN
 
     return {
         "wallet": wallet,
@@ -735,6 +748,7 @@ def reconstruct_wallet(
         "opportunities": len(opportunities),
         "observed_opportunities": len(observed),
         "unknown_opportunities": len(unknown),
+        "unattributed_chain_rows": unattributed_chain_rows,
         "successful_pre_pump_entries": len(successes),
         "pre_pump_win_rate": win_rate,
         "entries_with_exit": sum(1 for o in opportunities if o["exit_timestamp"] is not None),
