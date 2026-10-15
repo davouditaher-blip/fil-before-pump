@@ -55,6 +55,7 @@ import wallet_history_validation as whv
 
 HERE = Path(__file__).resolve().parent
 SOURCE_ARCHIVE = HERE / "gmgn_wallet_history.json"
+SOURCE_ARCHIVE_GZ = HERE / "gmgn_wallet_history.json.gz"
 REGISTRY = HERE / "proven_wallet_registry.json"
 ARTIFACT = HERE / "reverse_historical_discovery.json"
 SUPPLEMENTAL_ACTIVITY_DIR = HERE / "wallet_archive" / "raw" / "gmgn" / "activity"
