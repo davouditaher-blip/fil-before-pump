@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import requests
+import wallet_history_validation as whv
 
 from confluence_engine import build_confluence
 from trade_readiness import build as build_trade_readiness
@@ -1995,6 +1996,7 @@ def gmgn_enrichment():
             trade_ts = int(trade.get('timestamp') or now_ts)
             gmgn_history.setdefault(wallet, []).append({
                 'timestamp': trade_ts,
+                'trade_timestamp': trade.get('trade_timestamp') or trade_ts,
                 'chain': trade.get('chain') or '',
                 'address': trade.get('base_address') or '',
                 'transaction_hash': trade.get('transaction_hash') or trade.get('tx_hash') or trade.get('id') or '',
@@ -2011,7 +2013,11 @@ def gmgn_enrichment():
         for wallet, rows in list(gmgn_history.items()):
             dedup = {}
             for row in rows:
-                dedup[_gmgn_history_key(row)] = row
+                key = _gmgn_history_key(row)
+                if key in dedup:
+                    dedup[key] = whv.merge_history_record(dedup[key], row)
+                else:
+                    dedup[key] = row
             rows = sorted(dedup.values(), key=_history_sort_timestamp)
             gmgn_history[wallet] = rows
         gmgn_history = {w: rows for w, rows in gmgn_history.items() if rows}
