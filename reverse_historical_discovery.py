@@ -40,6 +40,7 @@ what the archive actually contains. It is recorded in the artifact under
 from __future__ import annotations
 
 import argparse
+import gzip
 import hashlib
 import json
 import sys
