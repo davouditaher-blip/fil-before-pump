@@ -7,6 +7,12 @@ on:
         description: "Wallet address to backfill"
         required: true
         default: "0x7bf30399dba8051c2bf191afe2cd07ea4e064625"
+      chain:
+        description: "Chain for this wallet address"
+        required: true
+        type: choice
+        options: [eth, bsc, base, sol]
+        default: "eth"
       limit:
         description: "Rows per page (1-200); cursor pagination continues until complete"
         required: true
@@ -43,6 +49,7 @@ jobs:
         env:
           GMGN_API_KEY: ${{ secrets.GMGN_API_KEY }}
           BACKFILL_WALLET: ${{ github.event.inputs.wallet }}
+          BACKFILL_CHAIN: ${{ github.event.inputs.chain }}
           GMGN_ACTIVITY_LIMIT: ${{ github.event.inputs.limit }}
         run: python3 wallet_trade_backfill.py
 
