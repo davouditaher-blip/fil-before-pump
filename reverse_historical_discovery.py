@@ -217,8 +217,12 @@ def load_supplemental_activity(
             row["source"] = "gmgn_portfolio_activity"
             target_rows.append(row)
             normalized_count += 1
+        try:
+            artifact_path = str(path.relative_to(HERE))
+        except ValueError:
+            artifact_path = path.name
         sources.append({
-            "artifact": str(path.relative_to(HERE)),
+            "artifact": artifact_path,
             "md5": file_md5(path),
             "bytes": path.stat().st_size,
             "chain": chain,
