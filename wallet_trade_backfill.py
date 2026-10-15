@@ -152,7 +152,7 @@ def main():
     for chain in chains:
         try: results.append(fetch_chain(chain,WALLET,LIMIT))
         except Exception as exc:
-            atomic_json_write(OUT/f"{chain}_{WALLET.lower()}.status.json",{"schema_version":1,"source":"gmgn","endpoint":"portfolio/activity","wallet":WALLET,"chain":chain,"status":"failed_or_incomplete","fetched_at":int(time.time()),"error":str(exc),"returncode":getattr(exc,"returncode",None),"stderr":getattr(exc,"stderr","")})
+            atomic_json_write(OUT/f"{chain}_{wallet_key(chain,WALLET)}.status.json",{"schema_version":1,"source":"gmgn","endpoint":"portfolio/activity","wallet":WALLET,"chain":chain,"status":"failed_or_incomplete","fetched_at":int(time.time()),"error":str(exc),"returncode":getattr(exc,"returncode",None),"stderr":getattr(exc,"stderr","")})
             print(f"ERROR chain={chain}: {exc}")
             if getattr(exc,"stderr",""): print("STDERR: "+exc.stderr)
             errors.append(chain)
