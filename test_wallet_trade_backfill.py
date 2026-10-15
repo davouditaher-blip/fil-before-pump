@@ -7,12 +7,28 @@ class GMGNBackfillTests(unittest.TestCase):
         obj = b.parse_output("progress" + chr(10) + '{"activities": [], "next": null}' + chr(10))
         self.assertEqual(obj["activities"], [])
 
+    def test_parse_pretty_printed_json(self):
+        payload = "{\\n  \\"data\\": {\\n    \\"activities\\": [{\\"id\\": \\"x\\"}], \\"next\\": \\"cursor-2\\"\\n  }\\n}"
+        self.assertEqual(b.parse_output(payload)["data"]["next"], "cursor-2")
+
     def test_documented_activities_and_cursor(self):
         rows, cursor, more, last = b.extract_rows_cursor({"activities": [{"tx_hash": "abc"}], "next": "c2"})
         self.assertEqual(len(rows), 1)
         self.assertEqual(cursor, "c2")
         self.assertIsNone(more)
         self.assertIsNone(last)
+
+    def test_nested_activity_cursor_is_supported(self):
+        rows, cursor, more, last = b.extract_rows_cursor({"data": {"activities": [{"id": "x"}], "next": "cursor-3"}})
+        self.assertEqual(rows, [{"id": "x"}])
+        self.assertEqual(cursor, "cursor-3")
+
+    def test_merge_sorts_iso_and_epoch_timestamps_without_crashing(self):
+        rows = b.merge_rows(
+            [{"tx_hash": "later", "timestamp": "2026-01-01T00:00:00Z"}],
+            [{"tx_hash": "earlier", "timestamp": 1000}],
+        )
+        self.assertEqual([row["tx_hash"] for row in rows], ["earlier", "later"])
 
     def test_legacy_shapes(self):
         self.assertEqual(b.extract_rows_cursor({"list": [{"id": "1"}]})[0], [{"id": "1"}])
