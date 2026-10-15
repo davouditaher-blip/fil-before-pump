@@ -98,7 +98,7 @@ while True:
         "records": all_rows,
     }
     checkpoint_path.write_text(
-        json.dumps(checkpoint_payload, ensure_ascii=False, indent=2) + "\\n"
+        json.dumps(checkpoint_payload, ensure_ascii=False, indent=2) + "\n"
     )
 
     if pagination.get("is_last_page") is True or not data:
@@ -120,7 +120,7 @@ payload = {
     "records": all_rows,
 }
 
-path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\\n")
+path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
 checkpoint_path.unlink(missing_ok=True)
 
 print(f"ARCHIVE={path}")
