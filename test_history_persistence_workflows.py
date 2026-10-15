@@ -25,6 +25,8 @@ class HistoryPersistenceWorkflowTests(unittest.TestCase):
         for name in (".github/workflows/fil-before-pump.yml", ".github/workflows/gmgn-smart-money.yml"):
             source = (ROOT / name).read_text(encoding="utf-8")
             self.assertIn("ref: main", source, name)
+            self.assertIn("fetch-depth: 10", source, name)
+            self.assertIn("git fetch --deepen=20 origin main", source, name)
             self.assertIn("actions/upload-artifact@v4", source, name)
             self.assertIn("refusing to prefer either history archive", source, name)
             self.assertIn("validate_gmgn_history_preservation.py --baseline", source, name)
@@ -35,6 +37,8 @@ class HistoryPersistenceWorkflowTests(unittest.TestCase):
         self.assertIn("group: scanner-history-writer", backfill)
         self.assertIn("cancel-in-progress: false", backfill)
         self.assertIn("ref: main", backfill)
+        self.assertIn("fetch-depth: 10", backfill)
+        self.assertIn("git fetch --deepen=20 origin main", backfill)
         self.assertIn("actions/upload-artifact@v4", backfill)
 
     def test_scanner_dedup_keeps_different_prices_as_distinct_events(self):
