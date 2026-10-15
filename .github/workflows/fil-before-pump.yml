@@ -62,6 +62,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
+          ref: main
           fetch-depth: 0
 
       - name: Setup Python
@@ -200,6 +201,21 @@ jobs:
             sleep 10
           done
           exit 1
+
+      - name: Preserve generated history if the scan fails
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scanner-history-failure-${{ github.run_id }}
+          path: |
+            gmgn_wallet_history.json.gz
+            gmgn_wallet_history.json
+            gmgn_wallet_history.baseline.json
+            gmgn_wallet_history.json.gz.tmp
+            reverse_historical_discovery.json
+            wallet_history_manifest.json
+          if-no-files-found: ignore
+          retention-days: 90
 
   health:
     if: ${{ always() }}
