@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "report_type": "GMGN_BACKFILL_REPAIR_STATUS",
+  "generated_at": "2026-10-16",
+  "scope": "Repository source and committed artifacts; no live provider request was executed by this repair.",
+  "completed_code_repairs": [
+    {
+      "file": "wallet_trade_backfill.py",
+      "changes": [
+        "Cursor pagination follows the documented GMGN portfolio activity response cursor and accepts activities/list/data payload variants.",
+        "Resumes from per-chain checkpoint and caps a single run at 1000 pages to prevent runaway loops.",
+        "Writes a completed archive only after pagination is judged complete; merges prior records rather than replacing them.",
+        "Malformed responses, subprocess errors, repeated cursors, and full pages without a cursor are recorded as failed_or_incomplete and do not replace the completed archive.",
+        "Persists error, returncode, stderr, and status; validates GMGN_API_KEY before requests."
+      ]
+    },
+    {
+      "file": "test_wallet_trade_backfill.py",
+      "changes": [
+        "Offline tests cover response variants, cursor pagination, merge preservation, malformed responses, and refusing to overwrite a completed archive when pagination completeness is unknown."
+      ]
+    },
+    {
+      "file": ".github/workflows/gmgn-wallet-backfill.yml",
+      "changes": [
+        "Serializes backfill archive writers and runs offline safety tests before provider calls.",
+        "Uses a 100-row default page size and preserves artifacts/status even if the backfill step fails."
+      ]
+    },
+    {
+      "file": ".github/workflows/ci-sanity.yml",
+      "changes": [
+        "Runs the new backfill tests and compiles the backfill modules on pull requests as well as main pushes."
+      ]
+    },
+    {
+      "file": "nansen_backfill.py",
+      "changes": [
+        "Fixes JSON output newline escaping so successful checkpoints and final archives remain parseable JSON."
+      ]
+    }
+  ],
+  "historical_data_facts": {
+    "source_artifact": "gmgn_wallet_history.json.gz",
+    "current_committed_archive_bytes": 12778811,
+    "previous_audit_snapshot": {
+      "raw_rows": 182588,
+      "unique_wallets": 2215,
+      "unique_assets": 17271,
+      "whole_archive_span_days": 8.9714,
+      "widest_asset_span_days": 5.0628,
+      "assets_with_at_least_90_days": 0,
+      "assets_with_at_least_180_days": 0,
+      "assets_with_at_least_365_days": 0,
+      "note": "These are the committed audit's measured values for the historical snapshot, not a fresh provider query."
+    }
+  },
+  "not_yet_verified_or_not_yet_solved": [
+    "No live GMGN backfill was run during this code repair; actual API-key validity, cursor values returned by the user's account, rate limits, and available historical depth remain unverified.",
+    "The current backfill workflow accepts one wallet per run. It does not yet enumerate the full discovered-wallet population or automatically populate the historical-discovery engine.",
+    "gmgn_layer.portfolio_activity still makes a single non-paginated runtime call; the new pagination is in the dedicated wallet backfill path, not the live signal path.",
+    "The existing GMGN smart-money archive is a forward feed and its measured span remains under 9 days; code changes cannot manufacture missing older events.",
+    "Nansen historical-balances data is not trade history and must not be mixed into trade-event reconstruction.",
+    "The 1000-page guard is a safety boundary, not proof that the provider has 1000 pages or supports a 90/180/365-day window. A run that hits it fails incomplete and retains its checkpoint.",
+    "The old gmgn_backfill_capability_audit.json is a snapshot of the pre-repair state; this file records the repair delta and remaining limitations."
+  ],
+  "safety": {
+    "orders_enabled": false,
+    "live_trading_enabled": false,
+    "note": "No order execution code or live-order setting was enabled or changed by this repair."
+  }
+}
