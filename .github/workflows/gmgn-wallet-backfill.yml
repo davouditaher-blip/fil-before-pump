@@ -33,7 +33,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: main
-          fetch-depth: 0
+          fetch-depth: 10
 
       - name: Setup Node and Python
         uses: actions/setup-python@v5
@@ -67,7 +67,7 @@ jobs:
           git commit -m "Add GMGN wallet trade backfill"
           for attempt in 1 2 3 4 5; do
             echo "GMGN archive push attempt $attempt/5"
-            git fetch origin main
+            git fetch --deepen=20 origin main
             if ! git rebase origin/main; then
               echo "Rebase conflict; refusing to overwrite a historical activity archive."
               git rebase --abort || true
