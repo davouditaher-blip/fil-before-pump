@@ -1940,7 +1940,7 @@ def gmgn_enrichment():
     if not GMGN_API_KEY:
         return {}
     try:
-        from gmgn_layer import run_gmgn, build_signals
+        from gmgn_layer import run_gmgn, build_signals, with_chain_context
 
         history_path = Path("gmgn_wallet_history.json")
         try:
@@ -1951,7 +1951,7 @@ def gmgn_enrichment():
         now_ts = int(datetime.now(timezone.utc).timestamp())
         trades = []
         for chain in ('sol', 'bsc', 'base', 'eth'):
-            trades.extend(run_gmgn(chain))
+            trades.extend(with_chain_context(run_gmgn(chain), chain))
 
         # Persist raw GMGN observations by wallet without a time-based cutoff.
         # The workflow compresses the lifetime archive before committing it.
