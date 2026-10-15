@@ -9,6 +9,8 @@ class HistoryPersistenceWorkflowTests(unittest.TestCase):
         main = (ROOT / ".github/workflows/fil-before-pump.yml").read_text(encoding="utf-8")
         gmgn = (ROOT / ".github/workflows/gmgn-smart-money.yml").read_text(encoding="utf-8")
         self.assertIn("group: scanner-history-writer", main)
+        self.assertIn('"gmgn_backfill_repair_status.json"', main)
+        self.assertIn('"test_*.py"', main)
         self.assertIn("group: scanner-history-writer", gmgn)
         self.assertIn("cancel-in-progress: false", main)
         self.assertIn("cancel-in-progress: false", gmgn)
