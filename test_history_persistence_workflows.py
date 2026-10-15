@@ -23,6 +23,10 @@ class HistoryPersistenceWorkflowTests(unittest.TestCase):
             self.assertIn("gmgn_wallet_history.baseline.json", source, name)
             self.assertIn("python -m json.tool gmgn_wallet_history.json", source, name)
 
+    def test_scanner_dedup_keeps_different_prices_as_distinct_events(self):
+        scanner = (ROOT / "scanner.py").read_text(encoding="utf-8")
+        self.assertIn("round(float(row.get('price_usd') or 0), 12)", scanner)
+
     def test_live_orders_remain_disabled_in_discovery(self):
         source = (ROOT / "reverse_historical_discovery.py").read_text(encoding="utf-8")
         self.assertIn('"orders_enabled": False', source)
