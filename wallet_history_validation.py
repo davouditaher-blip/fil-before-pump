@@ -252,9 +252,9 @@ def asset_identity(row: dict[str, Any]) -> tuple[str, str] | None:
     them to an arbitrary token.
     """
     address = str(row.get("address") or row.get("base_address") or "").strip()
-    if not address:
-        return None
     chain = str(row.get("chain") or "").strip().lower()
+    if not address or not chain:
+        return None
     return (chain, address)
 
 
