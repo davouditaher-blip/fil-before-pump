@@ -34,7 +34,8 @@ class HistoryPersistenceWorkflowTests(unittest.TestCase):
 
     def test_scanner_dedup_keeps_different_prices_as_distinct_events(self):
         scanner = (ROOT / "scanner.py").read_text(encoding="utf-8")
-        self.assertIn("round(float(row.get('price_usd') or 0), 12)", scanner)
+        self.assertIn("def _gmgn_history_key(row):", scanner)
+        self.assertIn('row.get("price_usd") or row.get("price")', scanner)
 
     def test_live_orders_remain_disabled_in_discovery(self):
         source = (ROOT / "reverse_historical_discovery.py").read_text(encoding="utf-8")
