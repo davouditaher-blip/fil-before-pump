@@ -48,6 +48,8 @@ class HistoryPersistenceWorkflowTests(unittest.TestCase):
         scanner = (ROOT / "scanner.py").read_text(encoding="utf-8")
         self.assertIn("def _gmgn_history_key(row):", scanner)
         self.assertIn('row.get("price_usd") or row.get("price")', scanner)
+        self.assertIn("whv.merge_history_record(dedup[key], row)", scanner)
+        self.assertIn("'trade_timestamp': trade.get('trade_timestamp') or trade_ts", scanner)
 
     def test_live_orders_remain_disabled_in_discovery(self):
         source = (ROOT / "reverse_historical_discovery.py").read_text(encoding="utf-8")
