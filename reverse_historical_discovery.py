@@ -163,7 +163,7 @@ def read_primary_archive(
     The MD5 and byte count describe the decompressed JSON payload, so they stay
     comparable regardless of whether the checkout stores raw JSON or gzip.
     If both files exist during a workflow run, raw JSON is authoritative because
-    the scanner may have appended rows that have not been recompressed yet.
+    new rows may have been appended that have not been recompressed yet.
     """
     if raw_path.exists():
         raw = raw_path.read_bytes()
