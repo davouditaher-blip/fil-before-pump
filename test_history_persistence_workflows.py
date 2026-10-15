@@ -64,7 +64,7 @@ class HistoryPersistenceWorkflowTests(unittest.TestCase):
     def test_scanner_dedup_keeps_different_prices_as_distinct_events(self):
         scanner = (ROOT / "scanner.py").read_text(encoding="utf-8")
         self.assertIn("def _gmgn_history_key(row):", scanner)
-        self.assertIn('row.get("price_usd") or row.get("price")', scanner)
+        self.assertIn("whv.history_event_identity", scanner)
         self.assertIn("whv.merge_history_record(dedup[key], row)", scanner)
         self.assertIn("'trade_timestamp': trade.get('trade_timestamp') or trade_ts", scanner)
 
