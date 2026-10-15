@@ -1,7 +1,7 @@
 {
   "mode": "READ_ONLY_PAPER",
   "orders_enabled": false,
-  "generated_at": "2026-10-15T23:17:15.174160+00:00",
+  "generated_at": "2026-10-15T23:19:31.162745+00:00",
   "candidate_count": 163,
   "paper_ready_count": 0,
   "high_conviction_count": 11,
@@ -10,7 +10,7 @@
       "symbol": "AAVE",
       "rank": 38,
       "state": "WATCH_HIGH_CONVICTION",
-      "price_usd": 157.02567478055954,
+      "price_usd": 156.8307168010874,
       "fil_confluence_score": 65.2,
       "fil_confluence_max_score": 100.0,
       "fil_confluence_paper_ready_threshold": 70.0,
@@ -495,7 +495,7 @@
       ],
       "wallet_exit_pressure": 0.0,
       "fresh_volume": true,
-      "volume_market_cap": 0.002757,
+      "volume_market_cap": 0.002762,
       "reasons": [
         "wallet conviction >= 12/30",
         "37 unique active wallet(s)",
@@ -518,13 +518,523 @@
         "leverage_cap": 3,
         "position_size_mode": "risk_based"
       },
-      "generated_at": "2026-10-15T23:17:15.171524+00:00"
+      "generated_at": "2026-10-15T23:19:31.159977+00:00"
+    },
+    {
+      "symbol": "LINK",
+      "rank": 13,
+      "state": "WATCH_HIGH_CONVICTION",
+      "price_usd": 12.447094530284902,
+      "fil_confluence_score": 65.2,
+      "fil_confluence_max_score": 100.0,
+      "fil_confluence_paper_ready_threshold": 70.0,
+      "fil_confluence_fill_pct": 65.2,
+      "fil_confluence_components": {
+        "wallet": 30.0,
+        "project": 0,
+        "volume": 13.2,
+        "market": 7,
+        "safety": 15.0
+      },
+      "project_layer_present": false,
+      "evidence_coverage": {
+        "wallet": true,
+        "project": false,
+        "volume": true,
+        "market": true,
+        "safety": true
+      },
+      "project_layer_missing_reason": "provider_unavailable",
+      "project_flow_provider": null,
+      "wallet_conviction_score": 30.0,
+      "wallet_conviction_pre_calibration": 30.0,
+      "wallet_active": 36,
+      "wallet_proven": 18,
+      "wallet_shared": 25,
+      "wallet_longterm_proven": 17,
+      "wallet_profile_score": 9.81,
+      "wallet_calibration_bonus": -2.85,
+      "wallet_calibration_status": "MEASURABLE",
+      "signal_wallets": [
+        {
+          "wallet": "0x7bf30399dba8051c2bf191afe2cd07ea4e064625",
+          "chain": "eth",
+          "active": false,
+          "proven": false,
+          "pre_pump_first_entry_rate": null,
+          "pre_pump_24h_10pct_rate": null,
+          "pre_pump_proof_attempts": 0,
+          "shared": false,
+          "exited": false,
+          "sources": [
+            "radar"
+          ]
+        },
+        {
+          "wallet": "0x1571cc01e9321e4adc9eb1bf79366552ce9d056e",
+          "chain": "eth",
+          "active": true,
+          "proven": false,
+          "pre_pump_first_entry_rate": null,
+          "pre_pump_24h_10pct_rate": null,
+          "pre_pump_proof_attempts": 0,
+          "shared": false,
+          "exited": false,
+          "sources": [
+            "profile",
+            "radar"
+          ]
+        },
+        {
+          "wallet": "0x8b78b805dd65b283c2e84c77960ba33bba1d3f85",
+          "chain": null,
+          "active": true,
+          "proven": true,
+          "pre_pump_first_entry_rate": 66.7,
+          "pre_pump_24h_10pct_rate": 66.7,
+          "pre_pump_proof_attempts": 3,
+          "shared": true,
+          "exited": false,
+          "sources": [
+            "cluster",
+            "profile"
+          ]
+        },
+        {
+          "wallet": "0xdee657bf65fb0da9e75c9c5c78a6881888b5a641",
+          "chain": null,
+          "active": true,
+          "proven": false,
+          "pre_pump_first_entry_rate": 25.0,
+          "pre_pump_24h_10pct_rate": 50.0,
+          "pre_pump_proof_attempts": 7,
+          "shared": true,
+          "exited": false,
+          "sources": [
+            "cluster",
+            "profile"
+          ]
+        },
+        {
+          "wallet": "0xab2f731f01621b529225b3fb47cf404ccda099ff",
+          "chain": null,
+          "active": true,
+          "proven": true,
+          "pre_pump_first_entry_rate": 20.0,
+          "pre_pump_24h_10pct_rate": 12.5,
+          "pre_pump_proof_attempts": 16,
+          "shared": true,
+          "exited": false,
+          "sources": [
+            "cluster",
+            "profile"
+          ]
+        },
+        {
+          "wallet": "0xa2e33e6473022769bae94c7b574a981f98f4a028",
+          "chain": null,
+          "active": true,
+          "proven": true,
+          "pre_pump_first_entry_rate": 23.1,
+          "pre_pump_24h_10pct_rate": 20.0,
+          "pre_pump_proof_attempts": 26,
+          "shared": true,
+          "exited": false,
+          "sources": [
+            "cluster",
+            "profile"
+          ]
+        },
+        {
+          "wallet": "0x825c4ccb9f6b7d8ade080d13d0d37a16bf37049e",
+          "chain": null,
+          "active": true,
+          "proven": true,
+          "pre_pump_first_entry_rate": 26.7,
+          "pre_pump_24h_10pct_rate": 14.8,
+          "pre_pump_proof_attempts": 31,
+          "shared": true,
+          "exited": false,
+          "sources": [
+            "cluster",
+            "profile"
+          ]
+        },
+        {
+          "wallet": "0xd12f62f407176585613dd335a0a76c4d9739a8a3",
+          "chain": null,
+          "active": true,
+          "proven": true,
+          "pre_pump_first_entry_rate": 18.2,
+          "pre_pump_24h_10pct_rate": 8.0,
+          "pre_pump_proof_attempts": 26,
+          "shared": true,
+          "exited": false,
+          "sources": [
+            "cluster",
+            "profile"
+          ]
+        },
+        {
+          "wallet": "0xff83d6e3a1172ff9463c0cee4124dceade3e7afa",
+          "chain": null,
+          "active": true,
+          "proven": true,
+          "pre_pump_first_entry_rate": 10.0,
+          "pre_pump_24h_10pct_rate": 12.5,
+          "pre_pump_proof_attempts": 25,
+          "shared": true,
+          "exited": false,
+          "sources": [
+            "cluster",
+            "profile"
+          ]
+        },
+        {
+          "wallet": "0x51f9d44c65e8da6bce596092dc0d41d07d97968c",
+          "chain": null,
+          "active": true,
+          "proven": true,
+          "pre_pump_first_entry_rate": 18.8,
+          "pre_pump_24h_10pct_rate": 11.8,
+          "pre_pump_proof_attempts": 34,
+          "shared": true,
+          "exited": false,
+          "sources": [
+            "cluster",
+            "profile"
+          ]
+        },
+        {
+          "wallet": "0xc14c987f9922e9457a2d9c04f72daeafd4080a61",
+          "chain": null,
+          "active": true,
+          "proven": true,
+          "pre_pump_first_entry_rate": 16.7,
+          "pre_pump_24h_10pct_rate": 12.0,
+          "pre_pump_proof_attempts": 25,
+          "shared": true,
+          "exited": false,
+          "sources": [
+            "cluster",
+            "profile"
+          ]
+        },
+        {
+          "wallet": "0xa794401988f9e484e03eb55a8e80db15968a38be",
+          "chain": null,
+          "active": true,
+          "proven": true,
+          "pre_pump_first_entry_rate": 18.2,
+          "pre_pump_24h_10pct_rate": 10.5,
+          "pre_pump_proof_attempts": 19,
+          "shared": true,
+          "exited": false,
+          "sources": [
+            "cluster",
+            "profile"
+          ]
+        },
+        {
+          "wallet": "0x43605d68015b0a4df59e20afc77c9413665eb8dd",
+          "chain": null,
+          "active": true,
+          "proven": true,
+          "pre_pump_first_entry_rate": 11.1,
+          "pre_pump_24h_10pct_rate": 7.1,
+          "pre_pump_proof_attempts": 28,
+          "shared": true,
+          "exited": false,
+          "sources": [
+            "cluster",
+            "profile"
+          ]
+        },
+        {
+          "wallet": "0x7881b6999d658b033ed006d521d27b679617f71a",
+          "chain": null,
+          "active": true,
+          "proven": true,
+          "pre_pump_first_entry_rate": 8.3,
+          "pre_pump_24h_10pct_rate": 6.2,
+          "pre_pump_proof_attempts": 18,
+          "shared": true,
+          "exited": false,
+          "sources": [
+            "cluster",
+            "profile"
+          ]
+        },
+        {
+          "wallet": "0xa70d360ad921dd04448c23e1d12260d0d9542ae0",
+          "chain": null,
+          "active": true,
+          "proven": true,
+          "pre_pump_first_entry_rate": 14.3,
+          "pre_pump_24h_10pct_rate": 8.7,
+          "pre_pump_proof_attempts": 24,
+          "shared": true,
+          "exited": false,
+          "sources": [
+            "cluster",
+            "profile"
+          ]
+        },
+        {
+          "wallet": "0x8f8b72da75cdcf6931563f6d6832fd65bf5186d7",
+          "chain": null,
+          "active": true,
+          "proven": true,
+          "pre_pump_first_entry_rate": 18.2,
+          "pre_pump_24h_10pct_rate": 7.4,
+          "pre_pump_proof_attempts": 27,
+          "shared": true,
+          "exited": false,
+          "sources": [
+            "cluster",
+            "profile"
+          ]
+        },
+        {
+          "wallet": "0x67bdbd574ca9c437a783090dcd86b7212ca9b2fc",
+          "chain": null,
+          "active": true,
+          "proven": true,
+          "pre_pump_first_entry_rate": 20.0,
+          "pre_pump_24h_10pct_rate": 5.6,
+          "pre_pump_proof_attempts": 20,
+          "shared": true,
+          "exited": false,
+          "sources": [
+            "cluster",
+            "profile"
+          ]
+        },
+        {
+          "wallet": "0x26f0670c3bdf8628032a69bec4cdaf322685da01",
+          "chain": null,
+          "active": true,
+          "proven": true,
+          "pre_pump_first_entry_rate": 7.7,
+          "pre_pump_24h_10pct_rate": 7.7,
+          "pre_pump_proof_attempts": 26,
+          "shared": true,
+          "exited": false,
+          "sources": [
+            "cluster",
+            "profile"
+          ]
+        },
+        {
+          "wallet": "0x45e6345d5755f13e98e6cf94c426f6ffbc7aadcc",
+          "chain": null,
+          "active": true,
+          "proven": true,
+          "pre_pump_first_entry_rate": 12.5,
+          "pre_pump_24h_10pct_rate": 6.5,
+          "pre_pump_proof_attempts": 32,
+          "shared": true,
+          "exited": false,
+          "sources": [
+            "cluster",
+            "profile"
+          ]
+        },
+        {
+          "wallet": "0x90b082dd8a5fbd98f60760e950024f5e8107f8d0",
+          "chain": null,
+          "active": true,
+          "proven": true,
+          "pre_pump_first_entry_rate": 6.2,
+          "pre_pump_24h_10pct_rate": 7.4,
+          "pre_pump_proof_attempts": 27,
+          "shared": true,
+          "exited": false,
+          "sources": [
+            "cluster",
+            "profile"
+          ]
+        },
+        {
+          "wallet": "0xb53597617f772b8361fca7ad5d3c97199c2e0d18",
+          "chain": null,
+          "active": true,
+          "proven": true,
+          "pre_pump_first_entry_rate": 0.0,
+          "pre_pump_24h_10pct_rate": 5.3,
+          "pre_pump_proof_attempts": 21,
+          "shared": true,
+          "exited": false,
+          "sources": [
+            "cluster",
+            "profile"
+          ]
+        },
+        {
+          "wallet": "0xdf825304eabe2bb532c6e580eef8680d7bb67193",
+          "chain": null,
+          "active": true,
+          "proven": false,
+          "pre_pump_first_entry_rate": 0.0,
+          "pre_pump_24h_10pct_rate": 0.0,
+          "pre_pump_proof_attempts": 30,
+          "shared": true,
+          "exited": false,
+          "sources": [
+            "cluster",
+            "profile"
+          ]
+        },
+        {
+          "wallet": "0x08b2526b646b7efe235adaefd28ef534c6577d31",
+          "chain": null,
+          "active": true,
+          "proven": false,
+          "pre_pump_first_entry_rate": 11.1,
+          "pre_pump_24h_10pct_rate": 4.8,
+          "pre_pump_proof_attempts": 21,
+          "shared": true,
+          "exited": false,
+          "sources": [
+            "cluster",
+            "profile"
+          ]
+        },
+        {
+          "wallet": "0x4b9fcc416bf5d9d15e8b0eb7ee15b93e8752d4da",
+          "chain": null,
+          "active": true,
+          "proven": false,
+          "pre_pump_first_entry_rate": 12.5,
+          "pre_pump_24h_10pct_rate": 4.3,
+          "pre_pump_proof_attempts": 25,
+          "shared": true,
+          "exited": false,
+          "sources": [
+            "cluster",
+            "profile"
+          ]
+        },
+        {
+          "wallet": "0xcfd004c1f37555320069f3fe07b94e969595e09b",
+          "chain": null,
+          "active": true,
+          "proven": false,
+          "pre_pump_first_entry_rate": 10.0,
+          "pre_pump_24h_10pct_rate": 3.4,
+          "pre_pump_proof_attempts": 29,
+          "shared": true,
+          "exited": false,
+          "sources": [
+            "cluster",
+            "profile"
+          ]
+        },
+        {
+          "wallet": "0x2c1b3240631826cd4f9a894a207c09b6e861dce8",
+          "chain": null,
+          "active": true,
+          "proven": false,
+          "pre_pump_first_entry_rate": 5.9,
+          "pre_pump_24h_10pct_rate": 4.0,
+          "pre_pump_proof_attempts": 27,
+          "shared": true,
+          "exited": false,
+          "sources": [
+            "cluster",
+            "profile"
+          ]
+        },
+        {
+          "wallet": "0xbc60577bd7e2119d7750b353a84682d780087272",
+          "chain": null,
+          "active": true,
+          "proven": false,
+          "pre_pump_first_entry_rate": 0.0,
+          "pre_pump_24h_10pct_rate": 0.0,
+          "pre_pump_proof_attempts": 16,
+          "shared": true,
+          "exited": false,
+          "sources": [
+            "cluster",
+            "profile"
+          ]
+        },
+        {
+          "wallet": "0xea9e60d2b8c2b089a3e33af1495aacb65099574f",
+          "chain": null,
+          "active": true,
+          "proven": false,
+          "pre_pump_first_entry_rate": 0.0,
+          "pre_pump_24h_10pct_rate": 0.0,
+          "pre_pump_proof_attempts": 33,
+          "shared": false,
+          "exited": false,
+          "sources": [
+            "profile"
+          ]
+        },
+        {
+          "wallet": "0x036c43c662ebb15d44ac17c5ed1444ca2729f829",
+          "chain": null,
+          "active": true,
+          "proven": false,
+          "pre_pump_first_entry_rate": 0.0,
+          "pre_pump_24h_10pct_rate": 0.0,
+          "pre_pump_proof_attempts": 30,
+          "shared": false,
+          "exited": false,
+          "sources": [
+            "profile"
+          ]
+        },
+        {
+          "wallet": "0xab7b44ae25af88d306dc0a5c6c39bbeb8916eabb",
+          "chain": null,
+          "active": true,
+          "proven": false,
+          "pre_pump_first_entry_rate": 0.0,
+          "pre_pump_24h_10pct_rate": 0.0,
+          "pre_pump_proof_attempts": 22,
+          "shared": false,
+          "exited": false,
+          "sources": [
+            "profile"
+          ]
+        }
+      ],
+      "wallet_exit_pressure": 0.0,
+      "fresh_volume": true,
+      "volume_market_cap": 0.000721,
+      "reasons": [
+        "wallet conviction >= 12/30",
+        "36 unique active wallet(s)",
+        "18 proven pre-pump wallet(s)",
+        "25 shared wallet(s)",
+        "17 long-term proven signal wallet(s)",
+        "long-term profile score 9.8/12",
+        "paper calibration -2.9 (MEASURABLE)",
+        "fresh 1d/2d futures volume",
+        "exit pressure < 35%"
+      ],
+      "blockers": [
+        "low volume/market-cap for execution"
+      ],
+      "risk": {
+        "max_account_risk_pct": 1.0,
+        "stop_loss_pct": 3.0,
+        "take_profit_1_pct": 6.0,
+        "take_profit_2_pct": 10.0,
+        "leverage_cap": 3,
+        "position_size_mode": "risk_based"
+      },
+      "generated_at": "2026-10-15T23:19:31.160036+00:00"
     },
     {
       "symbol": "UNI",
       "rank": 21,
       "state": "WATCH_HIGH_CONVICTION",
-      "price_usd": 7.402541374460959,
+      "price_usd": 7.396330495202611,
       "fil_confluence_score": 64.6,
       "fil_confluence_max_score": 100.0,
       "fil_confluence_paper_ready_threshold": 70.0,
@@ -1010,7 +1520,7 @@
       ],
       "wallet_exit_pressure": 0.0,
       "fresh_volume": true,
-      "volume_market_cap": 0.004355,
+      "volume_market_cap": 0.00436,
       "reasons": [
         "wallet conviction >= 12/30",
         "21 unique active wallet(s)",
@@ -1033,13 +1543,13 @@
         "leverage_cap": 3,
         "position_size_mode": "risk_based"
       },
-      "generated_at": "2026-10-15T23:17:15.171579+00:00"
+      "generated_at": "2026-10-15T23:19:31.160077+00:00"
     },
     {
       "symbol": "QNT",
       "rank": 37,
       "state": "WATCH_HIGH_CONVICTION",
-      "price_usd": 203.06394116247594,
+      "price_usd": 203.24791010876402,
       "fil_confluence_score": 64.2,
       "fil_confluence_max_score": 100.0,
       "fil_confluence_paper_ready_threshold": 70.0,
@@ -1435,7 +1945,7 @@
       ],
       "wallet_exit_pressure": 0.0,
       "fresh_volume": true,
-      "volume_market_cap": 0.002342,
+      "volume_market_cap": 0.002341,
       "reasons": [
         "wallet conviction >= 12/30",
         "20 unique active wallet(s)",
@@ -1458,523 +1968,13 @@
         "leverage_cap": 3,
         "position_size_mode": "risk_based"
       },
-      "generated_at": "2026-10-15T23:17:15.171614+00:00"
-    },
-    {
-      "symbol": "LINK",
-      "rank": 13,
-      "state": "WATCH_HIGH_CONVICTION",
-      "price_usd": 12.458495110912505,
-      "fil_confluence_score": 63.6,
-      "fil_confluence_max_score": 100.0,
-      "fil_confluence_paper_ready_threshold": 70.0,
-      "fil_confluence_fill_pct": 63.6,
-      "fil_confluence_components": {
-        "wallet": 30.0,
-        "project": 0,
-        "volume": 11.6,
-        "market": 7,
-        "safety": 15.0
-      },
-      "project_layer_present": false,
-      "evidence_coverage": {
-        "wallet": true,
-        "project": false,
-        "volume": true,
-        "market": true,
-        "safety": true
-      },
-      "project_layer_missing_reason": "provider_unavailable",
-      "project_flow_provider": null,
-      "wallet_conviction_score": 30.0,
-      "wallet_conviction_pre_calibration": 30.0,
-      "wallet_active": 36,
-      "wallet_proven": 18,
-      "wallet_shared": 25,
-      "wallet_longterm_proven": 17,
-      "wallet_profile_score": 9.81,
-      "wallet_calibration_bonus": -2.85,
-      "wallet_calibration_status": "MEASURABLE",
-      "signal_wallets": [
-        {
-          "wallet": "0x7bf30399dba8051c2bf191afe2cd07ea4e064625",
-          "chain": "eth",
-          "active": false,
-          "proven": false,
-          "pre_pump_first_entry_rate": null,
-          "pre_pump_24h_10pct_rate": null,
-          "pre_pump_proof_attempts": 0,
-          "shared": false,
-          "exited": false,
-          "sources": [
-            "radar"
-          ]
-        },
-        {
-          "wallet": "0x1571cc01e9321e4adc9eb1bf79366552ce9d056e",
-          "chain": "eth",
-          "active": true,
-          "proven": false,
-          "pre_pump_first_entry_rate": null,
-          "pre_pump_24h_10pct_rate": null,
-          "pre_pump_proof_attempts": 0,
-          "shared": false,
-          "exited": false,
-          "sources": [
-            "profile",
-            "radar"
-          ]
-        },
-        {
-          "wallet": "0x8b78b805dd65b283c2e84c77960ba33bba1d3f85",
-          "chain": null,
-          "active": true,
-          "proven": true,
-          "pre_pump_first_entry_rate": 66.7,
-          "pre_pump_24h_10pct_rate": 66.7,
-          "pre_pump_proof_attempts": 3,
-          "shared": true,
-          "exited": false,
-          "sources": [
-            "cluster",
-            "profile"
-          ]
-        },
-        {
-          "wallet": "0xdee657bf65fb0da9e75c9c5c78a6881888b5a641",
-          "chain": null,
-          "active": true,
-          "proven": false,
-          "pre_pump_first_entry_rate": 25.0,
-          "pre_pump_24h_10pct_rate": 50.0,
-          "pre_pump_proof_attempts": 7,
-          "shared": true,
-          "exited": false,
-          "sources": [
-            "cluster",
-            "profile"
-          ]
-        },
-        {
-          "wallet": "0xab2f731f01621b529225b3fb47cf404ccda099ff",
-          "chain": null,
-          "active": true,
-          "proven": true,
-          "pre_pump_first_entry_rate": 20.0,
-          "pre_pump_24h_10pct_rate": 12.5,
-          "pre_pump_proof_attempts": 16,
-          "shared": true,
-          "exited": false,
-          "sources": [
-            "cluster",
-            "profile"
-          ]
-        },
-        {
-          "wallet": "0xa2e33e6473022769bae94c7b574a981f98f4a028",
-          "chain": null,
-          "active": true,
-          "proven": true,
-          "pre_pump_first_entry_rate": 23.1,
-          "pre_pump_24h_10pct_rate": 20.0,
-          "pre_pump_proof_attempts": 26,
-          "shared": true,
-          "exited": false,
-          "sources": [
-            "cluster",
-            "profile"
-          ]
-        },
-        {
-          "wallet": "0x825c4ccb9f6b7d8ade080d13d0d37a16bf37049e",
-          "chain": null,
-          "active": true,
-          "proven": true,
-          "pre_pump_first_entry_rate": 26.7,
-          "pre_pump_24h_10pct_rate": 14.8,
-          "pre_pump_proof_attempts": 31,
-          "shared": true,
-          "exited": false,
-          "sources": [
-            "cluster",
-            "profile"
-          ]
-        },
-        {
-          "wallet": "0xd12f62f407176585613dd335a0a76c4d9739a8a3",
-          "chain": null,
-          "active": true,
-          "proven": true,
-          "pre_pump_first_entry_rate": 18.2,
-          "pre_pump_24h_10pct_rate": 8.0,
-          "pre_pump_proof_attempts": 26,
-          "shared": true,
-          "exited": false,
-          "sources": [
-            "cluster",
-            "profile"
-          ]
-        },
-        {
-          "wallet": "0xff83d6e3a1172ff9463c0cee4124dceade3e7afa",
-          "chain": null,
-          "active": true,
-          "proven": true,
-          "pre_pump_first_entry_rate": 10.0,
-          "pre_pump_24h_10pct_rate": 12.5,
-          "pre_pump_proof_attempts": 25,
-          "shared": true,
-          "exited": false,
-          "sources": [
-            "cluster",
-            "profile"
-          ]
-        },
-        {
-          "wallet": "0x51f9d44c65e8da6bce596092dc0d41d07d97968c",
-          "chain": null,
-          "active": true,
-          "proven": true,
-          "pre_pump_first_entry_rate": 18.8,
-          "pre_pump_24h_10pct_rate": 11.8,
-          "pre_pump_proof_attempts": 34,
-          "shared": true,
-          "exited": false,
-          "sources": [
-            "cluster",
-            "profile"
-          ]
-        },
-        {
-          "wallet": "0xc14c987f9922e9457a2d9c04f72daeafd4080a61",
-          "chain": null,
-          "active": true,
-          "proven": true,
-          "pre_pump_first_entry_rate": 16.7,
-          "pre_pump_24h_10pct_rate": 12.0,
-          "pre_pump_proof_attempts": 25,
-          "shared": true,
-          "exited": false,
-          "sources": [
-            "cluster",
-            "profile"
-          ]
-        },
-        {
-          "wallet": "0xa794401988f9e484e03eb55a8e80db15968a38be",
-          "chain": null,
-          "active": true,
-          "proven": true,
-          "pre_pump_first_entry_rate": 18.2,
-          "pre_pump_24h_10pct_rate": 10.5,
-          "pre_pump_proof_attempts": 19,
-          "shared": true,
-          "exited": false,
-          "sources": [
-            "cluster",
-            "profile"
-          ]
-        },
-        {
-          "wallet": "0x43605d68015b0a4df59e20afc77c9413665eb8dd",
-          "chain": null,
-          "active": true,
-          "proven": true,
-          "pre_pump_first_entry_rate": 11.1,
-          "pre_pump_24h_10pct_rate": 7.1,
-          "pre_pump_proof_attempts": 28,
-          "shared": true,
-          "exited": false,
-          "sources": [
-            "cluster",
-            "profile"
-          ]
-        },
-        {
-          "wallet": "0x7881b6999d658b033ed006d521d27b679617f71a",
-          "chain": null,
-          "active": true,
-          "proven": true,
-          "pre_pump_first_entry_rate": 8.3,
-          "pre_pump_24h_10pct_rate": 6.2,
-          "pre_pump_proof_attempts": 18,
-          "shared": true,
-          "exited": false,
-          "sources": [
-            "cluster",
-            "profile"
-          ]
-        },
-        {
-          "wallet": "0xa70d360ad921dd04448c23e1d12260d0d9542ae0",
-          "chain": null,
-          "active": true,
-          "proven": true,
-          "pre_pump_first_entry_rate": 14.3,
-          "pre_pump_24h_10pct_rate": 8.7,
-          "pre_pump_proof_attempts": 24,
-          "shared": true,
-          "exited": false,
-          "sources": [
-            "cluster",
-            "profile"
-          ]
-        },
-        {
-          "wallet": "0x8f8b72da75cdcf6931563f6d6832fd65bf5186d7",
-          "chain": null,
-          "active": true,
-          "proven": true,
-          "pre_pump_first_entry_rate": 18.2,
-          "pre_pump_24h_10pct_rate": 7.4,
-          "pre_pump_proof_attempts": 27,
-          "shared": true,
-          "exited": false,
-          "sources": [
-            "cluster",
-            "profile"
-          ]
-        },
-        {
-          "wallet": "0x67bdbd574ca9c437a783090dcd86b7212ca9b2fc",
-          "chain": null,
-          "active": true,
-          "proven": true,
-          "pre_pump_first_entry_rate": 20.0,
-          "pre_pump_24h_10pct_rate": 5.6,
-          "pre_pump_proof_attempts": 20,
-          "shared": true,
-          "exited": false,
-          "sources": [
-            "cluster",
-            "profile"
-          ]
-        },
-        {
-          "wallet": "0x26f0670c3bdf8628032a69bec4cdaf322685da01",
-          "chain": null,
-          "active": true,
-          "proven": true,
-          "pre_pump_first_entry_rate": 7.7,
-          "pre_pump_24h_10pct_rate": 7.7,
-          "pre_pump_proof_attempts": 26,
-          "shared": true,
-          "exited": false,
-          "sources": [
-            "cluster",
-            "profile"
-          ]
-        },
-        {
-          "wallet": "0x45e6345d5755f13e98e6cf94c426f6ffbc7aadcc",
-          "chain": null,
-          "active": true,
-          "proven": true,
-          "pre_pump_first_entry_rate": 12.5,
-          "pre_pump_24h_10pct_rate": 6.5,
-          "pre_pump_proof_attempts": 32,
-          "shared": true,
-          "exited": false,
-          "sources": [
-            "cluster",
-            "profile"
-          ]
-        },
-        {
-          "wallet": "0x90b082dd8a5fbd98f60760e950024f5e8107f8d0",
-          "chain": null,
-          "active": true,
-          "proven": true,
-          "pre_pump_first_entry_rate": 6.2,
-          "pre_pump_24h_10pct_rate": 7.4,
-          "pre_pump_proof_attempts": 27,
-          "shared": true,
-          "exited": false,
-          "sources": [
-            "cluster",
-            "profile"
-          ]
-        },
-        {
-          "wallet": "0xb53597617f772b8361fca7ad5d3c97199c2e0d18",
-          "chain": null,
-          "active": true,
-          "proven": true,
-          "pre_pump_first_entry_rate": 0.0,
-          "pre_pump_24h_10pct_rate": 5.3,
-          "pre_pump_proof_attempts": 21,
-          "shared": true,
-          "exited": false,
-          "sources": [
-            "cluster",
-            "profile"
-          ]
-        },
-        {
-          "wallet": "0xdf825304eabe2bb532c6e580eef8680d7bb67193",
-          "chain": null,
-          "active": true,
-          "proven": false,
-          "pre_pump_first_entry_rate": 0.0,
-          "pre_pump_24h_10pct_rate": 0.0,
-          "pre_pump_proof_attempts": 30,
-          "shared": true,
-          "exited": false,
-          "sources": [
-            "cluster",
-            "profile"
-          ]
-        },
-        {
-          "wallet": "0x08b2526b646b7efe235adaefd28ef534c6577d31",
-          "chain": null,
-          "active": true,
-          "proven": false,
-          "pre_pump_first_entry_rate": 11.1,
-          "pre_pump_24h_10pct_rate": 4.8,
-          "pre_pump_proof_attempts": 21,
-          "shared": true,
-          "exited": false,
-          "sources": [
-            "cluster",
-            "profile"
-          ]
-        },
-        {
-          "wallet": "0x4b9fcc416bf5d9d15e8b0eb7ee15b93e8752d4da",
-          "chain": null,
-          "active": true,
-          "proven": false,
-          "pre_pump_first_entry_rate": 12.5,
-          "pre_pump_24h_10pct_rate": 4.3,
-          "pre_pump_proof_attempts": 25,
-          "shared": true,
-          "exited": false,
-          "sources": [
-            "cluster",
-            "profile"
-          ]
-        },
-        {
-          "wallet": "0xcfd004c1f37555320069f3fe07b94e969595e09b",
-          "chain": null,
-          "active": true,
-          "proven": false,
-          "pre_pump_first_entry_rate": 10.0,
-          "pre_pump_24h_10pct_rate": 3.4,
-          "pre_pump_proof_attempts": 29,
-          "shared": true,
-          "exited": false,
-          "sources": [
-            "cluster",
-            "profile"
-          ]
-        },
-        {
-          "wallet": "0x2c1b3240631826cd4f9a894a207c09b6e861dce8",
-          "chain": null,
-          "active": true,
-          "proven": false,
-          "pre_pump_first_entry_rate": 5.9,
-          "pre_pump_24h_10pct_rate": 4.0,
-          "pre_pump_proof_attempts": 27,
-          "shared": true,
-          "exited": false,
-          "sources": [
-            "cluster",
-            "profile"
-          ]
-        },
-        {
-          "wallet": "0xbc60577bd7e2119d7750b353a84682d780087272",
-          "chain": null,
-          "active": true,
-          "proven": false,
-          "pre_pump_first_entry_rate": 0.0,
-          "pre_pump_24h_10pct_rate": 0.0,
-          "pre_pump_proof_attempts": 16,
-          "shared": true,
-          "exited": false,
-          "sources": [
-            "cluster",
-            "profile"
-          ]
-        },
-        {
-          "wallet": "0xea9e60d2b8c2b089a3e33af1495aacb65099574f",
-          "chain": null,
-          "active": true,
-          "proven": false,
-          "pre_pump_first_entry_rate": 0.0,
-          "pre_pump_24h_10pct_rate": 0.0,
-          "pre_pump_proof_attempts": 33,
-          "shared": false,
-          "exited": false,
-          "sources": [
-            "profile"
-          ]
-        },
-        {
-          "wallet": "0x036c43c662ebb15d44ac17c5ed1444ca2729f829",
-          "chain": null,
-          "active": true,
-          "proven": false,
-          "pre_pump_first_entry_rate": 0.0,
-          "pre_pump_24h_10pct_rate": 0.0,
-          "pre_pump_proof_attempts": 30,
-          "shared": false,
-          "exited": false,
-          "sources": [
-            "profile"
-          ]
-        },
-        {
-          "wallet": "0xab7b44ae25af88d306dc0a5c6c39bbeb8916eabb",
-          "chain": null,
-          "active": true,
-          "proven": false,
-          "pre_pump_first_entry_rate": 0.0,
-          "pre_pump_24h_10pct_rate": 0.0,
-          "pre_pump_proof_attempts": 22,
-          "shared": false,
-          "exited": false,
-          "sources": [
-            "profile"
-          ]
-        }
-      ],
-      "wallet_exit_pressure": 0.0,
-      "fresh_volume": true,
-      "volume_market_cap": 0.000713,
-      "reasons": [
-        "wallet conviction >= 12/30",
-        "36 unique active wallet(s)",
-        "18 proven pre-pump wallet(s)",
-        "25 shared wallet(s)",
-        "17 long-term proven signal wallet(s)",
-        "long-term profile score 9.8/12",
-        "paper calibration -2.9 (MEASURABLE)",
-        "fresh 1d/2d futures volume",
-        "exit pressure < 35%"
-      ],
-      "blockers": [
-        "low volume/market-cap for execution"
-      ],
-      "risk": {
-        "max_account_risk_pct": 1.0,
-        "stop_loss_pct": 3.0,
-        "take_profit_1_pct": 6.0,
-        "take_profit_2_pct": 10.0,
-        "leverage_cap": 3,
-        "position_size_mode": "risk_based"
-      },
-      "generated_at": "2026-10-15T23:17:15.171648+00:00"
+      "generated_at": "2026-10-15T23:19:31.160110+00:00"
     },
     {
       "symbol": "SKY",
       "rank": 52,
       "state": "WATCH_HIGH_CONVICTION",
-      "price_usd": 0.07202227846325672,
+      "price_usd": 0.0719680641959471,
       "fil_confluence_score": 62.6,
       "fil_confluence_max_score": 100.0,
       "fil_confluence_paper_ready_threshold": 70.0,
@@ -2482,13 +2482,13 @@
         "leverage_cap": 3,
         "position_size_mode": "risk_based"
       },
-      "generated_at": "2026-10-15T23:17:15.171680+00:00"
+      "generated_at": "2026-10-15T23:19:31.160145+00:00"
     },
     {
       "symbol": "PEPE",
       "rank": 51,
       "state": "WATCH_HIGH_CONVICTION",
-      "price_usd": 4.0873932215289965e-06,
+      "price_usd": 4.080951723940426e-06,
       "fil_confluence_score": 59.9,
       "fil_confluence_max_score": 100.0,
       "fil_confluence_paper_ready_threshold": 70.0,
@@ -2660,7 +2660,7 @@
       ],
       "wallet_exit_pressure": 0.0,
       "fresh_volume": true,
-      "volume_market_cap": 0.010338,
+      "volume_market_cap": 0.010356,
       "reasons": [
         "wallet conviction >= 12/30",
         "9 unique active wallet(s)",
@@ -2671,7 +2671,7 @@
         "paper calibration -2.9 (MEASURABLE)",
         "fresh 1d/2d futures volume",
         "exit pressure < 35%",
-        "volume/market-cap 1.03%"
+        "volume/market-cap 1.04%"
       ],
       "blockers": [],
       "risk": {
@@ -2682,13 +2682,13 @@
         "leverage_cap": 3,
         "position_size_mode": "risk_based"
       },
-      "generated_at": "2026-10-15T23:17:15.171704+00:00"
+      "generated_at": "2026-10-15T23:19:31.160170+00:00"
     },
     {
       "symbol": "ONDO",
       "rank": 40,
       "state": "WATCH_HIGH_CONVICTION",
-      "price_usd": 0.4654911522877346,
+      "price_usd": 0.4652783394982669,
       "fil_confluence_score": 54.5,
       "fil_confluence_max_score": 100.0,
       "fil_confluence_paper_ready_threshold": 70.0,
@@ -2878,7 +2878,7 @@
       ],
       "wallet_exit_pressure": 0.0,
       "fresh_volume": true,
-      "volume_market_cap": 0.005555,
+      "volume_market_cap": 0.005559,
       "reasons": [
         "wallet conviction >= 12/30",
         "10 unique active wallet(s)",
@@ -2901,13 +2901,13 @@
         "leverage_cap": 3,
         "position_size_mode": "risk_based"
       },
-      "generated_at": "2026-10-15T23:17:15.171728+00:00"
+      "generated_at": "2026-10-15T23:19:31.160194+00:00"
     },
     {
       "symbol": "ENA",
       "rank": 35,
       "state": "WATCH_HIGH_CONVICTION",
-      "price_usd": 0.2038039527043095,
+      "price_usd": 0.20375272791718863,
       "fil_confluence_score": 54.0,
       "fil_confluence_max_score": 100.0,
       "fil_confluence_paper_ready_threshold": 70.0,
@@ -3002,7 +3002,7 @@
       ],
       "wallet_exit_pressure": 0.0,
       "fresh_volume": true,
-      "volume_market_cap": 0.005149,
+      "volume_market_cap": 0.005152,
       "reasons": [
         "wallet conviction >= 12/30",
         "3 unique active wallet(s)",
@@ -3025,13 +3025,13 @@
         "leverage_cap": 3,
         "position_size_mode": "risk_based"
       },
-      "generated_at": "2026-10-15T23:17:15.171748+00:00"
+      "generated_at": "2026-10-15T23:19:31.160215+00:00"
     },
     {
       "symbol": "VVV",
       "rank": 58,
       "state": "WATCH_HIGH_CONVICTION",
-      "price_usd": 24.78451833202323,
+      "price_usd": 24.732677463512815,
       "fil_confluence_score": 49.2,
       "fil_confluence_max_score": 100.0,
       "fil_confluence_paper_ready_threshold": 70.0,
@@ -3069,8 +3069,8 @@
           "active": true,
           "proven": true,
           "pre_pump_first_entry_rate": 100.0,
-          "pre_pump_24h_10pct_rate": 77.8,
-          "pre_pump_proof_attempts": 9,
+          "pre_pump_24h_10pct_rate": 75.0,
+          "pre_pump_proof_attempts": 8,
           "shared": true,
           "exited": false,
           "sources": [
@@ -3081,7 +3081,7 @@
       ],
       "wallet_exit_pressure": 0.0,
       "fresh_volume": true,
-      "volume_market_cap": 0.003647,
+      "volume_market_cap": 0.003661,
       "reasons": [
         "wallet conviction >= 12/30",
         "1 unique active wallet(s)",
@@ -3101,13 +3101,13 @@
         "leverage_cap": 3,
         "position_size_mode": "risk_based"
       },
-      "generated_at": "2026-10-15T23:17:15.171765+00:00"
+      "generated_at": "2026-10-15T23:19:31.160233+00:00"
     },
     {
       "symbol": "ZAMA",
-      "rank": 144,
+      "rank": 145,
       "state": "WATCH_HIGH_CONVICTION",
-      "price_usd": 0.07373177903769691,
+      "price_usd": 0.07343402091536845,
       "fil_confluence_score": 45.7,
       "fil_confluence_max_score": 100.0,
       "fil_confluence_paper_ready_threshold": 70.0,
@@ -3186,7 +3186,7 @@
       ],
       "wallet_exit_pressure": 0.0,
       "fresh_volume": true,
-      "volume_market_cap": 0.009904,
+      "volume_market_cap": 0.009957,
       "reasons": [
         "wallet conviction >= 12/30",
         "3 unique active wallet(s)",
@@ -3208,13 +3208,13 @@
         "leverage_cap": 3,
         "position_size_mode": "risk_based"
       },
-      "generated_at": "2026-10-15T23:17:15.171827+00:00"
+      "generated_at": "2026-10-15T23:19:31.160273+00:00"
     },
     {
       "symbol": "COW",
-      "rank": 288,
+      "rank": 290,
       "state": "WATCH_HIGH_CONVICTION",
-      "price_usd": 0.13433724598836602,
+      "price_usd": 0.13405551917790867,
       "fil_confluence_score": 44.6,
       "fil_confluence_max_score": 100.0,
       "fil_confluence_paper_ready_threshold": 70.0,
@@ -3279,7 +3279,7 @@
       ],
       "wallet_exit_pressure": 0.0,
       "fresh_volume": true,
-      "volume_market_cap": 0.000432,
+      "volume_market_cap": 0.000433,
       "reasons": [
         "wallet conviction >= 12/30",
         "2 unique active wallet(s)",
@@ -3301,13 +3301,13 @@
         "leverage_cap": 3,
         "position_size_mode": "risk_based"
       },
-      "generated_at": "2026-10-15T23:17:15.171847+00:00"
+      "generated_at": "2026-10-15T23:19:31.160291+00:00"
     },
     {
       "symbol": "STRK",
       "rank": 82,
       "state": "WATCH",
-      "price_usd": 0.08571110250660482,
+      "price_usd": 0.08545353386888878,
       "fil_confluence_score": 47.3,
       "fil_confluence_max_score": 100.0,
       "fil_confluence_paper_ready_threshold": 70.0,
@@ -3341,7 +3341,7 @@
       "signal_wallets": [
         {
           "wallet": "0x51f9d44c65e8da6bce596092dc0d41d07d97968c",
-          "chain": "eth",
+          "chain": null,
           "active": true,
           "proven": true,
           "pre_pump_first_entry_rate": 18.8,
@@ -3351,14 +3351,13 @@
           "exited": false,
           "sources": [
             "cluster",
-            "profile",
-            "radar"
+            "profile"
           ]
         }
       ],
       "wallet_exit_pressure": 0.0,
       "fresh_volume": true,
-      "volume_market_cap": 0.043673,
+      "volume_market_cap": 0.043836,
       "reasons": [
         "1 unique active wallet(s)",
         "1 proven pre-pump wallet(s)",
@@ -3367,7 +3366,7 @@
         "long-term profile score 0.8/12",
         "fresh 1d/2d futures volume",
         "exit pressure < 35%",
-        "volume/market-cap 4.37%"
+        "volume/market-cap 4.38%"
       ],
       "blockers": [
         "wallet conviction below paper-entry threshold"
@@ -3380,13 +3379,13 @@
         "leverage_cap": 3,
         "position_size_mode": "risk_based"
       },
-      "generated_at": "2026-10-15T23:17:15.171803+00:00"
+      "generated_at": "2026-10-15T23:19:31.160253+00:00"
     },
     {
       "symbol": "CRV",
       "rank": 86,
       "state": "WATCH",
-      "price_usd": 0.3564747069463283,
+      "price_usd": 0.35628057892678794,
       "fil_confluence_score": 42.0,
       "fil_confluence_max_score": 100.0,
       "fil_confluence_paper_ready_threshold": 70.0,
@@ -3436,7 +3435,7 @@
       ],
       "wallet_exit_pressure": 0.0,
       "fresh_volume": true,
-      "volume_market_cap": 0.003317,
+      "volume_market_cap": 0.003327,
       "reasons": [
         "1 unique active wallet(s)",
         "1 proven pre-pump wallet(s)",
@@ -3458,13 +3457,13 @@
         "leverage_cap": 3,
         "position_size_mode": "risk_based"
       },
-      "generated_at": "2026-10-15T23:17:15.171865+00:00"
+      "generated_at": "2026-10-15T23:19:31.160309+00:00"
     },
     {
       "symbol": "SPX",
       "rank": 108,
       "state": "WATCH",
-      "price_usd": 0.3464336734036492,
+      "price_usd": 0.34638936749923005,
       "fil_confluence_score": 41.9,
       "fil_confluence_max_score": 100.0,
       "fil_confluence_paper_ready_threshold": 70.0,
@@ -3536,86 +3535,13 @@
         "leverage_cap": 3,
         "position_size_mode": "risk_based"
       },
-      "generated_at": "2026-10-15T23:17:15.171881+00:00"
-    },
-    {
-      "symbol": "TRUMP",
-      "rank": 89,
-      "state": "WATCH",
-      "price_usd": 1.8810616456760028,
-      "fil_confluence_score": 40.6,
-      "fil_confluence_max_score": 100.0,
-      "fil_confluence_paper_ready_threshold": 70.0,
-      "fil_confluence_fill_pct": 40.6,
-      "fil_confluence_components": {
-        "wallet": 2.0,
-        "project": 0,
-        "volume": 11.6,
-        "market": 7,
-        "safety": 20.0
-      },
-      "project_layer_present": false,
-      "evidence_coverage": {
-        "wallet": true,
-        "project": false,
-        "volume": true,
-        "market": true,
-        "safety": true
-      },
-      "project_layer_missing_reason": "unsupported_chain",
-      "project_flow_provider": null,
-      "wallet_conviction_score": 2.0,
-      "wallet_conviction_pre_calibration": 2.0,
-      "wallet_active": 1,
-      "wallet_proven": 0,
-      "wallet_shared": 0,
-      "wallet_longterm_proven": 0,
-      "wallet_profile_score": 0.0,
-      "wallet_calibration_bonus": 0.0,
-      "wallet_calibration_status": "NO_HISTORY",
-      "signal_wallets": [
-        {
-          "wallet": "s1unJYwKJXSu2UHsVY7uESvDTddyorPYrGnmEAEumbR",
-          "chain": null,
-          "active": true,
-          "proven": false,
-          "pre_pump_first_entry_rate": null,
-          "pre_pump_24h_10pct_rate": null,
-          "pre_pump_proof_attempts": 0,
-          "shared": false,
-          "exited": false,
-          "sources": [
-            "gmgn"
-          ]
-        }
-      ],
-      "wallet_exit_pressure": 0.0,
-      "fresh_volume": true,
-      "volume_market_cap": 0.035073,
-      "reasons": [
-        "1 unique active wallet(s)",
-        "fresh 1d/2d futures volume",
-        "exit pressure < 35%",
-        "volume/market-cap 3.51%"
-      ],
-      "blockers": [
-        "wallet conviction below paper-entry threshold"
-      ],
-      "risk": {
-        "max_account_risk_pct": 1.0,
-        "stop_loss_pct": 3.0,
-        "take_profit_1_pct": 6.0,
-        "take_profit_2_pct": 10.0,
-        "leverage_cap": 3,
-        "position_size_mode": "risk_based"
-      },
-      "generated_at": "2026-10-15T23:17:15.171898+00:00"
+      "generated_at": "2026-10-15T23:19:31.160326+00:00"
     },
     {
       "symbol": "FIL",
       "rank": 67,
       "state": "WATCH",
-      "price_usd": 1.1723532172574425,
+      "price_usd": 1.1695332352132366,
       "fil_confluence_score": 38.8,
       "fil_confluence_max_score": 100.0,
       "fil_confluence_paper_ready_threshold": 70.0,
@@ -3649,11 +3575,11 @@
       "signal_wallets": [],
       "wallet_exit_pressure": 0.0,
       "fresh_volume": true,
-      "volume_market_cap": 0.018704,
+      "volume_market_cap": 0.018775,
       "reasons": [
         "fresh 1d/2d futures volume",
         "exit pressure < 35%",
-        "volume/market-cap 1.87%"
+        "volume/market-cap 1.88%"
       ],
       "blockers": [
         "wallet conviction below paper-entry threshold",
@@ -3667,13 +3593,71 @@
         "leverage_cap": 3,
         "position_size_mode": "risk_based"
       },
-      "generated_at": "2026-10-15T23:17:15.171914+00:00"
+      "generated_at": "2026-10-15T23:19:31.160342+00:00"
+    },
+    {
+      "symbol": "TRUMP",
+      "rank": 89,
+      "state": "WATCH",
+      "price_usd": 1.8778403535263137,
+      "fil_confluence_score": 38.6,
+      "fil_confluence_max_score": 100.0,
+      "fil_confluence_paper_ready_threshold": 70.0,
+      "fil_confluence_fill_pct": 38.6,
+      "fil_confluence_components": {
+        "wallet": 0,
+        "project": 0,
+        "volume": 11.6,
+        "market": 7,
+        "safety": 20.0
+      },
+      "project_layer_present": false,
+      "evidence_coverage": {
+        "wallet": true,
+        "project": false,
+        "volume": true,
+        "market": true,
+        "safety": true
+      },
+      "project_layer_missing_reason": "unsupported_chain",
+      "project_flow_provider": null,
+      "wallet_conviction_score": 0.0,
+      "wallet_conviction_pre_calibration": 0.0,
+      "wallet_active": 0,
+      "wallet_proven": 0,
+      "wallet_shared": 0,
+      "wallet_longterm_proven": 0,
+      "wallet_profile_score": 0.0,
+      "wallet_calibration_bonus": 0.0,
+      "wallet_calibration_status": "NO_HISTORY",
+      "signal_wallets": [],
+      "wallet_exit_pressure": 0.0,
+      "fresh_volume": true,
+      "volume_market_cap": 0.035136,
+      "reasons": [
+        "fresh 1d/2d futures volume",
+        "exit pressure < 35%",
+        "volume/market-cap 3.51%"
+      ],
+      "blockers": [
+        "wallet conviction below paper-entry threshold",
+        "no active wallet evidence"
+      ],
+      "risk": {
+        "max_account_risk_pct": 1.0,
+        "stop_loss_pct": 3.0,
+        "take_profit_1_pct": 6.0,
+        "take_profit_2_pct": 10.0,
+        "leverage_cap": 3,
+        "position_size_mode": "risk_based"
+      },
+      "generated_at": "2026-10-15T23:19:31.160358+00:00"
     },
     {
       "symbol": "ETH",
       "rank": 2,
       "state": "WATCH",
-      "price_usd": 2439.2661544952166,
+      "price_usd": 2438.998826803477,
       "fil_confluence_score": 38.6,
       "fil_confluence_max_score": 100.0,
       "fil_confluence_paper_ready_threshold": 70.0,
@@ -3707,11 +3691,11 @@
       "signal_wallets": [],
       "wallet_exit_pressure": 0.0,
       "fresh_volume": true,
-      "volume_market_cap": 0.026944,
+      "volume_market_cap": 0.026977,
       "reasons": [
         "fresh 1d/2d futures volume",
         "exit pressure < 35%",
-        "volume/market-cap 2.69%"
+        "volume/market-cap 2.70%"
       ],
       "blockers": [
         "wallet conviction below paper-entry threshold",
@@ -3725,13 +3709,13 @@
         "leverage_cap": 3,
         "position_size_mode": "risk_based"
       },
-      "generated_at": "2026-10-15T23:17:15.171929+00:00"
+      "generated_at": "2026-10-15T23:19:31.160374+00:00"
     },
     {
       "symbol": "BNB",
       "rank": 4,
       "state": "WATCH",
-      "price_usd": 726.8422771516881,
+      "price_usd": 726.7246254350639,
       "fil_confluence_score": 37.2,
       "fil_confluence_max_score": 100.0,
       "fil_confluence_paper_ready_threshold": 70.0,
@@ -3765,7 +3749,7 @@
       "signal_wallets": [],
       "wallet_exit_pressure": 0.0,
       "fresh_volume": true,
-      "volume_market_cap": 0.000637,
+      "volume_market_cap": 0.000638,
       "reasons": [
         "fresh 1d/2d futures volume",
         "exit pressure < 35%"
@@ -3783,13 +3767,71 @@
         "leverage_cap": 3,
         "position_size_mode": "risk_based"
       },
-      "generated_at": "2026-10-15T23:17:15.171944+00:00"
+      "generated_at": "2026-10-15T23:19:31.160389+00:00"
+    },
+    {
+      "symbol": "HYPE",
+      "rank": 9,
+      "state": "WATCH",
+      "price_usd": 81.74336091920252,
+      "fil_confluence_score": 37.2,
+      "fil_confluence_max_score": 100.0,
+      "fil_confluence_paper_ready_threshold": 70.0,
+      "fil_confluence_fill_pct": 37.2,
+      "fil_confluence_components": {
+        "wallet": 0,
+        "project": 0,
+        "volume": 13.2,
+        "market": 7,
+        "safety": 17.0
+      },
+      "project_layer_present": false,
+      "evidence_coverage": {
+        "wallet": true,
+        "project": false,
+        "volume": true,
+        "market": true,
+        "safety": true
+      },
+      "project_layer_missing_reason": "provider_unavailable",
+      "project_flow_provider": null,
+      "wallet_conviction_score": 0.0,
+      "wallet_conviction_pre_calibration": 0.0,
+      "wallet_active": 0,
+      "wallet_proven": 0,
+      "wallet_shared": 0,
+      "wallet_longterm_proven": 0,
+      "wallet_profile_score": 0.0,
+      "wallet_calibration_bonus": 0.0,
+      "wallet_calibration_status": "NO_HISTORY",
+      "signal_wallets": [],
+      "wallet_exit_pressure": 0.0,
+      "fresh_volume": true,
+      "volume_market_cap": 0.002161,
+      "reasons": [
+        "fresh 1d/2d futures volume",
+        "exit pressure < 35%"
+      ],
+      "blockers": [
+        "wallet conviction below paper-entry threshold",
+        "no active wallet evidence",
+        "low volume/market-cap for execution"
+      ],
+      "risk": {
+        "max_account_risk_pct": 1.0,
+        "stop_loss_pct": 3.0,
+        "take_profit_1_pct": 6.0,
+        "take_profit_2_pct": 10.0,
+        "leverage_cap": 3,
+        "position_size_mode": "risk_based"
+      },
+      "generated_at": "2026-10-15T23:19:31.160405+00:00"
     },
     {
       "symbol": "AGT",
       "rank": 246,
       "state": "WATCH",
-      "price_usd": 0.035407815012690975,
+      "price_usd": 0.03528521547701591,
       "fil_confluence_score": 36.4,
       "fil_confluence_max_score": 100.0,
       "fil_confluence_paper_ready_threshold": 70.0,
@@ -3823,11 +3865,11 @@
       "signal_wallets": [],
       "wallet_exit_pressure": 0.0,
       "fresh_volume": true,
-      "volume_market_cap": 0.112239,
+      "volume_market_cap": 0.112813,
       "reasons": [
         "fresh 1d/2d futures volume",
         "exit pressure < 35%",
-        "volume/market-cap 11.22%",
+        "volume/market-cap 11.28%",
         "24h move > 15%: late-entry caution"
       ],
       "blockers": [
@@ -3842,13 +3884,13 @@
         "leverage_cap": 3,
         "position_size_mode": "risk_based"
       },
-      "generated_at": "2026-10-15T23:17:15.171959+00:00"
+      "generated_at": "2026-10-15T23:19:31.160421+00:00"
     },
     {
       "symbol": "FLOKI",
       "rank": 128,
       "state": "WATCH",
-      "price_usd": 2.449119675211603e-05,
+      "price_usd": 2.4486189607473242e-05,
       "fil_confluence_score": 36.2,
       "fil_confluence_max_score": 100.0,
       "fil_confluence_paper_ready_threshold": 70.0,
@@ -3898,7 +3940,7 @@
       ],
       "wallet_exit_pressure": 0.0,
       "fresh_volume": true,
-      "volume_market_cap": 0.002461,
+      "volume_market_cap": 0.002462,
       "reasons": [
         "1 unique active wallet(s)",
         "1 shared wallet(s)",
@@ -3917,13 +3959,13 @@
         "leverage_cap": 3,
         "position_size_mode": "risk_based"
       },
-      "generated_at": "2026-10-15T23:17:15.171975+00:00"
+      "generated_at": "2026-10-15T23:19:31.160438+00:00"
     },
     {
       "symbol": "1INCH",
       "rank": 170,
       "state": "WATCH",
-      "price_usd": 0.09456967404949558,
+      "price_usd": 0.09452935393025531,
       "fil_confluence_score": 35.9,
       "fil_confluence_max_score": 100.0,
       "fil_confluence_paper_ready_threshold": 70.0,
@@ -3992,13 +4034,13 @@
         "leverage_cap": 3,
         "position_size_mode": "risk_based"
       },
-      "generated_at": "2026-10-15T23:17:15.171991+00:00"
+      "generated_at": "2026-10-15T23:19:31.160455+00:00"
     },
     {
       "symbol": "ZRO",
       "rank": 72,
       "state": "WATCH",
-      "price_usd": 2.078143581212814,
+      "price_usd": 2.074630469191681,
       "fil_confluence_score": 35.6,
       "fil_confluence_max_score": 100.0,
       "fil_confluence_paper_ready_threshold": 70.0,
@@ -4049,7 +4091,7 @@
       ],
       "wallet_exit_pressure": 0.0,
       "fresh_volume": true,
-      "volume_market_cap": 0.003676,
+      "volume_market_cap": 0.003683,
       "reasons": [
         "1 unique active wallet(s)",
         "1 shared wallet(s)",
@@ -4068,13 +4110,71 @@
         "leverage_cap": 3,
         "position_size_mode": "risk_based"
       },
-      "generated_at": "2026-10-15T23:17:15.172005+00:00"
+      "generated_at": "2026-10-15T23:19:31.160471+00:00"
+    },
+    {
+      "symbol": "BTC",
+      "rank": 1,
+      "state": "WATCH",
+      "price_usd": 82098.62871028879,
+      "fil_confluence_score": 35.6,
+      "fil_confluence_max_score": 100.0,
+      "fil_confluence_paper_ready_threshold": 70.0,
+      "fil_confluence_fill_pct": 35.6,
+      "fil_confluence_components": {
+        "wallet": 0,
+        "project": 0,
+        "volume": 11.6,
+        "market": 7,
+        "safety": 17.0
+      },
+      "project_layer_present": false,
+      "evidence_coverage": {
+        "wallet": true,
+        "project": false,
+        "volume": true,
+        "market": true,
+        "safety": true
+      },
+      "project_layer_missing_reason": "no_contract_mapping",
+      "project_flow_provider": null,
+      "wallet_conviction_score": 0.0,
+      "wallet_conviction_pre_calibration": 0.0,
+      "wallet_active": 0,
+      "wallet_proven": 0,
+      "wallet_shared": 0,
+      "wallet_longterm_proven": 0,
+      "wallet_profile_score": 0.0,
+      "wallet_calibration_bonus": 0.0,
+      "wallet_calibration_status": "NO_HISTORY",
+      "signal_wallets": [],
+      "wallet_exit_pressure": 0.0,
+      "fresh_volume": true,
+      "volume_market_cap": 0.005243,
+      "reasons": [
+        "fresh 1d/2d futures volume",
+        "exit pressure < 35%"
+      ],
+      "blockers": [
+        "wallet conviction below paper-entry threshold",
+        "no active wallet evidence",
+        "low volume/market-cap for execution"
+      ],
+      "risk": {
+        "max_account_risk_pct": 1.0,
+        "stop_loss_pct": 3.0,
+        "take_profit_1_pct": 6.0,
+        "take_profit_2_pct": 10.0,
+        "leverage_cap": 3,
+        "position_size_mode": "risk_based"
+      },
+      "generated_at": "2026-10-15T23:19:31.160485+00:00"
     },
     {
       "symbol": "TAO",
       "rank": 29,
       "state": "WATCH",
-      "price_usd": 278.2145074001749,
+      "price_usd": 278.1024024765004,
       "fil_confluence_score": 35.6,
       "fil_confluence_max_score": 100.0,
       "fil_confluence_paper_ready_threshold": 70.0,
@@ -4108,7 +4208,7 @@
       "signal_wallets": [],
       "wallet_exit_pressure": 0.0,
       "fresh_volume": true,
-      "volume_market_cap": 0.005898,
+      "volume_market_cap": 0.005903,
       "reasons": [
         "fresh 1d/2d futures volume",
         "exit pressure < 35%"
@@ -4126,13 +4226,13 @@
         "leverage_cap": 3,
         "position_size_mode": "risk_based"
       },
-      "generated_at": "2026-10-15T23:17:15.172019+00:00"
+      "generated_at": "2026-10-15T23:19:31.160499+00:00"
     },
     {
       "symbol": "ARB",
       "rank": 55,
       "state": "WATCH",
-      "price_usd": 0.19480954410455045,
+      "price_usd": 0.1947584868040828,
       "fil_confluence_score": 35.6,
       "fil_confluence_max_score": 100.0,
       "fil_confluence_paper_ready_threshold": 70.0,
@@ -4166,7 +4266,7 @@
       "signal_wallets": [],
       "wallet_exit_pressure": 0.0,
       "fresh_volume": true,
-      "volume_market_cap": 0.008076,
+      "volume_market_cap": 0.008081,
       "reasons": [
         "fresh 1d/2d futures volume",
         "exit pressure < 35%"
@@ -4184,71 +4284,13 @@
         "leverage_cap": 3,
         "position_size_mode": "risk_based"
       },
-      "generated_at": "2026-10-15T23:17:15.172032+00:00"
-    },
-    {
-      "symbol": "HYPE",
-      "rank": 9,
-      "state": "WATCH",
-      "price_usd": 81.8411248134684,
-      "fil_confluence_score": 35.6,
-      "fil_confluence_max_score": 100.0,
-      "fil_confluence_paper_ready_threshold": 70.0,
-      "fil_confluence_fill_pct": 35.6,
-      "fil_confluence_components": {
-        "wallet": 0,
-        "project": 0,
-        "volume": 11.6,
-        "market": 7,
-        "safety": 17.0
-      },
-      "project_layer_present": false,
-      "evidence_coverage": {
-        "wallet": true,
-        "project": false,
-        "volume": true,
-        "market": true,
-        "safety": true
-      },
-      "project_layer_missing_reason": "provider_unavailable",
-      "project_flow_provider": null,
-      "wallet_conviction_score": 0.0,
-      "wallet_conviction_pre_calibration": 0.0,
-      "wallet_active": 0,
-      "wallet_proven": 0,
-      "wallet_shared": 0,
-      "wallet_longterm_proven": 0,
-      "wallet_profile_score": 0.0,
-      "wallet_calibration_bonus": 0.0,
-      "wallet_calibration_status": "NO_HISTORY",
-      "signal_wallets": [],
-      "wallet_exit_pressure": 0.0,
-      "fresh_volume": true,
-      "volume_market_cap": 0.002156,
-      "reasons": [
-        "fresh 1d/2d futures volume",
-        "exit pressure < 35%"
-      ],
-      "blockers": [
-        "wallet conviction below paper-entry threshold",
-        "no active wallet evidence",
-        "low volume/market-cap for execution"
-      ],
-      "risk": {
-        "max_account_risk_pct": 1.0,
-        "stop_loss_pct": 3.0,
-        "take_profit_1_pct": 6.0,
-        "take_profit_2_pct": 10.0,
-        "leverage_cap": 3,
-        "position_size_mode": "risk_based"
-      },
-      "generated_at": "2026-10-15T23:17:15.172046+00:00"
+      "generated_at": "2026-10-15T23:19:31.160514+00:00"
     },
     {
       "symbol": "DOGE",
       "rank": 11,
       "state": "WATCH",
-      "price_usd": 0.08098587358492713,
+      "price_usd": 0.08092460398860156,
       "fil_confluence_score": 35.6,
       "fil_confluence_max_score": 100.0,
       "fil_confluence_paper_ready_threshold": 70.0,
@@ -4282,7 +4324,7 @@
       "signal_wallets": [],
       "wallet_exit_pressure": 0.0,
       "fresh_volume": true,
-      "volume_market_cap": 0.004219,
+      "volume_market_cap": 0.00424,
       "reasons": [
         "fresh 1d/2d futures volume",
         "exit pressure < 35%"
@@ -4300,71 +4342,13 @@
         "leverage_cap": 3,
         "position_size_mode": "risk_based"
       },
-      "generated_at": "2026-10-15T23:17:15.172059+00:00"
-    },
-    {
-      "symbol": "BTC",
-      "rank": 1,
-      "state": "WATCH",
-      "price_usd": 82113.85965875615,
-      "fil_confluence_score": 35.6,
-      "fil_confluence_max_score": 100.0,
-      "fil_confluence_paper_ready_threshold": 70.0,
-      "fil_confluence_fill_pct": 35.6,
-      "fil_confluence_components": {
-        "wallet": 0,
-        "project": 0,
-        "volume": 11.6,
-        "market": 7,
-        "safety": 17.0
-      },
-      "project_layer_present": false,
-      "evidence_coverage": {
-        "wallet": true,
-        "project": false,
-        "volume": true,
-        "market": true,
-        "safety": true
-      },
-      "project_layer_missing_reason": "no_contract_mapping",
-      "project_flow_provider": null,
-      "wallet_conviction_score": 0.0,
-      "wallet_conviction_pre_calibration": 0.0,
-      "wallet_active": 0,
-      "wallet_proven": 0,
-      "wallet_shared": 0,
-      "wallet_longterm_proven": 0,
-      "wallet_profile_score": 0.0,
-      "wallet_calibration_bonus": 0.0,
-      "wallet_calibration_status": "NO_HISTORY",
-      "signal_wallets": [],
-      "wallet_exit_pressure": 0.0,
-      "fresh_volume": true,
-      "volume_market_cap": 0.005238,
-      "reasons": [
-        "fresh 1d/2d futures volume",
-        "exit pressure < 35%"
-      ],
-      "blockers": [
-        "wallet conviction below paper-entry threshold",
-        "no active wallet evidence",
-        "low volume/market-cap for execution"
-      ],
-      "risk": {
-        "max_account_risk_pct": 1.0,
-        "stop_loss_pct": 3.0,
-        "take_profit_1_pct": 6.0,
-        "take_profit_2_pct": 10.0,
-        "leverage_cap": 3,
-        "position_size_mode": "risk_based"
-      },
-      "generated_at": "2026-10-15T23:17:15.172073+00:00"
+      "generated_at": "2026-10-15T23:19:31.160528+00:00"
     },
     {
       "symbol": "ADA",
       "rank": 14,
       "state": "WATCH",
-      "price_usd": 0.22953078140054875,
+      "price_usd": 0.22942469553386266,
       "fil_confluence_score": 35.6,
       "fil_confluence_max_score": 100.0,
       "fil_confluence_paper_ready_threshold": 70.0,
@@ -4398,7 +4382,7 @@
       "signal_wallets": [],
       "wallet_exit_pressure": 0.0,
       "fresh_volume": true,
-      "volume_market_cap": 0.004882,
+      "volume_market_cap": 0.004885,
       "reasons": [
         "fresh 1d/2d futures volume",
         "exit pressure < 35%"
@@ -4416,13 +4400,13 @@
         "leverage_cap": 3,
         "position_size_mode": "risk_based"
       },
-      "generated_at": "2026-10-15T23:17:15.172088+00:00"
+      "generated_at": "2026-10-15T23:19:31.160562+00:00"
     },
     {
       "symbol": "ZEC",
       "rank": 10,
       "state": "WATCH",
-      "price_usd": 1222.5979224626176,
+      "price_usd": 1217.4879220528005,
       "fil_confluence_score": 35.6,
       "fil_confluence_max_score": 100.0,
       "fil_confluence_paper_ready_threshold": 70.0,
@@ -4456,11 +4440,11 @@
       "signal_wallets": [],
       "wallet_exit_pressure": 0.0,
       "fresh_volume": true,
-      "volume_market_cap": 0.011412,
+      "volume_market_cap": 0.011491,
       "reasons": [
         "fresh 1d/2d futures volume",
         "exit pressure < 35%",
-        "volume/market-cap 1.14%"
+        "volume/market-cap 1.15%"
       ],
       "blockers": [
         "wallet conviction below paper-entry threshold",
@@ -4474,13 +4458,13 @@
         "leverage_cap": 3,
         "position_size_mode": "risk_based"
       },
-      "generated_at": "2026-10-15T23:17:15.172101+00:00"
+      "generated_at": "2026-10-15T23:19:31.160580+00:00"
     },
     {
       "symbol": "COMP",
       "rank": 131,
       "state": "WATCH",
-      "price_usd": 22.34385493503461,
+      "price_usd": 22.34156173107434,
       "fil_confluence_score": 35.4,
       "fil_confluence_max_score": 100.0,
       "fil_confluence_paper_ready_threshold": 70.0,
@@ -4514,7 +4498,7 @@
       "signal_wallets": [],
       "wallet_exit_pressure": 0.0,
       "fresh_volume": true,
-      "volume_market_cap": 0.00111,
+      "volume_market_cap": 0.001112,
       "reasons": [
         "fresh 1d/2d futures volume",
         "exit pressure < 35%"
@@ -4532,13 +4516,13 @@
         "leverage_cap": 3,
         "position_size_mode": "risk_based"
       },
-      "generated_at": "2026-10-15T23:17:15.172115+00:00"
+      "generated_at": "2026-10-15T23:19:31.160595+00:00"
     },
     {
       "symbol": "QTUM",
       "rank": 194,
       "state": "WATCH",
-      "price_usd": 0.9181805664978933,
+      "price_usd": 0.9161136370535751,
       "fil_confluence_score": 35.4,
       "fil_confluence_max_score": 100.0,
       "fil_confluence_paper_ready_threshold": 70.0,
@@ -4572,7 +4556,7 @@
       "signal_wallets": [],
       "wallet_exit_pressure": 0.0,
       "fresh_volume": true,
-      "volume_market_cap": 0.001958,
+      "volume_market_cap": 0.001963,
       "reasons": [
         "fresh 1d/2d futures volume",
         "exit pressure < 35%"
@@ -4590,13 +4574,13 @@
         "leverage_cap": 3,
         "position_size_mode": "risk_based"
       },
-      "generated_at": "2026-10-15T23:17:15.172128+00:00"
+      "generated_at": "2026-10-15T23:19:31.160610+00:00"
     },
     {
       "symbol": "PI",
       "rank": 70,
       "state": "WATCH",
-      "price_usd": 0.07955948754196396,
+      "price_usd": 0.07952357821851054,
       "fil_confluence_score": 35.2,
       "fil_confluence_max_score": 100.0,
       "fil_confluence_paper_ready_threshold": 70.0,
@@ -4630,7 +4614,7 @@
       "signal_wallets": [],
       "wallet_exit_pressure": 0.0,
       "fresh_volume": true,
-      "volume_market_cap": 0.001947,
+      "volume_market_cap": 0.001949,
       "reasons": [
         "fresh 1d/2d futures volume",
         "exit pressure < 35%"
@@ -4648,13 +4632,13 @@
         "leverage_cap": 3,
         "position_size_mode": "risk_based"
       },
-      "generated_at": "2026-10-15T23:17:15.172142+00:00"
+      "generated_at": "2026-10-15T23:19:31.160625+00:00"
     },
     {
       "symbol": "PUMP",
       "rank": 41,
       "state": "WATCH",
-      "price_usd": 0.004520617317119323,
+      "price_usd": 0.004512700799856874,
       "fil_confluence_score": 34.8,
       "fil_confluence_max_score": 100.0,
       "fil_confluence_paper_ready_threshold": 70.0,
@@ -4688,7 +4672,7 @@
       "signal_wallets": [],
       "wallet_exit_pressure": 0.0,
       "fresh_volume": true,
-      "volume_market_cap": 0.005368,
+      "volume_market_cap": 0.005383,
       "reasons": [
         "fresh 1d/2d futures volume",
         "exit pressure < 35%"
@@ -4706,13 +4690,13 @@
         "leverage_cap": 3,
         "position_size_mode": "risk_based"
       },
-      "generated_at": "2026-10-15T23:17:15.172156+00:00"
+      "generated_at": "2026-10-15T23:19:31.160640+00:00"
     },
     {
       "symbol": "NEAR",
       "rank": 16,
       "state": "WATCH",
-      "price_usd": 5.250937596239302,
+      "price_usd": 5.25070904341563,
       "fil_confluence_score": 34.8,
       "fil_confluence_max_score": 100.0,
       "fil_confluence_paper_ready_threshold": 70.0,
@@ -4746,7 +4730,7 @@
       "signal_wallets": [],
       "wallet_exit_pressure": 0.0,
       "fresh_volume": true,
-      "volume_market_cap": 0.007269,
+      "volume_market_cap": 0.007273,
       "reasons": [
         "fresh 1d/2d futures volume",
         "exit pressure < 35%"
@@ -4764,13 +4748,13 @@
         "leverage_cap": 3,
         "position_size_mode": "risk_based"
       },
-      "generated_at": "2026-10-15T23:17:15.172169+00:00"
+      "generated_at": "2026-10-15T23:19:31.160654+00:00"
     },
     {
       "symbol": "WLD",
       "rank": 43,
       "state": "WATCH",
-      "price_usd": 0.5016274208498986,
+      "price_usd": 0.5013575771632366,
       "fil_confluence_score": 34.6,
       "fil_confluence_max_score": 100.0,
       "fil_confluence_paper_ready_threshold": 70.0,
@@ -4804,7 +4788,7 @@
       "signal_wallets": [],
       "wallet_exit_pressure": 0.0,
       "fresh_volume": true,
-      "volume_market_cap": 0.012489,
+      "volume_market_cap": 0.012502,
       "reasons": [
         "fresh 1d/2d futures volume",
         "exit pressure < 35%",
@@ -4822,13 +4806,13 @@
         "leverage_cap": 3,
         "position_size_mode": "risk_based"
       },
-      "generated_at": "2026-10-15T23:17:15.172183+00:00"
+      "generated_at": "2026-10-15T23:19:31.160669+00:00"
     },
     {
       "symbol": "DOT",
       "rank": 42,
       "state": "WATCH",
-      "price_usd": 1.1458253225771513,
+      "price_usd": 1.1449374964279675,
       "fil_confluence_score": 34.6,
       "fil_confluence_max_score": 100.0,
       "fil_confluence_paper_ready_threshold": 70.0,
@@ -4862,11 +4846,11 @@
       "signal_wallets": [],
       "wallet_exit_pressure": 0.0,
       "fresh_volume": true,
-      "volume_market_cap": 0.010838,
+      "volume_market_cap": 0.010851,
       "reasons": [
         "fresh 1d/2d futures volume",
         "exit pressure < 35%",
-        "volume/market-cap 1.08%"
+        "volume/market-cap 1.09%"
       ],
       "blockers": [
         "wallet conviction below paper-entry threshold",
@@ -4880,13 +4864,13 @@
         "leverage_cap": 3,
         "position_size_mode": "risk_based"
       },
-      "generated_at": "2026-10-15T23:17:15.172198+00:00"
+      "generated_at": "2026-10-15T23:19:31.160684+00:00"
     },
     {
       "symbol": "SUI",
       "rank": 24,
       "state": "WATCH",
-      "price_usd": 1.0327704432983225,
+      "price_usd": 1.0315726323970202,
       "fil_confluence_score": 34.6,
       "fil_confluence_max_score": 100.0,
       "fil_confluence_paper_ready_threshold": 70.0,
@@ -4920,7 +4904,7 @@
       "signal_wallets": [],
       "wallet_exit_pressure": 0.0,
       "fresh_volume": true,
-      "volume_market_cap": 0.004813,
+      "volume_market_cap": 0.004841,
       "reasons": [
         "fresh 1d/2d futures volume",
         "exit pressure < 35%"
@@ -4938,13 +4922,13 @@
         "leverage_cap": 3,
         "position_size_mode": "risk_based"
       },
-      "generated_at": "2026-10-15T23:17:15.172211+00:00"
+      "generated_at": "2026-10-15T23:19:31.160698+00:00"
     },
     {
       "symbol": "AKE",
       "rank": 212,
       "state": "WATCH",
-      "price_usd": 0.0333269898428726,
+      "price_usd": 0.03317026977336157,
       "fil_confluence_score": 34.6,
       "fil_confluence_max_score": 100.0,
       "fil_confluence_paper_ready_threshold": 70.0,
@@ -4978,11 +4962,11 @@
       "signal_wallets": [],
       "wallet_exit_pressure": 0.0,
       "fresh_volume": true,
-      "volume_market_cap": 0.030201,
+      "volume_market_cap": 0.03035,
       "reasons": [
         "fresh 1d/2d futures volume",
         "exit pressure < 35%",
-        "volume/market-cap 3.02%",
+        "volume/market-cap 3.03%",
         "24h move > 15%: late-entry caution"
       ],
       "blockers": [
@@ -4997,13 +4981,13 @@
         "leverage_cap": 3,
         "position_size_mode": "risk_based"
       },
-      "generated_at": "2026-10-15T23:17:15.172225+00:00"
+      "generated_at": "2026-10-15T23:19:31.160713+00:00"
     },
     {
       "symbol": "WLFI",
       "rank": 47,
       "state": "WATCH",
-      "price_usd": 0.05722913553481396,
+      "price_usd": 0.05724256815527695,
       "fil_confluence_score": 34.4,
       "fil_confluence_max_score": 100.0,
       "fil_confluence_paper_ready_threshold": 70.0,
@@ -5054,7 +5038,7 @@
       ],
       "wallet_exit_pressure": 0.0,
       "fresh_volume": true,
-      "volume_market_cap": 0.001007,
+      "volume_market_cap": 0.001008,
       "reasons": [
         "1 unique active wallet(s)",
         "1 proven pre-pump wallet(s)",
@@ -5076,13 +5060,13 @@
         "leverage_cap": 3,
         "position_size_mode": "risk_based"
       },
-      "generated_at": "2026-10-15T23:17:15.172241+00:00"
+      "generated_at": "2026-10-15T23:19:31.160730+00:00"
     },
     {
       "symbol": "STABLE",
       "rank": 75,
       "state": "WATCH",
-      "price_usd": 0.02726287323835428,
+      "price_usd": 0.02726884036261604,
       "fil_confluence_score": 34.2,
       "fil_confluence_max_score": 100.0,
       "fil_confluence_paper_ready_threshold": 70.0,
@@ -5134,13 +5118,13 @@
         "leverage_cap": 3,
         "position_size_mode": "risk_based"
       },
-      "generated_at": "2026-10-15T23:17:15.172255+00:00"
+      "generated_at": "2026-10-15T23:19:31.160744+00:00"
     },
     {
       "symbol": "ICP",
       "rank": 50,
       "state": "WATCH",
-      "price_usd": 3.0532344677129584,
+      "price_usd": 3.051870059716843,
       "fil_confluence_score": 34.2,
       "fil_confluence_max_score": 100.0,
       "fil_confluence_paper_ready_threshold": 70.0,
@@ -5174,7 +5158,7 @@
       "signal_wallets": [],
       "wallet_exit_pressure": 0.0,
       "fresh_volume": true,
-      "volume_market_cap": 0.001579,
+      "volume_market_cap": 0.00158,
       "reasons": [
         "fresh 1d/2d futures volume",
         "exit pressure < 35%"
@@ -5192,13 +5176,13 @@
         "leverage_cap": 3,
         "position_size_mode": "risk_based"
       },
-      "generated_at": "2026-10-15T23:17:15.172269+00:00"
+      "generated_at": "2026-10-15T23:19:31.160759+00:00"
     },
     {
       "symbol": "GRAM",
       "rank": 27,
       "state": "WATCH",
-      "price_usd": 1.3818806574176468,
+      "price_usd": 1.3811015065965353,
       "fil_confluence_score": 34.2,
       "fil_confluence_max_score": 100.0,
       "fil_confluence_paper_ready_threshold": 70.0,
@@ -5250,13 +5234,13 @@
         "leverage_cap": 3,
         "position_size_mode": "risk_based"
       },
-      "generated_at": "2026-10-15T23:17:15.172283+00:00"
+      "generated_at": "2026-10-15T23:19:31.160773+00:00"
     },
     {
       "symbol": "ASTER",
       "rank": 44,
       "state": "WATCH",
-      "price_usd": 0.7033488714546123,
+      "price_usd": 0.7029134865277505,
       "fil_confluence_score": 33.6,
       "fil_confluence_max_score": 100.0,
       "fil_confluence_paper_ready_threshold": 70.0,
@@ -5290,7 +5274,7 @@
       "signal_wallets": [],
       "wallet_exit_pressure": 0.0,
       "fresh_volume": true,
-      "volume_market_cap": 0.001058,
+      "volume_market_cap": 0.001059,
       "reasons": [
         "fresh 1d/2d futures volume",
         "exit pressure < 35%"
@@ -5308,13 +5292,13 @@
         "leverage_cap": 3,
         "position_size_mode": "risk_based"
       },
-      "generated_at": "2026-10-15T23:17:15.172297+00:00"
+      "generated_at": "2026-10-15T23:19:31.160787+00:00"
     },
     {
       "symbol": "ETC",
       "rank": 57,
       "state": "WATCH",
-      "price_usd": 7.999382703861204,
+      "price_usd": 7.9918667515696775,
       "fil_confluence_score": 33.6,
       "fil_confluence_max_score": 100.0,
       "fil_confluence_paper_ready_threshold": 70.0,
@@ -5348,7 +5332,7 @@
       "signal_wallets": [],
       "wallet_exit_pressure": 0.0,
       "fresh_volume": true,
-      "volume_market_cap": 0.002185,
+      "volume_market_cap": 0.00219,
       "reasons": [
         "fresh 1d/2d futures volume",
         "exit pressure < 35%"
@@ -5366,13 +5350,13 @@
         "leverage_cap": 3,
         "position_size_mode": "risk_based"
       },
-      "generated_at": "2026-10-15T23:17:15.172310+00:00"
+      "generated_at": "2026-10-15T23:19:31.160801+00:00"
     },
     {
       "symbol": "DASH",
       "rank": 83,
       "state": "WATCH",
-      "price_usd": 49.33660410373394,
+      "price_usd": 49.287512880415775,
       "fil_confluence_score": 33.6,
       "fil_confluence_max_score": 100.0,
       "fil_confluence_paper_ready_threshold": 70.0,
@@ -5406,7 +5390,7 @@
       "signal_wallets": [],
       "wallet_exit_pressure": 0.0,
       "fresh_volume": true,
-      "volume_market_cap": 0.0013,
+      "volume_market_cap": 0.001302,
       "reasons": [
         "fresh 1d/2d futures volume",
         "exit pressure < 35%"
@@ -5424,13 +5408,13 @@
         "leverage_cap": 3,
         "position_size_mode": "risk_based"
       },
-      "generated_at": "2026-10-15T23:17:15.172323+00:00"
+      "generated_at": "2026-10-15T23:19:31.160816+00:00"
     },
     {
       "symbol": "PRL",
       "rank": 215,
       "state": "WATCH",
-      "price_usd": 1.90044171912731,
+      "price_usd": 1.8986838382757594,
       "fil_confluence_score": 33.6,
       "fil_confluence_max_score": 100.0,
       "fil_confluence_paper_ready_threshold": 70.0,
@@ -5482,13 +5466,13 @@
         "leverage_cap": 3,
         "position_size_mode": "risk_based"
       },
-      "generated_at": "2026-10-15T23:17:15.172337+00:00"
+      "generated_at": "2026-10-15T23:19:31.160830+00:00"
     },
     {
       "symbol": "JST",
       "rank": 60,
       "state": "WATCH",
-      "price_usd": 0.13121184713488554,
+      "price_usd": 0.13136447980391514,
       "fil_confluence_score": 33.6,
       "fil_confluence_max_score": 100.0,
       "fil_confluence_paper_ready_threshold": 70.0,
@@ -5540,13 +5524,13 @@
         "leverage_cap": 3,
         "position_size_mode": "risk_based"
       },
-      "generated_at": "2026-10-15T23:17:15.172351+00:00"
+      "generated_at": "2026-10-15T23:19:31.160845+00:00"
     },
     {
       "symbol": "OKB",
       "rank": 36,
       "state": "WATCH",
-      "price_usd": 117.5216425730273,
+      "price_usd": 117.34228814862891,
       "fil_confluence_score": 33.6,
       "fil_confluence_max_score": 100.0,
       "fil_confluence_paper_ready_threshold": 70.0,
@@ -5580,7 +5564,7 @@
       "signal_wallets": [],
       "wallet_exit_pressure": 0.0,
       "fresh_volume": true,
-      "volume_market_cap": 0.000444,
+      "volume_market_cap": 0.000445,
       "reasons": [
         "fresh 1d/2d futures volume",
         "exit pressure < 35%"
@@ -5598,13 +5582,13 @@
         "leverage_cap": 3,
         "position_size_mode": "risk_based"
       },
-      "generated_at": "2026-10-15T23:17:15.172364+00:00"
+      "generated_at": "2026-10-15T23:19:31.160859+00:00"
     },
     {
       "symbol": "AVAX",
       "rank": 23,
       "state": "WATCH",
-      "price_usd": 10.024204872456941,
+      "price_usd": 10.02095072058367,
       "fil_confluence_score": 33.2,
       "fil_confluence_max_score": 100.0,
       "fil_confluence_paper_ready_threshold": 70.0,
@@ -5638,7 +5622,7 @@
       "signal_wallets": [],
       "wallet_exit_pressure": 0.0,
       "fresh_volume": true,
-      "volume_market_cap": 0.002415,
+      "volume_market_cap": 0.002416,
       "reasons": [
         "fresh 1d/2d futures volume",
         "exit pressure < 35%"
@@ -5656,13 +5640,13 @@
         "leverage_cap": 3,
         "position_size_mode": "risk_based"
       },
-      "generated_at": "2026-10-15T23:17:15.172377+00:00"
+      "generated_at": "2026-10-15T23:19:31.160872+00:00"
     },
     {
       "symbol": "INJ",
       "rank": 71,
       "state": "WATCH",
-      "price_usd": 8.49327034162504,
+      "price_usd": 8.491995405862799,
       "fil_confluence_score": 33.2,
       "fil_confluence_max_score": 100.0,
       "fil_confluence_paper_ready_threshold": 70.0,
@@ -5696,7 +5680,7 @@
       "signal_wallets": [],
       "wallet_exit_pressure": 0.0,
       "fresh_volume": true,
-      "volume_market_cap": 0.011269,
+      "volume_market_cap": 0.011281,
       "reasons": [
         "fresh 1d/2d futures volume",
         "exit pressure < 35%",
@@ -5714,7 +5698,7 @@
         "leverage_cap": 3,
         "position_size_mode": "risk_based"
       },
-      "generated_at": "2026-10-15T23:17:15.172391+00:00"
+      "generated_at": "2026-10-15T23:19:31.160886+00:00"
     }
   ]
 }
