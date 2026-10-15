@@ -47,6 +47,15 @@ class GMGNHistoryMergeTests(unittest.TestCase):
         self.assertEqual(len(history["wallet"]), 2)
         self.assertEqual({row["price_usd"] for row in history["wallet"]}, {1.0, 1.1})
 
+    def test_scanner_identity_keeps_same_transaction_distinct_assets(self):
+        first = {"chain": "eth", "transaction_hash": "tx-1", "address": "0x" + "a" * 40, "side": "buy", "amount_usd": 10, "price_usd": 1.0}
+        second = dict(first, address="0x" + "b" * 40)
+        self.assertNotEqual(scanner._gmgn_history_key(first, "wallet"), scanner._gmgn_history_key(second, "wallet"))
+
+    def test_scanner_identity_keeps_same_transaction_distinct_prices(self):
+        first = {"chain": "eth", "transaction_hash": "tx-1", "address": "0x" + "a" * 40, "side": "buy", "amount_usd": 10, "price_usd": 1.0}
+        second = dict(first, price_usd=2.0)
+        self.assertNotEqual(scanner._gmgn_history_key(first, "wallet"), scanner._gmgn_history_key(second, "wallet"))
     def test_scanner_identity_keeps_distinct_transaction_hashes(self):
         first = {"chain": "eth", "tx_hash": "tx-1", "timestamp": 1000, "address": "0xabc"}
         second = {"chain": "eth", "tx_hash": "tx-2", "timestamp": 1000, "address": "0xabc"}
