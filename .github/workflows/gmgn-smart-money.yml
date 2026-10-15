@@ -75,7 +75,17 @@ jobs:
         run: python merge_gmgn_history_metadata.py --baseline gmgn_wallet_history.baseline.json --current gmgn_wallet_history.json
 
       - name: Rebuild reverse historical discovery from current GMGN archive
-        run: python reverse_historical_discovery.py
+        id: reverse_discovery
+        run: |
+          set -euo pipefail
+          old_digest="$(python -c 'import json,pathlib; p=pathlib.Path("reverse_historical_discovery.json"); print(json.loads(p.read_text()).get("determinism",{}).get("payload_sha256","") if p.exists() else "")')"
+          python reverse_historical_discovery.py
+          new_digest="$(python -c 'import json; print(json.load(open("reverse_historical_discovery.json")).get("determinism",{}).get("payload_sha256",""))')"
+          if [ "$old_digest" != "$new_digest" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Save GMGN wallet history
         run: |
@@ -86,10 +96,6 @@ jobs:
           fi
           python validate_gmgn_history_preservation.py --baseline gmgn_wallet_history.baseline.json --current gmgn_wallet_history.json
           python -m json.tool gmgn_wallet_history.json >/dev/null
-          history_changed=false
-          if ! cmp -s gmgn_wallet_history.baseline.json gmgn_wallet_history.json; then
-            history_changed=true
-          fi
           gzip -n -9 -c gmgn_wallet_history.json > gmgn_wallet_history.json.gz.tmp
           gzip -t gmgn_wallet_history.json.gz.tmp
           archive_bytes="$(wc -c < gmgn_wallet_history.json.gz.tmp)"
@@ -103,7 +109,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add gmgn_wallet_history.json.gz gmgn_history_recovery_done.json
-          if [ "$history_changed" = true ]; then
+          if [ "${{ steps.reverse_discovery.outputs.changed }}" = "true" ]; then
             git add reverse_historical_discovery.json
           fi
           if git diff --cached --quiet; then
