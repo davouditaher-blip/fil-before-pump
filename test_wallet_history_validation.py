@@ -80,7 +80,8 @@ def test_losing_wallet_is_not_proven_but_is_not_lost_evidence():
 # --------------------------------------------------------------------------
 def test_wallet_with_no_qualifying_entry_is_cold_start():
     profile = whv.reconstruct_wallet("cold", [])
-    assert profile["history_class"] == whv.NO_HISTORY
+    assert profile["history_class"] == whv.ACTIVITY_BUT_UNPROVEN
+    assert profile["unattributed_chain_rows"] == len(rows)
     assert profile["proven"] is False
     # UNKNOWN must never be reported as 0% performance.
     assert profile["pre_pump_win_rate"] is None
