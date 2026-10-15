@@ -15,7 +15,7 @@ class GMGNHistoryMergeTests(unittest.TestCase):
         ]}
         merged = whv.merge_history_data(history)
         self.assertEqual(len(merged[wallet]), 2)
-        self.assertEqual({row["address"] for row in merged[wallet]}, {"0xtokena", "0xtokenb"})
+        self.assertEqual({row["address"] for row in merged[wallet]}, {"0xTokenA", "0xTokenB"})
 
     def test_merge_preserves_static_fields_peak_and_first_hit_timestamps(self):
         old = {
