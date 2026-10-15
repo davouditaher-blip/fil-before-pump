@@ -57,7 +57,7 @@ def _md5(path: Path) -> str:
 class TestAuditReadsTheCodeAccurately(unittest.TestCase):
     """Re-derive the audit's claims from source, independently of the report."""
 
-    def test_portfolio_activity_sends_no_time_or_pagination_flag(self):
+    def test_portfolio_activity_sends_cursor_but_no_time_range(self):
         """The central claim. Verified by reading the argv the code builds."""
         tree = ast.parse(LAYER.read_text(encoding="utf-8"))
         activity = None
@@ -76,21 +76,21 @@ class TestAuditReadsTheCodeAccurately(unittest.TestCase):
         self.assertIn("--wallet", flags)
         self.assertNotIn("--from", flags, "no time-range flag is actually sent")
         self.assertNotIn("--to", flags, "no time-range flag is actually sent")
-        self.assertNotIn("--cursor", flags, "production sends no cursor")
+        self.assertIn("--cursor", flags, "live activity now follows provider cursors")
         self.assertNotIn("--page", flags, "production sends no page number")
 
-    def test_backfill_has_cursor_pagination_but_runtime_wrapper_does_not(self):
+    def test_backfill_and_runtime_wrapper_both_have_cursor_pagination(self):
         tree = ast.parse(LAYER.read_text(encoding="utf-8"))
         activity = next(node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef) and node.name == "portfolio_activity")
         flags = {node.value for node in ast.walk(activity) if isinstance(node, ast.Constant) and isinstance(node.value, str)}
-        self.assertNotIn("--cursor", flags)
+        self.assertIn("--cursor", flags)
         source = BACKFILL.read_text(encoding="utf-8")
         self.assertIn('"--cursor"', source)
         self.assertIn("while True:", source)
         self.assertIn("MAX_PAGES=1000", source)
 
     def test_the_probe_does_implement_cursor_pagination(self):
-        # The contrast that matters: cursor support exists, but only in the probe.
+        # The read-only probe also supports cursor and page pagination.
         tree = ast.parse(PROBE.read_text(encoding="utf-8"))
         sent = {
             node.value for node in ast.walk(tree)
