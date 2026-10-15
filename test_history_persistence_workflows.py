@@ -14,14 +14,23 @@ class HistoryPersistenceWorkflowTests(unittest.TestCase):
         self.assertIn("cancel-in-progress: false", gmgn)
 
     def test_history_writers_never_prefer_local_archive_on_rebase_conflict(self):
-        for name in (".github/workflows/fil-before-pump.yml", ".github/workflows/gmgn-smart-money.yml"):
+        for name in (
+            ".github/workflows/fil-before-pump.yml",
+            ".github/workflows/gmgn-smart-money.yml",
+            ".github/workflows/gmgn-wallet-backfill.yml",
+        ):
             source = (ROOT / name).read_text(encoding="utf-8")
             self.assertNotIn("git rebase -X theirs", source, name)
             self.assertIn("git rebase origin/main", source, name)
+        for name in (".github/workflows/fil-before-pump.yml", ".github/workflows/gmgn-smart-money.yml"):
+            source = (ROOT / name).read_text(encoding="utf-8")
             self.assertIn("refusing to prefer either history archive", source, name)
             self.assertIn("validate_gmgn_history_preservation.py --baseline", source, name)
             self.assertIn("gmgn_wallet_history.baseline.json", source, name)
             self.assertIn("python -m json.tool gmgn_wallet_history.json", source, name)
+        backfill = (ROOT / ".github/workflows/gmgn-wallet-backfill.yml").read_text(encoding="utf-8")
+        self.assertIn("refusing to overwrite a historical activity archive", backfill)
+        self.assertIn("actions/upload-artifact@v4", backfill)
 
     def test_scanner_dedup_keeps_different_prices_as_distinct_events(self):
         scanner = (ROOT / "scanner.py").read_text(encoding="utf-8")
