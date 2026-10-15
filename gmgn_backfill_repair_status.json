@@ -59,6 +59,13 @@
         "Added offline tests for pagination, resume/merge safety, chain attribution, case sensitivity, incomplete live windows, baseline preservation, compressed archive validity, and supplemental discovery ingestion.",
         "Pull-request CI runs the new tests and a read-only inventory of the committed compressed archive."
       ]
+    },
+    {
+      "file": ".github/workflows/fil-before-pump.yml and reverse_historical_discovery.py",
+      "changes": [
+        "The scanner workflow now regenerates and commits reverse_historical_discovery.json from the updated archive, including completed supplemental GMGN activity archives.",
+        "The discovery script reads either raw JSON or the committed gzip archive, records the decompressed payload checksum, and keeps generated_at stable when evidence is unchanged to avoid unnecessary commits."
+      ]
     }
   ],
   "historical_data_facts": {
@@ -80,7 +87,7 @@
     "No live GMGN backfill has been run. The secret value is not inspectable here, and actual GMGN cursor responses, quota, and available historical depth remain unverified.",
     "The manual backfill handles one wallet and one selected chain per run; automatic enumeration and batch backfill of the full discovered-wallet population is not implemented.",
     "The current archive spans about 24.75 days overall, and the longest observed history for a known-chain contract is about 17.9 days. No asset has 90/180/365 days, so the existing archive cannot satisfy the 90-day discovery gate.",
-    "123,184 existing rows have no usable chain attribution and the rows contain no alternative network/chain-id field. Their chain cannot be inferred safely from the current archive; they are retained but excluded from cross-chain historical discovery. New rows now inherit the requested chain.",
+    "123,184 existing rows have no usable chain attribution and the rows contain no alternative network/chain-id field. Their chain cannot be inferred safely from the current archive; they are retained but excluded from cross-chain historical discovery. New scanner and GMGN-layer rows now inherit the requested chain.",
     "The legacy historical-depth audit's source digest does not match the current compressed archive; the legacy report is a prior snapshot, not a current measurement.",
     "Nansen historical-balance backfill stopped after 1,000 rows because the provider returned HTTP 403 insufficient_credits; balance snapshots are not substitute trade history.",
     "The code and offline tests are repaired, but historical coverage cannot be declared complete until a successful live GMGN backfill provides and verifies older trade events."
