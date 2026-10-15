@@ -19,6 +19,9 @@ class HistoryPersistenceWorkflowTests(unittest.TestCase):
             self.assertNotIn("git rebase -X theirs", source, name)
             self.assertIn("git rebase origin/main", source, name)
             self.assertIn("refusing to prefer either history archive", source, name)
+            self.assertIn("validate_gmgn_history_preservation.py --baseline", source, name)
+            self.assertIn("gmgn_wallet_history.baseline.json", source, name)
+            self.assertIn("python -m json.tool gmgn_wallet_history.json", source, name)
 
     def test_live_orders_remain_disabled_in_discovery(self):
         source = (ROOT / "reverse_historical_discovery.py").read_text(encoding="utf-8")
