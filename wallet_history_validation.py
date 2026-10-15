@@ -215,18 +215,23 @@ def history_event_identity(wallet: Any, row: dict[str, Any]) -> tuple:
         row.get("transaction_hash") or row.get("tx_hash") or
         row.get("transactionHash") or row.get("id")
     )
-    if tx:
-        return (wallet_key, chain, "tx", tx.lower())
     address = _identity_value(row.get("address") or row.get("base_address"))
     if chain in ("eth", "ethereum", "bsc", "bnb", "base", "eth-mainnet", "bsc-mainnet", "base-mainnet"):
         address = address.lower()
-    timestamp = _identity_value(row.get("trade_timestamp") or row.get("timestamp"))
     side = _identity_value(row.get("side") or row.get("type")).lower()
+    if tx and chain and address:
+        # A single on-chain transaction can contain multiple asset legs. Hash
+        # alone is not a unique trade identity for this archive: keep each
+        # wallet+chain+asset+side event distinct while still merging repeat
+        # observations of the same leg. If chain or asset is unknown, do not
+        # use a transaction-only key: retain the other event attributes too.
+        return (wallet_key, chain, "tx", tx.lower(), address, side)
+    timestamp = _identity_value(row.get("trade_timestamp") or row.get("timestamp"))
     amount = _identity_value(
         row.get("amount_usd") or row.get("usd") or row.get("usd_value") or row.get("value_usd")
     )
     price = _identity_value(row.get("price_usd") or row.get("price") or row.get("priceUsd"))
-    return (wallet_key, chain, "fallback", address, timestamp, side, amount, price)
+    return (wallet_key, chain, "fallback", tx.lower(), address, timestamp, side, amount, price)
 
 
 def _timestamp_value(value: Any) -> int:
@@ -386,16 +391,18 @@ def event_side(row: dict[str, Any]) -> str:
 
 
 def asset_identity(row: dict[str, Any]) -> tuple[str, str] | None:
-    """Canonical token identity: chain + contract address.
+    """Canonical token identity: a known chain AND contract address.
 
-    A row without a contract address has no usable identity. Returning ``None``
-    forces the caller to bucket such rows separately instead of attributing
-    them to an arbitrary token.
+    A contract address without chain provenance is ambiguous: identical
+    addresses can exist on different EVM networks. Unknown-chain rows remain
+    in the raw archive, but they are not eligible for reconstruction or proof.
+    Returning None here prevents an unknown chain from being silently assigned
+    to a requested chain or joined with another chain's price observations.
     """
     address = str(row.get("address") or row.get("base_address") or "").strip()
-    if not address:
-        return None
     chain = str(row.get("chain") or "").strip().lower()
+    if not address or not chain:
+        return None
     return (chain, address)
 
 
@@ -696,7 +703,15 @@ def reconstruct_wallet(
     unchanged, plus an explicit ``history_class`` and the evidence counters the
     report needs.
     """
-    clean = dedupe(rows or [])
+    source_rows = [row for row in (rows or []) if isinstance(row, dict)]
+    unattributed_chain_rows = sum(
+        1 for row in source_rows
+        if not str(row.get("chain") or "").strip()
+        and bool(str(row.get("address") or row.get("base_address") or "").strip())
+        and event_ts(row) > 0
+        and event_side(row) in {"buy", "sell"}
+    )
+    clean = dedupe(source_rows)
     grouped: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
     for row in clean:
         identity = asset_identity(row)
@@ -709,25 +724,21 @@ def reconstruct_wallet(
         if record is not None:
             opportunities.append(record)
 
-    # Chain scoping is provenance-aware. Only 17% of the stored rows carry a
-    # chain (the GMGN CLI omits it on most rows, and only rows fetched after
-    # the collector started stamping it have it), so a strict
-    # ``chain == requested`` filter would silently discard the other 83% of the
-    # history and manufacture a cold start. A row whose chain is unknown is
-    # not evidence that it belongs to a different chain, and the contract
-    # address is the real discriminator, so an unattributed row is kept and a
-    # *known* mismatch is dropped. This never credits a wallet with a
-    # different asset, because that is decided by the address.
+    # Unknown-chain rows are excluded before grouping by asset_identity.
+    # Do not assign them to the requested chain: that would turn missing
+    # provenance into false cross-chain evidence and could create a false
+    # PROVEN classification. The raw archive still retains those rows so they
+    # can be attributed later if authoritative chain evidence becomes available.
     if chain:
         wanted = str(chain).strip().lower()
-        scoped = [
-            o for o in opportunities
-            if not o["chain"] or o["chain"] == wanted
-        ]
-        if len(scoped) != len(opportunities):
-            opportunities = scoped
+        opportunities = [o for o in opportunities if o["chain"] == wanted]
 
     history_class, observed, successes, unknown, win_rate = classify(opportunities)
+    # Unknown-chain trades are real activity but cannot prove performance.
+    # Preserve that distinction: report historical activity as unproven rather
+    # than incorrectly calling the wallet a cold start.
+    if history_class == NO_HISTORY and unattributed_chain_rows:
+        history_class = ACTIVITY_BUT_UNPROVEN
 
     return {
         "wallet": wallet,
@@ -738,6 +749,7 @@ def reconstruct_wallet(
         "opportunities": len(opportunities),
         "observed_opportunities": len(observed),
         "unknown_opportunities": len(unknown),
+        "unattributed_chain_rows": unattributed_chain_rows,
         "successful_pre_pump_entries": len(successes),
         "pre_pump_win_rate": win_rate,
         "entries_with_exit": sum(1 for o in opportunities if o["exit_timestamp"] is not None),

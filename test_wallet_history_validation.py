@@ -81,6 +81,7 @@ def test_losing_wallet_is_not_proven_but_is_not_lost_evidence():
 def test_wallet_with_no_qualifying_entry_is_cold_start():
     profile = whv.reconstruct_wallet("cold", [])
     assert profile["history_class"] == whv.NO_HISTORY
+    assert profile["unattributed_chain_rows"] == 0
     assert profile["proven"] is False
     # UNKNOWN must never be reported as 0% performance.
     assert profile["pre_pump_win_rate"] is None
@@ -210,12 +211,14 @@ def test_same_symbol_different_chain_stays_separate():
     assert profile["pre_pump_win_rate"] == 50.0
 
 
-def test_chain_scoped_evaluation_keeps_unattributed_rows():
-    """Only 17% of stored rows carry a chain; unknown chain is not a mismatch."""
+def test_chain_scoped_evaluation_excludes_unattributed_rows():
+    """Missing chain provenance is UNKNOWN, never silently assigned to eth."""
     rows = _triple("0xaaa", [1.1], chain="", symbol="AAA")
     profile = whv.reconstruct_wallet("untagged", rows, chain="eth")
-    assert profile["opportunities"] == 1
-    assert profile["observed_opportunities"] == 1
+    assert profile["opportunities"] == 0
+    assert profile["observed_opportunities"] == 0
+    assert profile["history_class"] == whv.ACTIVITY_BUT_UNPROVEN
+    assert profile["unattributed_chain_rows"] == len(rows)
 
 
 def test_chain_scoped_evaluation_drops_a_known_mismatch():
