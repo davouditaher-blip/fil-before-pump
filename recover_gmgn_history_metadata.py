@@ -93,8 +93,8 @@ def main() -> int:
         # Version 2 changes event identity to include asset+side alongside the
         # transaction hash. Re-run once against the trusted snapshots so any
         # distinct asset legs collapsed by the old tx-only key can be restored.
-        if done.get("status") == "complete" and int(done.get("recovery_version", 0)) >= 2:
-            print(json.dumps({"recovery": "already_complete", "recovery_version": 2, "done_file": str(done_path)}))
+        if done.get("status") == "complete" and int(done.get("recovery_version", 0)) >= 3:
+            print(json.dumps({"recovery": "already_complete", "recovery_version": 3, "done_file": str(done_path)}))
             return 0
 
     current = _load_current(current_path)
@@ -118,7 +118,7 @@ def main() -> int:
     report = {
         "status": "complete",
         "recovery_version": 2,
-        "event_identity_scheme": "wallet+chain+transaction+asset+side (fallback: asset+time+side+amount+price)",
+        "event_identity_scheme": "wallet+chain+transaction+asset+side+amount+price (fallback: asset+time+side+amount+price)",
         "recovery_commits": RECOVERY_COMMITS,
         "rows_before": rows_before,
         "rows_after": rows_after,
