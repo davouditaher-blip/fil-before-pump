@@ -79,17 +79,15 @@ class TestAuditReadsTheCodeAccurately(unittest.TestCase):
         self.assertNotIn("--cursor", flags, "production sends no cursor")
         self.assertNotIn("--page", flags, "production sends no page number")
 
-    def test_production_code_contains_no_cursor_or_page_argument(self):
-        for path in (LAYER, BACKFILL):
-            tree = ast.parse(path.read_text(encoding="utf-8"))
-            sent: set[str] = set()
-            for node in ast.walk(tree):
-                if isinstance(node, ast.Constant) and isinstance(node.value, str):
-                    if node.value in ("--cursor", "--page", "--offset"):
-                        sent.add(node.value)
-            self.assertEqual(
-                sent, set(),
-                f"{path.name} must not send a pagination flag: {sent}")
+    def test_backfill_has_cursor_pagination_but_runtime_wrapper_does_not(self):
+        tree = ast.parse(LAYER.read_text(encoding="utf-8"))
+        activity = next(node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef) and node.name == "portfolio_activity")
+        flags = {node.value for node in ast.walk(activity) if isinstance(node, ast.Constant) and isinstance(node.value, str)}
+        self.assertNotIn("--cursor", flags)
+        source = BACKFILL.read_text(encoding="utf-8")
+        self.assertIn('"--cursor"', source)
+        self.assertIn("while True:", source)
+        self.assertIn("MAX_PAGES=1000", source)
 
     def test_the_probe_does_implement_cursor_pagination(self):
         # The contrast that matters: cursor support exists, but only in the probe.
@@ -119,56 +117,41 @@ class TestAuditReadsTheCodeAccurately(unittest.TestCase):
         self.assertIn("--from", flags)
         self.assertIn("--to", flags)
 
-    def test_backfill_makes_one_call_per_chain_with_no_loop(self):
+    def test_backfill_paginates_each_chain_until_provider_completion(self):
         source = BACKFILL.read_text(encoding="utf-8")
-        # CHAINS is a 4-tuple and the loop body calls run_cli exactly once.
-        self.assertIn('CHAINS = ("sol", "bsc", "base", "eth")', source)
-        self.assertEqual(source.count("obj = run_cli(chain)"), 1)
+        self.assertIn('CHAINS=("sol","bsc","base","eth")', source)
+        self.assertIn("runner(chain,wallet,limit,cursor)", source)
+        self.assertIn("next_cursor", source)
+        self.assertIn("MAX_PAGES=1000", source)
 
-    def test_backfill_writes_the_file_even_when_rows_are_empty(self):
-        """The wallet_archive root cause, verified in the source."""
+    def test_backfill_refuses_malformed_or_empty_error_responses(self):
         source = BACKFILL.read_text(encoding="utf-8")
-        self.assertIn('rows = obj.get("list") or obj.get("data") or []', source)
-        # The write is not inside any conditional on rows being non-empty.
-        write_at = source.index("raw_path.write_text")
-        rows_at = source.index('rows = obj.get("list")')
-        between = source[rows_at:write_at]
-        self.assertNotIn("if rows", between)
-        self.assertNotIn("if not rows", between)
+        self.assertIn("refusing to record empty history", source)
+        self.assertIn("Existing archive unreadable; refusing overwrite", source)
+        self.assertIn("failed_or_incomplete", source)
+        self.assertIn("partial.json", source)
 
-    def test_backfill_records_no_error_state(self):
+    def test_backfill_persists_error_state(self):
         source = BACKFILL.read_text(encoding="utf-8")
-        for persisted in ('"error"', '"returncode"', '"stderr"'):
-            self.assertNotIn(
-                persisted, source,
-                f"{persisted} would mean the failure cause is persisted")
+        for persisted in ('"error"', '"returncode"', '"stderr"', '"status"'):
+            self.assertIn(persisted, source)
 
     def test_backfill_has_no_rate_limit_detection(self):
         source = BACKFILL.read_text(encoding="utf-8")
         self.assertNotIn("detect_rate_limit", source)
         self.assertNotIn("RATE_LIMIT", source)
 
-    def test_backfill_has_no_api_key_preflight(self):
+    def test_backfill_has_api_key_preflight(self):
         source = BACKFILL.read_text(encoding="utf-8")
-        self.assertNotIn("GMGN_API_KEY", source)
+        self.assertIn('os.environ.get("GMGN_API_KEY", "").strip()', source)
+        self.assertIn("GMGN_API_KEY is missing", source)
 
-    def test_backfill_does_not_guard_the_subprocess_call(self):
-        tree = ast.parse(BACKFILL.read_text(encoding="utf-8"))
-        run_cli = None
-        for node in ast.walk(tree):
-            if isinstance(node, ast.FunctionDef) and node.name == "run_cli":
-                run_cli = node
-        self.assertIsNotNone(run_cli)
-        # Only the JSON parse loop may have a try; the subprocess call may not be
-        # wrapped, which is why a missing npx raises instead of returning {}.
-        guarded = []
-        for node in ast.walk(run_cli):
-            if isinstance(node, ast.Try):
-                for inner in ast.walk(node):
-                    if isinstance(inner, ast.Call) and isinstance(inner.func, ast.Attribute):
-                        guarded.append(inner.func.attr)
-        self.assertNotIn("run", guarded)
-
+    def test_backfill_guards_subprocess_and_preserves_failure_details(self):
+        source = BACKFILL.read_text(encoding="utf-8")
+        self.assertIn("subprocess.run(cmd", source)
+        self.assertIn("except Exception as exc: raise BackfillError", source)
+        self.assertIn("returncode", source)
+        self.assertIn("stderr", source)
 
 class TestArchiveRootCauseIsEvidenceBased(unittest.TestCase):
     def setUp(self):
