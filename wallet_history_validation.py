@@ -219,18 +219,19 @@ def history_event_identity(wallet: Any, row: dict[str, Any]) -> tuple:
     if chain in ("eth", "ethereum", "bsc", "bnb", "base", "eth-mainnet", "bsc-mainnet", "base-mainnet"):
         address = address.lower()
     side = _identity_value(row.get("side") or row.get("type")).lower()
-    if tx:
+    if tx and chain and address:
         # A single on-chain transaction can contain multiple asset legs. Hash
         # alone is not a unique trade identity for this archive: keep each
         # wallet+chain+asset+side event distinct while still merging repeat
-        # observations of the same leg.
+        # observations of the same leg. If chain or asset is unknown, do not
+        # use a transaction-only key: retain the other event attributes too.
         return (wallet_key, chain, "tx", tx.lower(), address, side)
     timestamp = _identity_value(row.get("trade_timestamp") or row.get("timestamp"))
     amount = _identity_value(
         row.get("amount_usd") or row.get("usd") or row.get("usd_value") or row.get("value_usd")
     )
     price = _identity_value(row.get("price_usd") or row.get("price") or row.get("priceUsd"))
-    return (wallet_key, chain, "fallback", address, timestamp, side, amount, price)
+    return (wallet_key, chain, "fallback", tx.lower(), address, timestamp, side, amount, price)
 
 
 def _timestamp_value(value: Any) -> int:
