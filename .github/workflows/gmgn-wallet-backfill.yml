@@ -8,12 +8,16 @@ on:
         required: true
         default: "0x7bf30399dba8051c2bf191afe2cd07ea4e064625"
       limit:
-        description: "Maximum GMGN activity rows per chain"
+        description: "Rows per page (1-200); cursor pagination continues until complete"
         required: true
-        default: "200"
+        default: "100"
 
 permissions:
   contents: write
+
+concurrency:
+  group: gmgn-wallet-backfill-archive
+  cancel-in-progress: false
 
 jobs:
   backfill:
@@ -31,6 +35,9 @@ jobs:
 
       - name: Install GMGN CLI
         run: npm install -g gmgn-cli
+
+      - name: Test backfill parser and persistence safety
+        run: python -m unittest -v test_wallet_trade_backfill.py
 
       - name: Run GMGN wallet activity backfill
         env:
