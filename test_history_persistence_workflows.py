@@ -24,6 +24,8 @@ class HistoryPersistenceWorkflowTests(unittest.TestCase):
             self.assertIn("git rebase origin/main", source, name)
         for name in (".github/workflows/fil-before-pump.yml", ".github/workflows/gmgn-smart-money.yml"):
             source = (ROOT / name).read_text(encoding="utf-8")
+            self.assertIn("ref: main", source, name)
+            self.assertIn("actions/upload-artifact@v4", source, name)
             self.assertIn("refusing to prefer either history archive", source, name)
             self.assertIn("validate_gmgn_history_preservation.py --baseline", source, name)
             self.assertIn("gmgn_wallet_history.baseline.json", source, name)
