@@ -35,7 +35,9 @@ class HistoryPersistenceWorkflowTests(unittest.TestCase):
             self.assertIn("gmgn_history_recovery_done.json", source, name)
             if name == ".github/workflows/gmgn-smart-money.yml":
                 self.assertIn("python reverse_historical_discovery.py", source, name)
-                self.assertIn("git add gmgn_wallet_history.json.gz gmgn_history_recovery_done.json reverse_historical_discovery.json", source, name)
+                self.assertIn('id: reverse_discovery', source, name)
+                self.assertIn('steps.reverse_discovery.outputs.changed', source, name)
+                self.assertIn('git add reverse_historical_discovery.json', source, name)
             self.assertIn("refusing to prefer either history archive", source, name)
             self.assertIn("validate_gmgn_history_preservation.py --baseline", source, name)
             self.assertIn("gmgn_wallet_history.baseline.json", source, name)
