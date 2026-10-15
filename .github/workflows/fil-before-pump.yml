@@ -18,6 +18,10 @@ on:
       - "paper_performance.json"
       - "wallet_paper_feedback.json"
       - "wallet_performance_memory.json"
+      - "gmgn_backfill_repair_status.json"
+      - "test_*.py"
+      - "tests/**"
+      - ".github/workflows/ci-sanity.yml"
   workflow_dispatch:
     inputs:
       rank_range:
