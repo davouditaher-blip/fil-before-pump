@@ -8,7 +8,12 @@ class GMGNBackfillTests(unittest.TestCase):
         self.assertEqual(obj["activities"], [])
 
     def test_parse_pretty_printed_json(self):
-        payload = "{\\n  \\"data\\": {\\n    \\"activities\\": [{\\"id\\": \\"x\\"}], \\"next\\": \\"cursor-2\\"\\n  }\\n}"
+        payload = """{
+  "data": {
+    "activities": [{"id": "x"}],
+    "next": "cursor-2"
+  }
+}"""
         self.assertEqual(b.parse_output(payload)["data"]["next"], "cursor-2")
 
     def test_documented_activities_and_cursor(self):
