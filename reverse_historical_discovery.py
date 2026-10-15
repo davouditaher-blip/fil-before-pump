@@ -266,6 +266,8 @@ def asset_observations(
     seen: dict[tuple[str, str], set[tuple[int, float]]] = defaultdict(set)
     for rows in (history or {}).values():
         for row in whv.dedupe([dict(r) for r in (rows or [])]):
+            if not str(row.get("chain") or "").strip():
+                continue
             price = whv.event_price(row)
             ts = whv.event_ts(row)
             if price and price > 0 and ts:
@@ -341,6 +343,8 @@ def collect_entries(
         if not key:
             continue
         for row in whv.dedupe([dict(r) for r in (rows or [])]):
+            if not str(row.get("chain") or "").strip():
+                continue
             if whv.event_side(row) != "buy":
                 continue
             price = whv.event_price(row)
