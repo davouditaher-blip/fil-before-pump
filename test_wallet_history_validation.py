@@ -345,6 +345,11 @@ def test_row_without_contract_address_has_no_identity():
     assert whv.asset_identity({"symbol": "AAA", "chain": "sol"}) is None
 
 
+def test_row_without_chain_has_no_asset_identity():
+    # A bare contract address cannot safely identify an asset across chains.
+    assert whv.asset_identity({"address": "0xabc", "symbol": "AAA"}) is None
+
+
 # --------------------------------------------------------------------------
 # Summary reporting
 # --------------------------------------------------------------------------
