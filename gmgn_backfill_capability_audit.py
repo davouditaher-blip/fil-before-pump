@@ -292,11 +292,11 @@ def audit_endpoints() -> dict[str, Any]:
             },
         },
         "pagination": {
-            "mechanism_in_production_code": "NONE",
+            "mechanism_in_production_code": "bounded cursor pagination",
             "evidence": (
-                "gmgn_layer.portfolio_activity sends a single --limit with no "
-                "cursor, offset or page parameter. The response parser reads "
-                "obj['list'] or obj['data'] and ignores any pagination object."
+                "gmgn_layer.portfolio_activity sends --cursor on subsequent calls, "
+                "follows supported cursor/has_more/is_last signals, and stops at "
+                "MAX_ACTIVITY_PAGES_PER_WALLET or the global call budget."
             ),
             "mechanism_in_probe_code": "cursor-first, page-number fallback",
             "probe_evidence": "gmgn_depth_probe.py:185-191",
@@ -307,16 +307,16 @@ def audit_endpoints() -> dict[str, Any]:
                 "has_more, total_pages, total, total_records and count."
             ),
             "critical_distinction": (
-                "Cursor support exists ONLY in the probe. It is never used by "
-                "gmgn_layer or wallet_trade_backfill, so the production "
-                "integration has no pagination at all."
+                "Cursor loops now exist in both gmgn_layer and wallet_trade_backfill. "
+                "What remains unverified is whether the installed CLI/provider "
+                "actually accepts the cursor flag and returns the expected signals."
             ),
             "classification": {
                 "endpoint_capability": UNVERIFIED,
                 "code_capability": (
-                    "The probe can follow a cursor IF the provider advertises "
-                    "one. No committed artifact shows a provider response "
-                    "containing a cursor, so cursor support is untested."
+                    "The runtime layer and backfill can follow cursors if the "
+                    "provider response uses the supported shapes. No committed "
+                    "live response demonstrates that provider behavior."
                 ),
                 "demonstrated_capability": (
                     "None. gmgn_depth_probe.json is absent and the workflow "
@@ -369,7 +369,7 @@ def audit_limits() -> dict[str, Any]:
     return {
         "max_page_size_requested": {
             "value": 200,
-            "where": "gmgn_layer.portfolio_activity default limit=200; wallet_trade_backfill LIMIT env default 200",
+            "where": "gmgn_layer.portfolio_activity default limit=200; wallet_trade_backfill defaults to 100 and accepts 1-200",
             "note": (
                 "This is what the project asks for, not a proven provider "
                 "maximum. Whether GMGN would accept more is untested."
@@ -544,7 +544,7 @@ def audit_capability() -> dict[str, Any]:
                 "introspected. Claiming a provider-side limit here would be "
                 "fabrication."
             ),
-            "code_capability": False,
+            "code_capability": True,
             "code_reason": (
                 "The runtime layer has bounded cursor pagination and the backfill has a "
                 "1,000-page safety cap. Neither sends a time-range filter, the "
@@ -701,7 +701,7 @@ def build_report() -> dict[str, Any]:
         "demonstrated_depth": audit_demonstrated_depth(),
         "codebase_maturity": audit_codebase_maturity(),
         "requirements_for_a_real_90d_backfill": {
-            "current_state": "NOT POSSIBLE with the current code path.",
+            "current_state": "NOT DEMONSTRATED: code-side cursor loops exist, but provider cursor semantics and 90-day depth have not been verified.",
             "blocking_gaps": [
                 {
                     "gap": "no time-range request for wallet activity",
@@ -716,14 +716,13 @@ def build_report() -> dict[str, Any]:
                     "cli_support": UNVERIFIED,
                 },
                 {
-                    "gap": "no pagination in the backfill path",
+                    "gap": "provider cursor behavior not live-verified",
                     "detail": (
-                        "Even with more rows per page, one page is all the "
-                        "current code retrieves. The probe's cursor handling is "
-                        "the only pagination implementation in the repository "
-                        "and it is not wired into any writer."
+                        "Both runtime and backfill code now loop through cursor "
+                        "pages, but no recorded live response confirms that the "
+                        "installed CLI accepts --cursor or signals completion as expected."
                     ),
-                    "verified": "The absence of pagination in wallet_trade_backfill and gmgn_layer is verified.",
+                    "verified": "Cursor flags and pagination loops are verified in source; provider behavior remains UNVERIFIED.",
                     "provider_pagination_support": UNVERIFIED,
                 },
                 {
@@ -736,15 +735,14 @@ def build_report() -> dict[str, Any]:
                     "verified": "Single-wallet invocation and the 300-call budget are verified in source.",
                 },
                 {
-                    "gap": "failure is indistinguishable from empty",
+                    "gap": "historical empty artifact has no failure state",
                     "detail": (
-                        "Must be fixed before any backfill is trusted: the "
-                        "writer must persist returncode, stderr, whether a key "
-                        "was present, and whether a rate limit was seen, so "
-                        "that 'no data' can never again be written as if it "
-                        "were a fact about the wallet."
+                        "The old committed files lack returncode/stderr/status, "
+                        "so the original failure mode cannot be recovered. The "
+                        "current writer now persists failed_or_incomplete status, "
+                        "returncode and stderr for new failures."
                     ),
-                    "verified": "Verified by tracing wallet_trade_backfill.run_cli.",
+                    "verified": "Current writer's failure-state persistence is verified in source; old failure cause remains unrecoverable.",
                 },
                 {
                     "gap": "no rate-limit policy in the backfill path",
@@ -756,21 +754,19 @@ def build_report() -> dict[str, Any]:
                     "verified": "Verified: wallet_trade_backfill never calls detect_rate_limit.",
                 },
                 {
-                    "gap": "no tests for the GMGN code",
+                    "gap": "no live provider integration evidence",
                     "detail": (
-                        "No test_gmgn*.py covers the GMGN production code. A backfill writer with no "
-                        "tests, no persisted error state and no pagination "
-                        "should not be pointed at a metered plan."
+                        "Unit tests cover local parsing, cursor loops, chain attribution "
+                        "and preservation, but none proves the installed GMGN CLI "
+                        "or provider honors cursor pagination or exposes 90 days."
                     ),
-                    "verified": "Verified by listing test_*.py.",
+                    "verified": "The test suite contains mocked/offline tests; no committed live probe result exists.",
                 },
             ],
             "minimum_to_attempt": [
-                "Run gmgn_depth_probe once for one wallet and RECORD its result in the repository, so endpoint capability stops being unverified.",
-                "Persist provider error state in the backfill writer so empty is distinguishable from failed.",
-                "Add pagination to the writer, reusing gmgn_depth_probe's cursor handling rather than writing new API logic.",
-                "Add offline unit tests for the writer and probe request construction, no network required.",
-                "Only then scale to more wallets, respecting the activity budget.",
+                "Run gmgn_depth_probe once for one wallet and RECORD its result in the repository, so endpoint cursor support and observed depth stop being unverified.",
+                "Review the recorded run for rate limiting and partial-page behavior before scaling.",
+                "Only then scale to more wallets, respecting the activity budget and the backfill's per-wallet safety cap.",
             ],
         },
         "is_gmgn_worth_attempting_first": {
@@ -783,14 +779,14 @@ def build_report() -> dict[str, Any]:
             "reasons_for_caution": [
                 "No committed measurement of provider-side depth exists, so depth is UNVERIFIED rather than known.",
                 "The one committed backfill attempt produced zero records and recorded no reason.",
-                "The backfill path has no pagination, no rate-limit policy, no error persistence and no tests.",
-                "Coverage cost is high: one CLI spawn per wallet per chain.",
+                "The backfill path has cursor pagination and error persistence, but lacks provider-specific rate-limit detection.",
+                "Coverage cost is high: one workflow dispatch handles one wallet across selected chains.",
             ],
             "recommended_first_action": (
                 "Run the existing read-only gmgn_depth_probe for ONE wallet and "
-                "commit its result, before writing any new backfill code. That "
-                "single measurement converts the 90/180/365 verdicts from "
-                "NO-by-omission into evidence-based answers."
+                "commit its result. That measurement is now the missing evidence "
+                "needed to validate the existing cursor implementation and "
+                "determine whether 90/180/365-day retrieval is actually available."
             ),
         },
         "limitations": LIMITATIONS,
