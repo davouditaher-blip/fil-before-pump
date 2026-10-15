@@ -7,6 +7,16 @@ import wallet_history_validation as whv
 
 
 class GMGNHistoryMergeTests(unittest.TestCase):
+    def test_same_transaction_hash_keeps_distinct_asset_legs(self):
+        wallet = "wallet"
+        history = {wallet: [
+            {"chain": "eth", "transaction_hash": "0xabc", "address": "0xTokenA", "side": "buy", "timestamp": 1000, "price_usd": 1.0},
+            {"chain": "eth", "transaction_hash": "0xabc", "address": "0xTokenB", "side": "buy", "timestamp": 1000, "price_usd": 2.0},
+        ]}
+        merged = whv.merge_history_data(history)
+        self.assertEqual(len(merged[wallet]), 2)
+        self.assertEqual({row["address"] for row in merged[wallet]}, {"0xTokenA", "0xTokenB"})
+
     def test_merge_preserves_static_fields_peak_and_first_hit_timestamps(self):
         old = {
             "chain": "eth",
