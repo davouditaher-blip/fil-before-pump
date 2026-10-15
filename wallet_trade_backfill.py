@@ -77,12 +77,16 @@ def fetch_chain(chain,wallet,limit,out_dir=OUT,runner=run_cli):
             old=json.loads(archive.read_text(encoding="utf-8"))
             if wallet_key(chain,old.get("wallet",""))==wallet_key(chain,wallet) and old.get("chain")==chain and isinstance(old.get("records"),list): old_rows=old["records"]
         except Exception as exc: raise BackfillError("Existing archive unreadable; refusing overwrite: "+str(exc))
+    for item in old_rows:
+        if isinstance(item,dict): item.setdefault("chain",chain); item.setdefault("wallet",wallet)
     rows=[]; cursor=None
     if checkpoint.exists():
         try:
             saved=json.loads(checkpoint.read_text(encoding="utf-8"))
             if wallet_key(chain,saved.get("wallet",""))==wallet_key(chain,wallet) and saved.get("chain")==chain and isinstance(saved.get("records"),list): rows=saved["records"]; cursor=saved.get("next_cursor")
         except Exception as exc: raise BackfillError("Checkpoint unreadable; refusing discard: "+str(exc))
+    for item in rows:
+        if isinstance(item,dict): item.setdefault("chain",chain); item.setdefault("wallet",wallet)
     seen={cursor} if cursor else set(); pages=0
     while True:
         if pages>=MAX_PAGES: raise BackfillError(f"Pagination safety limit reached ({MAX_PAGES})")
