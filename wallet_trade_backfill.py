@@ -1,5 +1,6 @@
 """Safe paginated GMGN activity backfill; research-only, never executes trades."""
 import json, os, subprocess, time
+from datetime import datetime
 from pathlib import Path
 CHAINS=("sol","bsc","base","eth")
 WALLET=os.environ.get("BACKFILL_WALLET","0x7bf30399dba8051c2bf191afe2cd07ea4e064625").strip()
@@ -18,6 +19,12 @@ def atomic_json_write(path,payload):
     tmp.write_text(json.dumps(payload,ensure_ascii=False,indent=2)+"\n",encoding="utf-8"); os.replace(tmp,path)
 
 def parse_output(stdout):
+    try:
+        whole = json.loads(str(stdout or ""))
+        if isinstance(whole, dict):
+            return whole
+    except json.JSONDecodeError:
+        pass
     for line in reversed(str(stdout or "").splitlines()):
         try: obj=json.loads(line)
         except json.JSONDecodeError: continue
@@ -32,8 +39,11 @@ def extract_rows_cursor(obj):
         nested=data; data=next((nested[k] for k in ("activities","list","data") if isinstance(nested.get(k),list)),None)
     if not isinstance(data,list): raise BackfillError("GMGN response has no activity list; refusing to record empty history")
     pg=obj.get("pagination") if isinstance(obj.get("pagination"),dict) else {}
-    cursor=obj.get("next") or obj.get("next_cursor") or obj.get("nextCursor") or obj.get("next_page_token") or pg.get("next") or pg.get("next_cursor") or pg.get("nextCursor") or pg.get("cursor")
-    more=obj.get("has_more",pg.get("has_more")); last=obj.get("is_last_page",pg.get("is_last_page"))
+    cursor=obj.get("next") or obj.get("next_cursor") or obj.get("nextCursor") or obj.get("next_page_token") or pg.get("next") or pg.get("next_cursor") or pg.get("nextCursor") or pg.get("cursor") or nested.get("next") or nested.get("next_cursor") or nested.get("nextCursor")
+    more=obj.get("has_more",pg.get("has_more"))
+    if more is None: more=nested.get("has_more")
+    last=obj.get("is_last_page",pg.get("is_last_page"))
+    if last is None: last=nested.get("is_last_page")
     return data,(str(cursor) if cursor else None),more,last
 
 def run_cli(chain,wallet,limit,cursor=None):
@@ -58,6 +68,18 @@ def identity(row):
     if chain in ("bsc","base","eth"): address=address.lower()
     return ("fallback",str(row.get("timestamp") or row.get("trade_timestamp") or ""),str(row.get("side") or row.get("event_type") or row.get("type") or "").lower(),address,str(row.get("cost_usd") or row.get("buy_cost_usd") or row.get("amount_usd") or ""))
 
+def _sort_timestamp(row):
+    value=row.get("timestamp") or row.get("trade_timestamp") or 0
+    try:
+        number=int(float(value))
+    except (TypeError,ValueError):
+        try:
+            number=int(datetime.fromisoformat(str(value).replace("Z","+00:00")).timestamp())
+        except (TypeError,ValueError,OverflowError):
+            return 0
+    return number//1000 if number>10**12 else number
+
+
 def merge_rows(*groups):
     merged={}
     for group in groups:
@@ -66,7 +88,7 @@ def merge_rows(*groups):
             key=identity(row)
             if key in merged: merged[key].update(row)
             else: merged[key]=dict(row)
-    return sorted(merged.values(),key=lambda r:int(r.get("timestamp") or r.get("trade_timestamp") or 0))
+    return sorted(merged.values(),key=_sort_timestamp)
 
 def fetch_chain(chain,wallet,limit,out_dir=OUT,runner=run_cli):
     out_dir=Path(out_dir); out_dir.mkdir(parents=True,exist_ok=True); stem=f"{chain}_{wallet_key(chain,wallet)}"
