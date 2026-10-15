@@ -56,6 +56,7 @@ HERE = Path(__file__).resolve().parent
 SOURCE_ARCHIVE = HERE / "gmgn_wallet_history.json"
 REGISTRY = HERE / "proven_wallet_registry.json"
 ARTIFACT = HERE / "reverse_historical_discovery.json"
+SUPPLEMENTAL_ACTIVITY_DIR = HERE / "wallet_archive" / "raw" / "gmgn" / "activity"
 
 SCHEMA_VERSION = 1
 MODE = "REVERSE_HISTORICAL_DISCOVERY_READ_ONLY"
@@ -149,6 +150,81 @@ def file_md5(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1 << 20), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def load_supplemental_activity(
+    history: dict[str, list[dict[str, Any]]],
+    directory: Path = SUPPLEMENTAL_ACTIVITY_DIR,
+) -> list[dict[str, Any]]:
+    """Merge completed GMGN portfolio-activity archives without mixing in balances.
+
+    Only schema-v2 completed activity archives are accepted. Partial checkpoints,
+    status files, old empty artifacts, and Nansen balance snapshots are excluded.
+    Source file hashes are returned for deterministic provenance in the report.
+    """
+    sources: list[dict[str, Any]] = []
+    if not directory.exists():
+        return sources
+    wallet_index = whv.wallet_index(history)
+    for path in sorted(directory.glob("*.json")):
+        if path.name.endswith(".partial.json") or path.name.endswith(".status.json"):
+            continue
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except Exception as exc:
+            raise ValueError(f"Unreadable supplemental GMGN archive {path.name}: {exc}") from exc
+        if payload.get("endpoint") != "portfolio/activity" or int(payload.get("schema_version") or 0) < 2:
+            continue
+        wallet = str(payload.get("wallet") or "").strip()
+        chain = str(payload.get("chain") or "").strip().lower()
+        records = payload.get("records")
+        if not wallet or not chain or not isinstance(records, list):
+            raise ValueError(f"Malformed completed GMGN activity archive: {path.name}")
+        canonical_wallet = whv.wallet_identity(wallet)
+        if not canonical_wallet:
+            raise ValueError(f"Invalid wallet identity in supplemental archive: {path.name}")
+        target_wallet = wallet_index.get(canonical_wallet, wallet)
+        normalized_count = 0
+        target_rows = history.setdefault(target_wallet, [])
+        for raw in records:
+            if not isinstance(raw, dict):
+                continue
+            row = dict(raw)
+            token = row.get("token") if isinstance(row.get("token"), dict) else {}
+            base_token = row.get("base_token") if isinstance(row.get("base_token"), dict) else {}
+            address = (
+                row.get("token_address") or row.get("base_address") or row.get("address")
+                or token.get("address") or base_token.get("address")
+            )
+            timestamp = row.get("trade_timestamp") or row.get("timestamp")
+            side = row.get("side") or row.get("event_type") or row.get("type") or ""
+            amount = row.get("amount_usd") or row.get("cost_usd") or row.get("buy_cost_usd") or row.get("usd_value")
+            price = row.get("price_usd") or row.get("price") or row.get("priceUsd")
+            row["chain"] = str(row.get("chain") or chain).lower()
+            if address:
+                row["base_address"] = str(address)
+                row["address"] = str(address)
+            row["symbol"] = str(row.get("symbol") or token.get("symbol") or base_token.get("symbol") or "").upper()
+            row["side"] = str(side).lower()
+            row["amount_usd"] = amount
+            row["price_usd"] = price
+            if timestamp:
+                row["trade_timestamp"] = timestamp
+            tx_hash = row.get("transaction_hash") or row.get("tx_hash")
+            if tx_hash:
+                row["transaction_hash"] = tx_hash
+            row["source"] = "gmgn_portfolio_activity"
+            target_rows.append(row)
+            normalized_count += 1
+        sources.append({
+            "artifact": str(path.relative_to(HERE)),
+            "md5": file_md5(path),
+            "bytes": path.stat().st_size,
+            "chain": chain,
+            "wallet_identity": canonical_wallet,
+            "records_loaded": normalized_count,
+        })
+    return sources
 
 
 def payload_digest(envelope: Mapping[str, Any]) -> str:
@@ -506,6 +582,7 @@ def build(
     source_md5: str = "",
     source_bytes: int = 0,
     rows_total: int = 0,
+    supplemental_sources: Sequence[Mapping[str, Any]] = (),
 ) -> dict[str, Any]:
     observations = asset_observations(history)
     entries = collect_entries(history)
@@ -569,6 +646,9 @@ def build(
             ),
         },
     }
+    if supplemental_sources:
+        envelope["source"]["supplemental_activity_sources"] = [dict(x) for x in supplemental_sources]
+        envelope["source"]["rows_after_supplemental"] = rows_total + sum(int(x.get("records_loaded") or 0) for x in supplemental_sources)
     envelope["determinism"]["payload_sha256"] = payload_digest(envelope)
     return envelope
 
@@ -634,6 +714,8 @@ def main(argv: list[str] | None = None) -> int:
 
     before = file_md5(SOURCE_ARCHIVE)
     history = json.loads(SOURCE_ARCHIVE.read_text(encoding="utf-8"))
+    primary_rows_total = sum(len(v) for v in history.values())
+    supplemental_sources = load_supplemental_activity(history)
     proven = load_proven_status()
 
     envelope = build(
@@ -641,7 +723,8 @@ def main(argv: list[str] | None = None) -> int:
         min_history_days=0 if args.no_gate else MIN_ASSET_HISTORY_DAYS,
         source_md5=before,
         source_bytes=SOURCE_ARCHIVE.stat().st_size,
-        rows_total=sum(len(v) for v in history.values()),
+        rows_total=primary_rows_total,
+        supplemental_sources=supplemental_sources,
     )
     if not args.no_gate:
         envelope["diagnostics"] = diagnose(history, load_proven_status())
