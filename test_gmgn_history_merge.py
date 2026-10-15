@@ -17,6 +17,14 @@ class GMGNHistoryMergeTests(unittest.TestCase):
         self.assertEqual(len(merged[wallet]), 2)
         self.assertEqual({row["address"] for row in merged[wallet]}, {"0xTokenA", "0xTokenB"})
 
+    def test_same_transaction_asset_leg_with_distinct_prices_is_preserved(self):
+        history = {"wallet": [
+            {"chain": "eth", "transaction_hash": "0xabc", "address": "0xTokenA", "side": "buy", "timestamp": 1000, "amount_usd": 10, "price_usd": 1.0},
+            {"chain": "eth", "transaction_hash": "0xabc", "address": "0xTokenA", "side": "buy", "timestamp": 1000, "amount_usd": 10, "price_usd": 2.0},
+        ]}
+        merged = whv.merge_history_data(history)
+        self.assertEqual(len(merged["wallet"]), 2)
+        self.assertEqual({row["price_usd"] for row in merged["wallet"]}, {1.0, 2.0})
     def test_unknown_chain_rows_do_not_collapse_on_transaction_hash_alone(self):
         history = {"wallet": [
             {"transaction_hash": "0xabc", "address": "TokenA", "timestamp": 1000, "side": "buy", "price_usd": 1.0},
