@@ -38,6 +38,19 @@ class GMGNBackfillTests(unittest.TestCase):
         self.assertEqual(rows, [{"id": "x"}])
         self.assertEqual(cursor, "cursor-3")
 
+    def test_same_transaction_hash_keeps_distinct_asset_legs(self):
+        rows = b.merge_rows([
+            {"chain": "eth", "transaction_hash": "0xabc", "address": "0xTokenA", "side": "buy", "amount_usd": 10, "price_usd": 1.0},
+            {"chain": "eth", "transaction_hash": "0xabc", "address": "0xTokenB", "side": "buy", "amount_usd": 10, "price_usd": 1.0},
+        ])
+        self.assertEqual(len(rows), 2)
+
+    def test_same_transaction_asset_leg_keeps_distinct_prices(self):
+        rows = b.merge_rows([
+            {"chain": "eth", "transaction_hash": "0xabc", "address": "0xTokenA", "side": "buy", "amount_usd": 10, "price_usd": 1.0},
+            {"chain": "eth", "transaction_hash": "0xabc", "address": "0xTokenA", "side": "buy", "amount_usd": 10, "price_usd": 2.0},
+        ])
+        self.assertEqual(len(rows), 2)
     def test_merge_sorts_iso_and_epoch_timestamps_without_crashing(self):
         rows = b.merge_rows(
             [{"tx_hash": "later", "timestamp": "2026-01-01T00:00:00Z"}],
