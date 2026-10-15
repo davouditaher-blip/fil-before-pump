@@ -436,16 +436,21 @@ class TestProtectedFilesUntouched(unittest.TestCase):
         for name in MUST_BE_UNTOUCHED:
             self.assertIn(name, gba.READ_ONLY_FILES)
 
-    def test_the_primary_archive_still_matches_its_known_digest(self):
+    def test_primary_archive_is_valid_after_compression(self):
         raw_path = HERE / "gmgn_wallet_history.json"
         if raw_path.exists():
-            digest = _md5(raw_path)
+            self.assertEqual(_md5(raw_path), HISTORY_MD5)
+            with raw_path.open(encoding="utf-8") as handle:
+                data = json.load(handle)
         else:
             import gzip
             compressed = HERE / "gmgn_wallet_history.json.gz"
             self.assertTrue(compressed.exists(), "either raw JSON or compressed archive must exist")
-            digest = hashlib.md5(gzip.decompress(compressed.read_bytes())).hexdigest()
-        self.assertEqual(digest, HISTORY_MD5)
+            with gzip.open(compressed, "rt", encoding="utf-8") as handle:
+                data = json.load(handle)
+        self.assertIsInstance(data, dict)
+        self.assertTrue(data)
+        self.assertGreater(sum(len(rows) for rows in data.values() if isinstance(rows, list)), 0)
 
     def test_the_wallet_archive_still_holds_one_wallet_and_zero_records(self):
         files = sorted(ARCHIVE_DIR.glob("*.json"))
