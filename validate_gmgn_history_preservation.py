@@ -25,42 +25,87 @@ def load_history(path: Path) -> dict[str, list[dict[str, Any]]]:
     return result
 
 
-def _stable(value):
-    if value is None:
-        return ""
-    if isinstance(value, float):
-        return format(value, ".12g")
-    return str(value).strip()
-
-
 def row_identity(wallet: str, row: dict[str, Any]) -> tuple:
-    wallet_key = whv.wallet_identity(wallet)
-    chain = _stable(row.get("chain")).lower()
-    tx = _stable(row.get("transaction_hash") or row.get("tx_hash") or row.get("transactionHash") or row.get("id"))
-    if tx:
-        return (wallet_key, chain, "tx", tx.lower())
-    address = _stable(row.get("address") or row.get("base_address"))
-    if chain in ("eth", "ethereum", "bsc", "bnb", "base", "eth-mainnet", "bsc-mainnet", "base-mainnet"):
-        address = address.lower()
-    timestamp = _stable(row.get("trade_timestamp") or row.get("timestamp"))
-    side = _stable(row.get("side") or row.get("type")).lower()
-    amount = _stable(row.get("amount_usd") or row.get("usd") or row.get("usd_value") or row.get("value_usd"))
-    price = _stable(row.get("price_usd") or row.get("price") or row.get("priceUsd"))
-    return (wallet_key, chain, "fallback", address, timestamp, side, amount, price)
+    return whv.history_event_identity(wallet, row)
+
+
+_STATIC_FIELDS = (
+    "timestamp", "trade_timestamp", "transaction_hash", "tx_hash", "transactionHash", "id",
+    "chain", "address", "base_address", "side", "type", "symbol", "amount_usd", "usd",
+    "usd_value", "value_usd", "price_usd", "price", "priceUsd", "is_open_or_close",
+)
+
+
+def _nonempty(value):
+    return value not in (None, "", [], {})
+
+
+def _tag_set(value):
+    if isinstance(value, (list, tuple, set)):
+        return {str(item).strip() for item in value if str(item).strip()}
+    if isinstance(value, str):
+        return {item.strip() for item in value.split(",") if item.strip()}
+    return set()
+
+
+def _metadata_losses(old: dict[str, Any], new: dict[str, Any]) -> list[str]:
+    losses = []
+    for key in _STATIC_FIELDS:
+        old_value = old.get(key)
+        new_value = new.get(key)
+        if _nonempty(old_value) and not _nonempty(new_value):
+            losses.append(key)
+        elif _nonempty(old_value) and _nonempty(new_value):
+            if whv._identity_value(old_value) != whv._identity_value(new_value):
+                losses.append(key)
+    old_peak = whv._num(old.get("peak_multiple"), 0.0)
+    new_peak = whv._num(new.get("peak_multiple"), 0.0)
+    if old_peak > new_peak:
+        losses.append("peak_multiple")
+    for key in ("first_1_2x_timestamp", "first_1_5x_timestamp", "first_2x_timestamp"):
+        old_ts = whv._timestamp_value(old.get(key))
+        new_ts = whv._timestamp_value(new.get(key))
+        if old_ts and (not new_ts or new_ts > old_ts):
+            losses.append(key)
+    old_tags = _tag_set(old.get("maker_tags"))
+    new_tags = _tag_set(new.get("maker_tags"))
+    if old_tags and not old_tags.issubset(new_tags):
+        losses.append("maker_tags")
+    old_info = old.get("maker_info")
+    new_info = new.get("maker_info")
+    if isinstance(old_info, dict) and old_info:
+        if not isinstance(new_info, dict):
+            losses.append("maker_info")
+        else:
+            if any(key not in new_info or new_info[key] != value for key, value in old_info.items()):
+                losses.append("maker_info")
+    return sorted(set(losses))
+
+
+def _identity_rows(history: dict[str, list[dict[str, Any]]]) -> dict[tuple, dict[str, Any]]:
+    merged_history = whv.merge_history_data(history)
+    result = {}
+    for wallet, rows in merged_history.items():
+        for row in rows:
+            result[row_identity(wallet, row)] = row
+    return result
 
 
 def compare_histories(baseline: dict[str, list[dict[str, Any]]], current: dict[str, list[dict[str, Any]]]) -> dict[str, Any]:
-    before = {
-        row_identity(wallet, row)
-        for wallet, rows in baseline.items()
-        for row in rows
-    }
-    after = {
-        row_identity(wallet, row)
-        for wallet, rows in current.items()
-        for row in rows
-    }
+    before_rows = _identity_rows(baseline)
+    after_rows = _identity_rows(current)
+    before = set(before_rows)
+    after = set(after_rows)
     missing = before - after
+    metadata_losses = Counter()
+    examples = []
+    for identity in before & after:
+        lost = _metadata_losses(before_rows[identity], after_rows[identity])
+        for field in lost:
+            metadata_losses[field] += 1
+        if lost and len(examples) < 20:
+            examples.append({"identity": list(identity), "lost_fields": lost})
+    metadata_preserved = not metadata_losses
     return {
         "baseline_wallets": len(baseline),
         "current_wallets": len(current),
@@ -70,7 +115,11 @@ def compare_histories(baseline: dict[str, list[dict[str, Any]]], current: dict[s
         "current_unique_identities": len(after),
         "missing_identity_kinds": len(missing),
         "missing_row_instances": len(missing),
-        "preserved": not missing,
+        "missing_metadata_fields": sum(metadata_losses.values()),
+        "metadata_loss_counts_by_field": dict(sorted(metadata_losses.items())),
+        "metadata_loss_examples": examples,
+        "metadata_preserved": metadata_preserved,
+        "preserved": not missing and metadata_preserved,
     }
 
 
@@ -84,7 +133,7 @@ def main(argv=None):
     result = compare_histories(baseline, current)
     print(json.dumps(result, ensure_ascii=False, indent=2))
     if not result["preserved"]:
-        raise SystemExit("GMGN history preservation check FAILED; refusing to compress or commit a shortened archive")
+        raise SystemExit("GMGN history preservation check FAILED; refusing to compress or commit a shortened or metadata-damaged archive")
     print("GMGN history preservation check PASSED")
 
 
