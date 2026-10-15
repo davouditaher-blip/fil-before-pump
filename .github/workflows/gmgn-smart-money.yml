@@ -61,7 +61,7 @@ jobs:
           python validate_gmgn_history_preservation.py --baseline gmgn_wallet_history.baseline.json --current gmgn_wallet_history.baseline.json
 
       - name: Validate history merge modules
-        run: python -m py_compile wallet_history_validation.py merge_gmgn_history_metadata.py recover_gmgn_history_metadata.py validate_gmgn_history_preservation.py gmgn_layer.py
+        run: python -m py_compile wallet_history_validation.py merge_gmgn_history_metadata.py recover_gmgn_history_metadata.py validate_gmgn_history_preservation.py reverse_historical_discovery.py gmgn_layer.py
 
       - name: Run GMGN Smart Money layer
         env:
@@ -73,6 +73,9 @@ jobs:
 
       - name: Restore baseline GMGN metadata after smart-money update
         run: python merge_gmgn_history_metadata.py --baseline gmgn_wallet_history.baseline.json --current gmgn_wallet_history.json
+
+      - name: Rebuild reverse historical discovery from current GMGN archive
+        run: python reverse_historical_discovery.py
 
       - name: Save GMGN wallet history
         run: |
@@ -95,7 +98,7 @@ jobs:
           git rm --cached -f --ignore-unmatch gmgn_wallet_history.json
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add gmgn_wallet_history.json.gz gmgn_history_recovery_done.json
+          git add gmgn_wallet_history.json.gz gmgn_history_recovery_done.json reverse_historical_discovery.json
           if git diff --cached --quiet; then
             echo "No GMGN history changes."
             exit 0
