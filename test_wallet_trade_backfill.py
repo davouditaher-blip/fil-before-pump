@@ -1,8 +1,18 @@
-import json, tempfile, unittest
+import json, os, tempfile, unittest
+from unittest.mock import patch
 from pathlib import Path
 import wallet_trade_backfill as b
 
 class GMGNBackfillTests(unittest.TestCase):
+    def test_chain_selection_limits_backfill_to_requested_network(self):
+        with patch.dict(os.environ, {"BACKFILL_CHAIN": "sol"}):
+            self.assertEqual(b.selected_chains(), ("sol",))
+        with patch.dict(os.environ, {"BACKFILL_CHAIN": "eth"}):
+            self.assertEqual(b.selected_chains(), ("eth",))
+        with patch.dict(os.environ, {"BACKFILL_CHAIN": "unknown"}):
+            with self.assertRaises(SystemExit):
+                b.selected_chains()
+
     def test_parse_cli_output(self):
         obj = b.parse_output("progress" + chr(10) + '{"activities": [], "next": null}' + chr(10))
         self.assertEqual(obj["activities"], [])
