@@ -85,6 +85,11 @@ def main():
         expected = audit.get("provenance") or {}
     expected_md5 = expected.get("primary_archive_md5")
     expected_bytes = expected.get("primary_archive_bytes")
+    if not expected_md5:
+        legacy_report = HERE / "gmgn_backfill_capability_audit.json"
+        if legacy_report.exists():
+            report = json.loads(legacy_report.read_text(encoding="utf-8"))
+            expected_md5 = ((report.get("provenance") or {}).get("read_only_files_md5") or {}).get("gmgn_wallet_history.json")
     span_days = (times[-1] - times[0]) / 86400 if len(times) > 1 else 0
     asset_spans = [
         (max(values) - min(values)) / 86400
@@ -123,7 +128,8 @@ def main():
         "historical_depth_audit_primary_archive_bytes": expected_bytes,
         "historical_depth_audit_matches_current_archive": (
             md5 == expected_md5 and len(raw) == expected_bytes
-            if expected_md5 is not None and expected_bytes is not None else None
+            if expected_md5 is not None and expected_bytes is not None
+            else md5 == expected_md5 if expected_md5 is not None else None
         ),
         "orders_enabled": False,
     }
