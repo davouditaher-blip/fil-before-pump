@@ -28,6 +28,15 @@ class GMGNBackfillTests(unittest.TestCase):
         self.assertEqual(rows[0]["old"], "keep")
         self.assertEqual(rows[0]["new"], "keep")
 
+    def test_wallet_and_token_identity_respects_chain_case_rules(self):
+        self.assertNotEqual(b.wallet_key("sol", "AbC"), b.wallet_key("sol", "abc"))
+        self.assertEqual(b.wallet_key("eth", "0xAbC"), b.wallet_key("eth", "0xabc"))
+        sol_rows = b.merge_rows(
+            [{"chain": "sol", "timestamp": 1, "token_address": "AbC", "side": "buy", "amount_usd": 1}],
+            [{"chain": "sol", "timestamp": 1, "token_address": "abc", "side": "buy", "amount_usd": 1}],
+        )
+        self.assertEqual(len(sol_rows), 2)
+
     def test_paginated_fetch_merges_prior_archive(self):
         pages = [
             {"activities": [{"tx_hash": "a", "timestamp": 10}], "next": "c2"},
