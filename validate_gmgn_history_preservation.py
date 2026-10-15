@@ -50,24 +50,26 @@ def row_identity(wallet: str, row: dict[str, Any]) -> tuple:
 
 
 def compare_histories(baseline: dict[str, list[dict[str, Any]]], current: dict[str, list[dict[str, Any]]]) -> dict[str, Any]:
-    before = Counter(
+    before = {
         row_identity(wallet, row)
         for wallet, rows in baseline.items()
         for row in rows
-    )
-    after = Counter(
+    }
+    after = {
         row_identity(wallet, row)
         for wallet, rows in current.items()
         for row in rows
-    )
-    missing = {key: count - after.get(key, 0) for key, count in before.items() if after.get(key, 0) < count}
+    }
+    missing = before - after
     return {
         "baseline_wallets": len(baseline),
         "current_wallets": len(current),
         "baseline_rows": sum(len(rows) for rows in baseline.values()),
         "current_rows": sum(len(rows) for rows in current.values()),
+        "baseline_unique_identities": len(before),
+        "current_unique_identities": len(after),
         "missing_identity_kinds": len(missing),
-        "missing_row_instances": sum(missing.values()),
+        "missing_row_instances": len(missing),
         "preserved": not missing,
     }
 
