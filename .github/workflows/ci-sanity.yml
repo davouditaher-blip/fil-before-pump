@@ -21,6 +21,7 @@ jobs:
       - run: python -m pip install requests pytest
       - run: CMC_API_KEY=test TELEGRAM_BOT_TOKEN=test TELEGRAM_CHAT_ID=test python -m py_compile scanner.py wallet_trade_backfill.py nansen_backfill.py reverse_historical_discovery.py audit_compressed_gmgn_archive.py test_history_persistence_workflows.py validate_gmgn_history_preservation.py test_gmgn_chain_attribution.py test_gmgn_portfolio_activity.py gmgn_layer.py test_gmgn_update_history.py
       - run: python audit_compressed_gmgn_archive.py
+      - run: python reverse_historical_discovery.py --verify
       - run: python -m unittest -v test_wallet_trade_backfill.py
       - run: python -m unittest -v test_history_persistence_workflows.py
       - run: python -m unittest -v test_gmgn_history_preservation.py
