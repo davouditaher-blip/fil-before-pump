@@ -574,8 +574,9 @@ def audit_capability() -> dict[str, Any]:
         "why_no_is_safer_than_unverified": (
             "UNVERIFIED is reserved for what the provider might do. The "
             "question 'can this project obtain 90 days today' has a definite "
-            "answer: no, because the code retrieves one page and the archive "
-            "holds nothing. That is a fact about the repository."
+            "the code has cursor loops, but no live provider response or committed "
+            "activity backfill proves a 90-day window. The safe verdict is NO "
+            "until a depth probe demonstrates the required span."
         ),
         "what_would_change_the_verdict": (
             "A recorded gmgn_depth_probe run showing span_days >= 90 for one "
