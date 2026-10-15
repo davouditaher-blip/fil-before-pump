@@ -281,7 +281,7 @@ def merge_history_record(existing: dict[str, Any], incoming: dict[str, Any]) -> 
             merged[key] = _merge_tag_values(old, value)
         elif key == "maker_info" and isinstance(value, dict):
             old_dict = old if isinstance(old, dict) else {}
-            merged[key] = {**old_dict, **{k: v for k, v in value.items() if v not in (None, "", [], {})}}
+            merged[key] = {**{k: v for k, v in value.items() if v not in (None, "", [], {})}, **old_dict}
         elif key in static_fields:
             if old in (None, "", [], {}, 0, "0") and value not in (0, "0"):
                 merged[key] = value
@@ -322,7 +322,7 @@ def atomic_write_history(path: Path, history: dict[str, Any]) -> None:
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
             json.dump(history, handle, ensure_ascii=False, indent=2)
-            handle.write("\\n")
+            handle.write("\n")
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(temp_name, path)
