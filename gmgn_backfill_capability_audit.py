@@ -355,7 +355,8 @@ def audit_endpoints() -> dict[str, Any]:
                 "deliberate safety property."
             ),
             "cost_implication": (
-                "2,215 wallets x 4 chains = 8,860 separate CLI invocations to "
+                f"{wallet_count} wallets x {chain_count} chains = "
+                f"{wallet_count * chain_count} separate CLI invocations to "
                 "cover the committed population, each of which spawns npx."
             ),
         },
@@ -366,6 +367,10 @@ def audit_limits() -> dict[str, Any]:
     """Caps, budgets and policies the current code imposes."""
     constants = _module_assignments(GMGN_LAYER)
     probe_constants = _module_assignments(DEPTH_PROBE)
+    depth = audit_demonstrated_depth()
+    primary = depth.get("primary_archive") or {}
+    wallet_count = int(primary.get("unique_wallets") or 0)
+    chain_count = len(constants.get("CHAINS") or ("sol", "bsc", "base", "eth"))
 
     return {
         "max_page_size_requested": {
@@ -700,7 +705,7 @@ def build_report() -> dict[str, Any]:
         "limits": audit_limits(),
         "wallet_archive": audit_wallet_archive(),
         "capability": audit_capability(),
-        "demonstrated_depth": audit_demonstrated_depth(),
+        "demonstrated_depth": depth,
         "codebase_maturity": audit_codebase_maturity(),
         "requirements_for_a_real_90d_backfill": {
             "current_state": "NOT DEMONSTRATED: code-side cursor loops exist, but provider cursor semantics and 90-day depth have not been verified.",
@@ -730,9 +735,10 @@ def build_report() -> dict[str, Any]:
                 {
                     "gap": "wallet enumeration",
                     "detail": (
-                        "One wallet per invocation. Covering 2,215 wallets x 4 "
-                        "chains is 8,860 CLI spawns, against a project-side "
-                        "budget of 300 activity calls per run."
+                        f"One wallet per invocation. Covering {wallet_count} "
+                        f"wallets x {chain_count} chains is "
+                        f"{wallet_count * chain_count} CLI spawns, against a "
+                        "project-side budget of 300 activity calls per run."
                     ),
                     "verified": "Single-wallet invocation and the 300-call budget are verified in source.",
                 },
@@ -774,7 +780,7 @@ def build_report() -> dict[str, Any]:
         "is_gmgn_worth_attempting_first": {
             "verdict": "YES, but only as a measured probe first -- not as an assumed backfill source.",
             "reasons_for": [
-                "It is the only wallet-trade provider already integrated, with a committed 182,588-row archive proving the schema and normalization path work end to end.",
+                f"It is the only wallet-trade provider already integrated, with a committed {int(primary.get('rows') or 0):,}-row archive. The archive proves schema presence, not 90-day provider depth.",
                 "Its kline subcommand already accepts --from/--to, so the CLI is not obviously incapable of time-windowed queries.",
                 "A one-wallet probe already exists, is read-only, and is bounded by MAX_PAGES. Running it is cheap and decisive.",
             ],
