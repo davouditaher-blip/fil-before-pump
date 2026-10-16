@@ -86,13 +86,19 @@ NON_DETERMINISTIC = ("generated_at",)
 #: checkable rather than asserted.
 READ_ONLY_FILES = (
     "gmgn_layer.py",
-    "gmgn_depth_probe.py",
+    "scanner.py",
     "wallet_trade_backfill.py",
+    "gmgn_depth_probe.py",
     "gmgn_wallet_history.json",
     "wallet_history_validation.py",
+    "recover_gmgn_history_metadata.py",
+    "merge_gmgn_history_metadata.py",
+    "validate_gmgn_history_preservation.py",
     "historical_discovery.py",
     "proven_wallet_registry.json",
     "reverse_historical_discovery.json",
+    ".github/workflows/fil-before-pump.yml",
+    ".github/workflows/gmgn-smart-money.yml",
 )
 
 LIMITATIONS = {
