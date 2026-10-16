@@ -212,7 +212,7 @@ def audit_endpoints() -> dict[str, Any]:
             "note": (
                 "GMGN is reached only through the npm CLI wrapper. No direct "
                 "HTTP call to a GMGN host exists in gmgn_layer.py; its only "
-                "requests.* calls are CMC (line 69) and Telegram (line 710)."
+                "GMGN transport uses subprocess; the module's requests calls are unrelated CMC/Telegram helpers."
             ),
         },
         "wallet_activity_or_history": {
@@ -222,7 +222,7 @@ def audit_endpoints() -> dict[str, Any]:
             "time_range_flag_sent": False,
             "cursor_flag_sent": True,
             "offset_or_page_flag_sent": False,
-            "evidence": "gmgn_layer.py:379-382",
+            "evidence": "gmgn_layer.portfolio_activity",
             "classification": {
                 "endpoint_capability": (
                     "The wrapper sends --cursor on subsequent calls but no from/to "
@@ -250,7 +250,7 @@ def audit_endpoints() -> dict[str, Any]:
             "wrapper": "gmgn_layer.run_gmgn(chain)",
             "flags_sent": ["--chain", "--limit", "200", "--raw"],
             "purpose": "recent smart-money signals, not wallet history",
-            "evidence": "gmgn_layer.py:32-33",
+            "evidence": "gmgn_layer.run_gmgn",
             "classification": {
                 "endpoint_capability": (
                     "No time filter and a fixed --limit 200. This is the feed "
@@ -259,8 +259,9 @@ def audit_endpoints() -> dict[str, Any]:
                 ),
                 "code_capability": "200 rows per chain per run, most recent.",
                 "demonstrated_capability": (
-                    "182,588 rows over 2,215 wallets across an 8.9714-day "
-                    "window, accumulated by repeated scheduled runs."
+                    "Current row/wallet counts and measured archive span are recorded in "
+                    "historical_depth_audit.json. This recent-signal feed has not "
+                    "demonstrated 90-day per-wallet history."
                 ),
             },
         },
@@ -274,7 +275,7 @@ def audit_endpoints() -> dict[str, Any]:
                 "time range. It is market data, not wallet activity, and is not "
                 "a source of wallet trade history."
             ),
-            "evidence": "gmgn_layer.py:392-395",
+            "evidence": "gmgn_layer.token_kline",
             "classification": {
                 "endpoint_capability": (
                     "Accepts --from/--to in seconds, so the CLI can express an "
@@ -428,12 +429,12 @@ def audit_limits() -> dict[str, Any]:
                     "限频 or 频率. Applied to stderr, stdout and the parsed "
                     "response body."
                 ),
-                "evidence": "gmgn_layer.py:253-309",
+                "evidence": "gmgn_layer.portfolio_activity cursor loop and completion checks",
             },
             "activity_call_budget": {
                 "value": constants.get("ACTIVITY_CALL_BUDGET", 300),
                 "pacing_seconds": constants.get("ACTIVITY_CALL_PACING_SECONDS", 0.5),
-                "evidence": "gmgn_layer.py:355-356",
+                "evidence": "gmgn_layer.detect_rate_limit",
                 "note": (
                     "A project-side fan-out cap, not a provider limit. 300 calls "
                     "at 0.5s pacing; exhaustion silently returns [] for every "
@@ -452,7 +453,7 @@ def audit_limits() -> dict[str, Any]:
         },
         "authentication": {
             "mechanism": "GMGN_API_KEY environment variable, exported into the subprocess",
-            "layer": "gmgn_layer.py:14,325 (env['GMGN_API_KEY'] = GMGN_API_KEY)",
+            "layer": "gmgn_layer imports GMGN_API_KEY from the process environment and passes the inherited environment to the CLI subprocess",
             "probe": "gmgn_depth_probe.py:115-117 refuses to run without a key",
             "backfill": (
                 "wallet_trade_backfill.py checks GMGN_API_KEY before making "
@@ -512,9 +513,9 @@ def audit_wallet_archive() -> dict[str, Any]:
         "root_cause": {
             "summary": (f"The committed per-wallet archive currently contains {total_records} activity records across {len(wallets)} wallets. The old files do not record return code, stderr, or a reliable completion status, so the precise historical failure mode cannot be proven. The current backfill has since been hardened: it validates the API key, paginates with checkpoints, refuses incomplete full pages, preserves the prior archive, and writes failed_or_incomplete status details on errors."),
             "traced_path": [
-                "wallet_trade_backfill.py:146-150 checks GMGN_API_KEY before any provider request.",
-                "wallet_trade_backfill.py:113-127 paginates, writes checkpoints and refuses a full page without a completion signal.",
-                "wallet_trade_backfill.py:154-160 persists failed_or_incomplete status and exits nonzero on chain errors.",
+                "wallet_trade_backfill.run() checks GMGN_API_KEY before any provider request.",
+                "wallet_trade_backfill.fetch_chain() paginates, writes checkpoints and refuses a full page without a completion signal.",
+                "wallet_trade_backfill.main() persists failed_or_incomplete status and exits nonzero on chain errors.",
             ],
             "why_the_cause_is_not_recoverable_from_the_artifact": ("The committed empty archive files predate the current status schema and contain no return code, stderr, or completion state. An empty records array is therefore indistinguishable from a genuinely empty result, so the original failure mode is NOT recoverable from these files alone."),
             "compounding_factors": [
