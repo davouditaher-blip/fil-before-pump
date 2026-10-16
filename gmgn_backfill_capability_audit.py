@@ -85,14 +85,23 @@ NON_DETERMINISTIC = ("generated_at",)
 #: Project files this audit must leave byte-identical. Recorded so the claim is
 #: checkable rather than asserted.
 READ_ONLY_FILES = (
+    "gmgn_backfill_capability_audit.py",
+    "historical_depth_audit.py",
+    "build_proven_wallet_registry.py",
     "gmgn_layer.py",
-    "gmgn_depth_probe.py",
+    "scanner.py",
     "wallet_trade_backfill.py",
+    "gmgn_depth_probe.py",
     "gmgn_wallet_history.json",
     "wallet_history_validation.py",
+    "recover_gmgn_history_metadata.py",
+    "merge_gmgn_history_metadata.py",
+    "validate_gmgn_history_preservation.py",
     "historical_discovery.py",
     "proven_wallet_registry.json",
     "reverse_historical_discovery.json",
+    ".github/workflows/fil-before-pump.yml",
+    ".github/workflows/gmgn-smart-money.yml",
 )
 
 LIMITATIONS = {
@@ -204,6 +213,10 @@ def audit_endpoints() -> dict[str, Any]:
     backfill_calls = _cli_invocations(BACKFILL)
     probe_calls = _cli_invocations(DEPTH_PROBE)
     constants = _module_assignments(GMGN_LAYER)
+    depth = audit_demonstrated_depth()
+    primary = depth.get("gmgn_wallet_history") or {}
+    wallet_count = int(primary.get("unique_wallets") or 0)
+    chain_count = len(constants.get("CHAINS") or ("sol", "bsc", "base", "eth"))
 
     return {
         "transport": {
@@ -212,32 +225,36 @@ def audit_endpoints() -> dict[str, Any]:
             "note": (
                 "GMGN is reached only through the npm CLI wrapper. No direct "
                 "HTTP call to a GMGN host exists in gmgn_layer.py; its only "
-                "requests.* calls are CMC (line 69) and Telegram (line 710)."
+                "GMGN transport uses subprocess; the module's requests calls are unrelated CMC/Telegram helpers."
             ),
         },
         "wallet_activity_or_history": {
             "endpoint": "gmgn portfolio activity",
             "wrapper": "gmgn_layer.portfolio_activity(chain, wallet, limit=200)",
-            "flags_sent": ["--chain", "--wallet", "--limit", "--type buy", "--type sell", "--raw"],
+            "flags_sent": ["--chain", "--wallet", "--limit", "--type buy", "--type sell", "--raw", "--cursor"],
             "time_range_flag_sent": False,
-            "cursor_flag_sent": False,
+            "cursor_flag_sent": True,
             "offset_or_page_flag_sent": False,
-            "evidence": "gmgn_layer.py:379-382",
+            "evidence": "gmgn_layer.portfolio_activity",
             "classification": {
                 "endpoint_capability": (
-                    "A single unfiltered call. --limit bounds row count; no "
-                    "from/to, cursor or offset flag is sent, so the provider is "
-                    "asked for 'most recent rows' and nothing more."
+                    "The wrapper sends --cursor on subsequent calls but no from/to "
+                    "time range. Whether the installed GMGN CLI/provider honours "
+                    "the cursor shape is UNVERIFIED because no live cursor response "
+                    "has been recorded."
                 ),
                 "code_capability": (
-                    "One page per call. The layer cannot advance past that page."
+                    "The runtime layer follows cursor pages, bounded to "
+                    "MAX_ACTIVITY_PAGES_PER_WALLET and the global activity-call "
+                    "budget; it rejects a full page without a completion signal "
+                    "rather than claiming the history is complete."
                 ),
                 "demonstrated_capability": (
-                    "gmgn_wallet_history.json holds 182,588 rows for 2,215 "
-                    "wallets, but those came from the track smartmoney feed "
-                    "accumulated over a 8.97-day window, not from "
-                    "portfolio activity paging. Portfolio activity has never "
-                    "demonstrated depth in local data."
+                    "The primary archive is accumulated by the track smartmoney "
+                    "feed, not portfolio-activity paging. Its current measured "
+                    "span is recorded in historical_depth_audit.json; the "
+                    "separate wallet activity archive still has zero records, "
+                    "so provider cursor depth remains un demonstrated."
                 ),
             },
         },
@@ -246,7 +263,7 @@ def audit_endpoints() -> dict[str, Any]:
             "wrapper": "gmgn_layer.run_gmgn(chain)",
             "flags_sent": ["--chain", "--limit", "200", "--raw"],
             "purpose": "recent smart-money signals, not wallet history",
-            "evidence": "gmgn_layer.py:32-33",
+            "evidence": "gmgn_layer.run_gmgn",
             "classification": {
                 "endpoint_capability": (
                     "No time filter and a fixed --limit 200. This is the feed "
@@ -255,8 +272,9 @@ def audit_endpoints() -> dict[str, Any]:
                 ),
                 "code_capability": "200 rows per chain per run, most recent.",
                 "demonstrated_capability": (
-                    "182,588 rows over 2,215 wallets across an 8.9714-day "
-                    "window, accumulated by repeated scheduled runs."
+                    "Current row/wallet counts and measured archive span are recorded in "
+                    "historical_depth_audit.json. This recent-signal feed has not "
+                    "demonstrated 90-day per-wallet history."
                 ),
             },
         },
@@ -270,7 +288,7 @@ def audit_endpoints() -> dict[str, Any]:
                 "time range. It is market data, not wallet activity, and is not "
                 "a source of wallet trade history."
             ),
-            "evidence": "gmgn_layer.py:392-395",
+            "evidence": "gmgn_layer.token_kline",
             "classification": {
                 "endpoint_capability": (
                     "Accepts --from/--to in seconds, so the CLI can express an "
@@ -288,11 +306,11 @@ def audit_endpoints() -> dict[str, Any]:
             },
         },
         "pagination": {
-            "mechanism_in_production_code": "NONE",
+            "mechanism_in_production_code": "bounded cursor pagination",
             "evidence": (
-                "gmgn_layer.portfolio_activity sends a single --limit with no "
-                "cursor, offset or page parameter. The response parser reads "
-                "obj['list'] or obj['data'] and ignores any pagination object."
+                "gmgn_layer.portfolio_activity sends --cursor on subsequent calls, "
+                "follows supported cursor/has_more/is_last signals, and stops at "
+                "MAX_ACTIVITY_PAGES_PER_WALLET or the global call budget."
             ),
             "mechanism_in_probe_code": "cursor-first, page-number fallback",
             "probe_evidence": "gmgn_depth_probe.py:185-191",
@@ -303,16 +321,16 @@ def audit_endpoints() -> dict[str, Any]:
                 "has_more, total_pages, total, total_records and count."
             ),
             "critical_distinction": (
-                "Cursor support exists ONLY in the probe. It is never used by "
-                "gmgn_layer or wallet_trade_backfill, so the production "
-                "integration has no pagination at all."
+                "Cursor loops now exist in both gmgn_layer and wallet_trade_backfill. "
+                "What remains unverified is whether the installed CLI/provider "
+                "actually accepts the cursor flag and returns the expected signals."
             ),
             "classification": {
                 "endpoint_capability": UNVERIFIED,
                 "code_capability": (
-                    "The probe can follow a cursor IF the provider advertises "
-                    "one. No committed artifact shows a provider response "
-                    "containing a cursor, so cursor support is untested."
+                    "The runtime layer and backfill can follow cursors if the "
+                    "provider response uses the supported shapes. No committed "
+                    "live response demonstrates that provider behavior."
                 ),
                 "demonstrated_capability": (
                     "None. gmgn_depth_probe.json is absent and the workflow "
@@ -350,7 +368,8 @@ def audit_endpoints() -> dict[str, Any]:
                 "deliberate safety property."
             ),
             "cost_implication": (
-                "2,215 wallets x 4 chains = 8,860 separate CLI invocations to "
+                f"{wallet_count} wallets x {chain_count} chains = "
+                f"{wallet_count * chain_count} separate CLI invocations to "
                 "cover the committed population, each of which spawns npx."
             ),
         },
@@ -361,27 +380,31 @@ def audit_limits() -> dict[str, Any]:
     """Caps, budgets and policies the current code imposes."""
     constants = _module_assignments(GMGN_LAYER)
     probe_constants = _module_assignments(DEPTH_PROBE)
+    depth = audit_demonstrated_depth()
+    primary = depth.get("gmgn_wallet_history") or {}
+    wallet_count = int(primary.get("unique_wallets") or 0)
+    chain_count = len(constants.get("CHAINS") or ("sol", "bsc", "base", "eth"))
 
     return {
         "max_page_size_requested": {
             "value": 200,
-            "where": "gmgn_layer.portfolio_activity default limit=200; wallet_trade_backfill LIMIT env default 200",
+            "where": "gmgn_layer.portfolio_activity default limit=200; wallet_trade_backfill defaults to 100 and accepts 1-200",
             "note": (
                 "This is what the project asks for, not a proven provider "
                 "maximum. Whether GMGN would accept more is untested."
             ),
         },
         "max_pages_per_wallet": {
-            "production": 1,
-            "production_evidence": "gmgn_layer.portfolio_activity makes exactly one call and never loops.",
+            "production": constants.get("MAX_ACTIVITY_PAGES_PER_WALLET", 3),
+            "production_evidence": "gmgn_layer.portfolio_activity follows cursors within a per-wallet page cap and a global call budget.",
             "probe": probe_constants.get("MAX_PAGES", 10),
             "probe_note": "gmgn_depth_probe.MAX_PAGES is a hard self-imposed stop, default 10.",
-            "backfill": 1,
-            "backfill_evidence": "wallet_trade_backfill calls run_cli once per chain with no loop.",
+            "backfill": _module_assignments(BACKFILL).get("MAX_PAGES", 1000),
+            "backfill_evidence": "wallet_trade_backfill.fetch_chain loops through cursors until completion or a safety guard.",
         },
         "rows_per_wallet_ceiling": {
-            "production": "200 rows per wallet per chain per run",
-            "implied_by": "1 page x --limit 200",
+            "production": "Up to 3 pages x --limit 200 per wallet, subject to the global activity-call budget and provider completion signals",
+            "implied_by": "MAX_ACTIVITY_PAGES_PER_WALLET x --limit; cursor completion is not live-verified",
         },
         "max_historical_timestamp": {
             "enforced_by_code": False,
@@ -394,10 +417,9 @@ def audit_limits() -> dict[str, Any]:
         "provider_time_window": {
             "wallet_activity": UNVERIFIED,
             "reason": (
-                "No GMGN documentation is committed and no live response has "
-                "been recorded. The repository asserts only that the stored "
-                "capture is 7.9-8.97 days wide, which describes collection, "
-                "not provider retention."
+                "No GMGN documentation or recorded live cursor response is "
+                "committed. The measured archive span describes local collection, "
+                "not provider retention or the maximum available historical window."
             ),
         },
         "cursor_expiration": {
@@ -425,12 +447,12 @@ def audit_limits() -> dict[str, Any]:
                     "限频 or 频率. Applied to stderr, stdout and the parsed "
                     "response body."
                 ),
-                "evidence": "gmgn_layer.py:253-309",
+                "evidence": "gmgn_layer.portfolio_activity cursor loop and completion checks",
             },
             "activity_call_budget": {
                 "value": constants.get("ACTIVITY_CALL_BUDGET", 300),
                 "pacing_seconds": constants.get("ACTIVITY_CALL_PACING_SECONDS", 0.5),
-                "evidence": "gmgn_layer.py:355-356",
+                "evidence": "gmgn_layer.detect_rate_limit",
                 "note": (
                     "A project-side fan-out cap, not a provider limit. 300 calls "
                     "at 0.5s pacing; exhaustion silently returns [] for every "
@@ -441,21 +463,21 @@ def audit_limits() -> dict[str, Any]:
                 "value": True,
                 "evidence": "wallet_trade_backfill.run_cli checks only returncode; it never calls detect_rate_limit.",
                 "consequence": (
-                    "The backfill path has no rate-limit policy at all and, per "
-                    "the provider's own quoted warning, retrying into a ban "
-                    "extends it."
+                    "The backfill stops on a failed page rather than retrying, "
+                    "so it does not automatically extend a ban. It does not "
+                    "classify 429 separately or record a cooldown hint, so an "
+                    "operator could rerun too early without inspecting status."
                 ),
             },
         },
         "authentication": {
             "mechanism": "GMGN_API_KEY environment variable, exported into the subprocess",
-            "layer": "gmgn_layer.py:14,325 (env['GMGN_API_KEY'] = GMGN_API_KEY)",
+            "layer": "gmgn_layer imports GMGN_API_KEY from the process environment and passes the inherited environment to the CLI subprocess",
             "probe": "gmgn_depth_probe.py:115-117 refuses to run without a key",
             "backfill": (
-                "wallet_trade_backfill.py does NOT check for a key and does "
-                "NOT inject one into the subprocess env. The workflow supplies "
-                "GMGN_API_KEY to the process, so the child inherits it, but the "
-                "script itself has no guard and no preflight."
+                "wallet_trade_backfill.py checks GMGN_API_KEY before making "
+                "requests and fails closed when it is absent. The CLI subprocess "
+                "inherits the environment copied by run_cli."
             ),
             "secret_handling": (
                 "No credential value is read into any committed artifact by any "
@@ -469,14 +491,14 @@ def audit_limits() -> dict[str, Any]:
         },
         "endpoint_specific_limitations": {
             "track_smartmoney": "Recent feed only. No time filter exists for it in the CLI usage here.",
-            "portfolio_activity": "No time filter. Depth is reachable only via pagination, which production code does not use.",
+            "portfolio_activity": "No time filter. Production follows cursors for at most 3 pages per wallet, but provider cursor behaviour and retention are unverified.",
             "market_kline": "Has --from/--to, but is market data, not wallet activity.",
         },
     }
 
 
 def audit_wallet_archive() -> dict[str, Any]:
-    """Why the committed archive holds one wallet and zero records."""
+    """Report the old empty backfill artifact without inventing its failure cause."""
     files: list[dict[str, Any]] = []
     total_records = 0
     if ARCHIVE_DIR.is_dir():
@@ -490,106 +512,44 @@ def audit_wallet_archive() -> dict[str, Any]:
             count = len(records) if isinstance(records, list) else 0
             total_records += count
             files.append({
-                "file": path.name,
-                "readable": True,
-                "chain": data.get("chain"),
-                "wallet": data.get("wallet"),
-                "limit_requested": data.get("limit"),
-                "records": count,
-                "fetched_at": data.get("fetched_at"),
+                "file": path.name, "readable": True, "chain": data.get("chain"),
+                "wallet": data.get("wallet"), "limit_requested": data.get("limit"),
+                "records": count, "fetched_at": data.get("fetched_at"),
                 "fetched_at_iso": (
                     datetime.fromtimestamp(int(data["fetched_at"]), timezone.utc).isoformat()
                     if isinstance(data.get("fetched_at"), (int, float)) else None
                 ),
                 "has_error_field": any(k in data for k in ("error", "errors", "status", "stderr")),
             })
-
     wallets = {f.get("wallet") for f in files if f.get("wallet")}
-
     return {
         "archive_dir": "wallet_archive/raw/gmgn/activity",
         "writer": "wallet_trade_backfill.py",
         "writer_invocation": ".github/workflows/gmgn-wallet-backfill.yml (workflow_dispatch only)",
-        "files": files,
-        "file_count": len(files),
+        "files": files, "file_count": len(files),
         "unique_wallets": sorted(w for w in wallets if w),
         "total_records": total_records,
         "root_cause": {
-            "summary": (
-                "The archive is empty because the writer treats a failed "
-                "request as an empty result and writes it anyway. "
-                "wallet_trade_backfill.run_cli returns {} on any non-zero "
-                "returncode, the caller derives rows = [] from that, and the "
-                "file is written with records: [] unconditionally."
-            ),
+            "summary": (f"The committed per-wallet archive currently contains {total_records} activity records across {len(wallets)} wallets. The old files do not record return code, stderr, or a reliable completion status, so the precise historical failure mode cannot be proven. The current backfill has since been hardened: it validates the API key, paginates with checkpoints, refuses incomplete full pages, preserves the prior archive, and writes failed_or_incomplete status details on errors."),
             "traced_path": [
-                "wallet_trade_backfill.py:83-88 loops CHAINS and calls run_cli(chain).",
-                "run_cli (line 34-38) runs npx gmgn-cli; if p.returncode != 0 it prints stderr and returns {}.",
-                "It returns {} for every failure mode it survives: non-zero exit or unparsable stdout.",
-                "A subprocess exception is different: line 34 is not wrapped, so it propagates and aborts the run before anything is written.",
-                "Line 85 then does rows = obj.get('list') or obj.get('data') or [], which yields [] for {}.",
-                "Lines 89-97 write the per-chain file with that empty list regardless of why it is empty.",
-                "Lines 121-132 print a result summary; the raw stderr that explains the failure is printed to stdout only and is never persisted.",
+                "wallet_trade_backfill.run() checks GMGN_API_KEY before any provider request.",
+                "wallet_trade_backfill.fetch_chain() paginates, writes checkpoints and refuses a full page without a completion signal.",
+                "wallet_trade_backfill.main() persists failed_or_incomplete status and exits nonzero on chain errors.",
             ],
-            "why_the_cause_is_not_recoverable_from_the_artifact": (
-                "The committed per-chain files record source, chain, wallet, "
-                "fetched_at, limit and records. None of them records a return "
-                "code, stderr, or any error field, so an empty file is "
-                "indistinguishable from a wallet that genuinely had no "
-                "activity in the window."
-            ),
+            "why_the_cause_is_not_recoverable_from_the_artifact": ("The committed empty archive files predate the current status schema and contain no return code, stderr, or completion state. An empty records array is therefore indistinguishable from a genuinely empty result, so the original failure mode is NOT recoverable from these files alone."),
             "compounding_factors": [
-                {
-                    "factor": "subprocess exceptions are unhandled",
-                    "evidence": "wallet_trade_backfill.py:34 calls subprocess.run outside any try/except; only the JSON parse loop has one.",
-                    "consequence": (
-                        "In an environment without npx this raises "
-                        "FileNotFoundError and the script dies. npx is absent "
-                        "in this audit environment (verified: 'npx: command "
-                        "not found'), so the script cannot run here at all."
-                    ),
-                },
-                {
-                    "factor": "no API key preflight",
-                    "evidence": "wallet_trade_backfill.py has no GMGN_API_KEY reference, unlike gmgn_depth_probe.py:115.",
-                    "consequence": (
-                        "An unkeyed or invalid key produces the same empty "
-                        "records: [] as a rate-limited or empty wallet."
-                    ),
-                },
-                {
-                    "factor": "no rate-limit detection",
-                    "evidence": "wallet_trade_backfill.run_cli never calls gmgn_layer.detect_rate_limit.",
-                    "consequence": (
-                        "A 429 is indistinguishable from an empty wallet in the "
-                        "persisted artifact."
-                    ),
-                },
-                {
-                    "factor": "one page, one wallet, four chains",
-                    "evidence": "CHAINS has 4 entries; run_cli is called once per chain; no pagination loop exists.",
-                    "consequence": (
-                        "The most this script could ever store is 4 x 200 = 800 "
-                        "rows for a single wallet, i.e. roughly the most recent "
-                        "few days. It could not produce 90 days even on full "
-                        "success, which is the deeper structural limit."
-                    ),
-                },
+                {"factor": "one wallet per workflow dispatch", "evidence": "BACKFILL_WALLET is a single workflow input/default.", "consequence": "The workflow does not enumerate the entire wallet population automatically."},
+                {"factor": "pagination safety cap", "evidence": "wallet_trade_backfill.MAX_PAGES is 1000.", "consequence": "The cap is finite and no live provider cursor behaviour has been verified."},
+                {"factor": "no backfill rate-limit detection", "evidence": "wallet_trade_backfill does not call gmgn_layer.detect_rate_limit.", "consequence": "Rate-limit responses are persisted as failures, but there is no provider-specific terminal rate-limit policy in the backfill path."},
             ],
             "what_is_not_the_cause": [
-                "Not a data-format or normalization bug: normalize() is only reached for rows that were never fetched, and the summary confirms raw_rows=0 before normalization.",
-                "Not an intentionally empty wallet: the workflow default wallet is a real address, but the artifact cannot prove either way because no error state was persisted.",
-                "Not a threshold filter: LIMIT=200 bounds retrieval, not the recorded rows, and rows=0 was recorded upstream of the >=5000 USD qualification.",
+                "The current code no longer treats malformed/error responses as an empty successful history.",
+                "The historical empty artifact is not evidence that the selected wallet had no activity.",
+                "The empty archive artifact was observed before any later wallet-quality qualification; an empty records array is not evidence that the wallet was inactive.",
             ],
-            "conclusion_strength": (
-                "The code path above is directly verifiable from the source and "
-                "fully explains how an empty archive is produced. Which "
-                "specific failure mode occurred on 2026-09-24 is NOT "
-                "recoverable, because no error state was persisted."
-            ),
+            "conclusion_strength": ("The empty archive and missing error fields are directly verifiable. The current writer is hardened, but the exact cause of the old empty files is NOT recoverable from the persisted artifact."),
         },
     }
-
 
 def audit_capability() -> dict[str, Any]:
     """90/180/365 verdicts, each with its evidence tier kept separate."""
@@ -604,26 +564,26 @@ def audit_capability() -> dict[str, Any]:
                 "introspected. Claiming a provider-side limit here would be "
                 "fabrication."
             ),
-            "code_capability": False,
+            "code_capability": True,
             "code_reason": (
-                "wallet_trade_backfill issues exactly one unfiltered "
-                "--limit 200 call per chain and has no pagination, so it "
-                "cannot reach further back than that single page. "
-                "gmgn_layer.portfolio_activity is identical."
+                "The runtime layer has bounded cursor pagination and the backfill has a "
+                "1,000-page safety cap. Neither sends a time-range filter, the "
+                "CLI cursor semantics are not verified live, and the repository "
+                "has no committed result proving 90 days."
             ),
             "demonstrated_capability": False,
             "demonstrated_reason": (
-                "The only committed GMGN-derived artifact with any depth is "
-                "gmgn_wallet_history.json, which spans 8.9714 days from the "
-                "track smartmoney feed, not from portfolio activity. "
-                "portfolio activity has never produced a single committed row: "
-                "the wallet_archive holds zero records."
+                "The current primary archive span is reported dynamically from "
+                "historical_depth_audit.json and comes from the track smartmoney "
+                "feed, not portfolio activity. The wallet_archive holds zero "
+                "records, so pagination has not demonstrated historical depth."
             ),
             "verdict": "NO",
             "verdict_basis": (
-                "NO rather than UNVERIFIED because the current code and the "
-                "local data both affirmatively show the capability is not "
-                "available today, independent of what the provider might allow."
+                "NO because no committed live response demonstrates a 90-day "
+                "window and provider cursor/retention behaviour is UNVERIFIED. "
+                "Code-side pagination is implemented, but implementation alone "
+                "does not prove that the endpoint returns older history."
             ),
         }
 
@@ -632,10 +592,10 @@ def audit_capability() -> dict[str, Any]:
         "B_180_days": verdict(180),
         "C_365_days": verdict(365),
         "why_no_is_safer_than_unverified": (
-            "UNVERIFIED is reserved for what the provider might do. The "
-            "question 'can this project obtain 90 days today' has a definite "
-            "answer: no, because the code retrieves one page and the archive "
-            "holds nothing. That is a fact about the repository."
+            "UNVERIFIED is reserved for provider-side behaviour. The code "
+            "has cursor loops, but no live provider response or committed "
+            "activity backfill proves a 90-day window. The safe verdict is NO "
+            "until a depth probe demonstrates the required span."
         ),
         "what_would_change_the_verdict": (
             "A recorded gmgn_depth_probe run showing span_days >= 90 for one "
@@ -646,7 +606,7 @@ def audit_capability() -> dict[str, Any]:
 
 
 def audit_demonstrated_depth() -> dict[str, Any]:
-    """What local data actually proves about depth, from the prior audit."""
+    """What local data actually proves about depth, using the current audit artifact."""
     primary: dict[str, Any] = {"present": False}
     if HISTORY.exists():
         # Read the committed prior audit rather than re-deriving the same numbers.
@@ -668,8 +628,12 @@ def audit_demonstrated_depth() -> dict[str, Any]:
     return {
         "gmgn_wallet_history": primary,
         "wallet_archive": {
-            "records": 0,
-            "proves": "nothing about depth; it is an empty run artifact",
+            "records": audit_wallet_archive()["total_records"],
+            "proves": (
+                "no depth evidence: the archive is empty"
+                if audit_wallet_archive()["total_records"] == 0
+                else "records exist, but 90-day depth is not proven until their event timestamps are measured"
+            ),
         },
         "gmgn_depth_probe_result": {
             "present": DEPTH_PROBE.with_name("gmgn_depth_probe.json").exists(),
@@ -678,9 +642,9 @@ def audit_demonstrated_depth() -> dict[str, Any]:
                 "deliberately not committed and stays in run logs."
             ),
         },
-        "maximum_demonstrated_days": 8.9714,
+        "maximum_demonstrated_days": float(primary.get("archive_span_days") or 0.0),
         "required_days": 90,
-        "shortfall_days": 81.0286,
+        "shortfall_days": max(0.0, 90.0 - float(primary.get("archive_span_days") or 0.0)),
     }
 
 
@@ -702,11 +666,11 @@ def audit_codebase_maturity() -> dict[str, Any]:
         "gmgn_tests_exist": bool(gmgn_tests),
         "audit_self_test_files_excluded": audit_self_tests,
         "note": (
-            "No test_gmgn*.py exists apart from this audit's own test, which "
-            "covers the audit and not GMGN production code. gmgn_layer.py, "
-            "gmgn_depth_probe.py and wallet_trade_backfill.py have no unit "
-            "tests, so their behaviour is unverified by the suite. The audit "
-            "below therefore reads them as source, not as tested behaviour."
+            "The repository now has unit tests for GMGN history merging, chain "
+            "attribution, cursor pagination and wallet backfill parsing. These "
+            "exercise local logic with fixtures/mocks; they do not prove the "
+            "installed GMGN CLI or provider honours cursor semantics. This audit "
+            "therefore keeps endpoint capability UNVERIFIED."
         ),
         "gmgn_workflows": gmgn_workflows,
         "all_workflows": workflows,
@@ -730,6 +694,10 @@ def audit_codebase_maturity() -> dict[str, Any]:
 
 def build_report() -> dict[str, Any]:
     """Assemble the audit. Pure function of the repository files."""
+    depth = audit_demonstrated_depth()
+    primary = depth.get("gmgn_wallet_history") or {}
+    wallet_count = int(primary.get("unique_wallets") or 0)
+    chain_count = len(_module_assignments(GMGN_LAYER).get("CHAINS") or ("sol", "bsc", "base", "eth"))
     present = [name for name in READ_ONLY_FILES if (HERE / name).exists()]
 
     report: dict[str, Any] = {
@@ -758,99 +726,96 @@ def build_report() -> dict[str, Any]:
         "limits": audit_limits(),
         "wallet_archive": audit_wallet_archive(),
         "capability": audit_capability(),
-        "demonstrated_depth": audit_demonstrated_depth(),
+        "demonstrated_depth": depth,
         "codebase_maturity": audit_codebase_maturity(),
         "requirements_for_a_real_90d_backfill": {
-            "current_state": "NOT POSSIBLE with the current code path.",
+            "current_state": "NOT DEMONSTRATED: code-side cursor loops exist, but provider cursor semantics and 90-day depth have not been verified.",
             "blocking_gaps": [
                 {
                     "gap": "no time-range request for wallet activity",
                     "detail": (
-                        "portfolio activity is called with only --limit. "
-                        "Adding a from/to window is only possible if the CLI "
-                        "accepts one; the kline call shows the CLI does accept "
-                        "--from/--to for that subcommand, which is suggestive "
-                        "but not proof for portfolio activity."
+                        "Portfolio activity sends --cursor on subsequent pages but "
+                        "no from/to time range. Adding a time window is only possible "
+                        "if the CLI accepts one; kline accepts --from/--to, which is "
+                        "suggestive but not proof for portfolio activity."
                     ),
                     "verified": "The absence of the flag in code is verified.",
                     "cli_support": UNVERIFIED,
                 },
                 {
-                    "gap": "no pagination in the backfill path",
+                    "gap": "provider cursor behavior not live-verified",
                     "detail": (
-                        "Even with more rows per page, one page is all the "
-                        "current code retrieves. The probe's cursor handling is "
-                        "the only pagination implementation in the repository "
-                        "and it is not wired into any writer."
+                        "Both runtime and backfill code now loop through cursor "
+                        "pages, but no recorded live response confirms that the "
+                        "installed CLI accepts --cursor or signals completion as expected."
                     ),
-                    "verified": "The absence of pagination in wallet_trade_backfill and gmgn_layer is verified.",
+                    "verified": "Cursor flags and pagination loops are verified in source; provider behavior remains UNVERIFIED.",
                     "provider_pagination_support": UNVERIFIED,
                 },
                 {
                     "gap": "wallet enumeration",
                     "detail": (
-                        "One wallet per invocation. Covering 2,215 wallets x 4 "
-                        "chains is 8,860 CLI spawns, against a project-side "
-                        "budget of 300 activity calls per run."
+                        f"One wallet per invocation. Covering {wallet_count} "
+                        f"wallets x {chain_count} chains is "
+                        f"{wallet_count * chain_count} CLI spawns, against a "
+                        "project-side budget of 300 activity calls per run."
                     ),
                     "verified": "Single-wallet invocation and the 300-call budget are verified in source.",
                 },
                 {
-                    "gap": "failure is indistinguishable from empty",
+                    "gap": "historical empty artifact has no failure state",
                     "detail": (
-                        "Must be fixed before any backfill is trusted: the "
-                        "writer must persist returncode, stderr, whether a key "
-                        "was present, and whether a rate limit was seen, so "
-                        "that 'no data' can never again be written as if it "
-                        "were a fact about the wallet."
+                        "The old committed files lack returncode/stderr/status, "
+                        "so the original failure mode cannot be recovered. The "
+                        "current writer now persists failed_or_incomplete status, "
+                        "returncode and stderr for new failures."
                     ),
-                    "verified": "Verified by tracing wallet_trade_backfill.run_cli.",
+                    "verified": "Current writer's failure-state persistence is verified in source; old failure cause remains unrecoverable.",
                 },
                 {
                     "gap": "no rate-limit policy in the backfill path",
                     "detail": (
-                        "The provider states retrying during a ban extends it. "
-                        "A backfill without a terminal-on-429 policy risks "
-                        "escalating to a 5-minute IP ban."
+                        "The backfill stops after a failed page and does not "
+                        "retry automatically. It also lacks explicit 429 "
+                        "classification/cooldown metadata, so an operator must "
+                        "inspect the persisted status before manually rerunning."
                     ),
-                    "verified": "Verified: wallet_trade_backfill never calls detect_rate_limit.",
+                    "verified": "Verified: wallet_trade_backfill does not call detect_rate_limit and has no 429-specific branch or automatic retry loop.",
                 },
                 {
-                    "gap": "no tests for the GMGN code",
+                    "gap": "no live provider integration evidence",
                     "detail": (
-                        "No test_gmgn*.py covers the GMGN production code. A backfill writer with no "
-                        "tests, no persisted error state and no pagination "
-                        "should not be pointed at a metered plan."
+                        "Unit tests cover local parsing, cursor loops, chain attribution "
+                        "and preservation, but none proves the installed GMGN CLI "
+                        "or provider honors cursor pagination or exposes 90 days."
                     ),
-                    "verified": "Verified by listing test_*.py.",
+                    "verified": "The test suite contains mocked/offline tests; no committed live probe result exists.",
                 },
             ],
             "minimum_to_attempt": [
-                "Run gmgn_depth_probe once for one wallet and RECORD its result in the repository, so endpoint capability stops being unverified.",
-                "Persist provider error state in the backfill writer so empty is distinguishable from failed.",
-                "Add pagination to the writer, reusing gmgn_depth_probe's cursor handling rather than writing new API logic.",
-                "Add offline unit tests for the writer and probe request construction, no network required.",
-                "Only then scale to more wallets, respecting the activity budget.",
+                "Run gmgn_depth_probe once for one wallet and RECORD its result in the repository, so endpoint cursor support and observed depth stop being unverified.",
+                "Review the recorded run for rate limiting and partial-page behavior before scaling.",
+                "Only then scale to more wallets, respecting the activity budget and the backfill's per-wallet safety cap.",
             ],
         },
         "is_gmgn_worth_attempting_first": {
             "verdict": "YES, but only as a measured probe first -- not as an assumed backfill source.",
             "reasons_for": [
-                "It is the only wallet-trade provider already integrated, with a committed 182,588-row archive proving the schema and normalization path work end to end.",
+                f"It is the only wallet-trade provider already integrated, with a committed {int(primary.get('reconstructed_rows') or 0):,}-row archive. The archive proves schema presence, not 90-day provider depth.",
                 "Its kline subcommand already accepts --from/--to, so the CLI is not obviously incapable of time-windowed queries.",
                 "A one-wallet probe already exists, is read-only, and is bounded by MAX_PAGES. Running it is cheap and decisive.",
             ],
             "reasons_for_caution": [
                 "No committed measurement of provider-side depth exists, so depth is UNVERIFIED rather than known.",
                 "The one committed backfill attempt produced zero records and recorded no reason.",
-                "The backfill path has no pagination, no rate-limit policy, no error persistence and no tests.",
-                "Coverage cost is high: one CLI spawn per wallet per chain.",
+                "The backfill path has cursor pagination and error persistence, but lacks provider-specific rate-limit detection.",
+                "Coverage cost is high: one workflow dispatch handles one wallet across selected chains.",
             ],
             "recommended_first_action": (
                 "Run the existing read-only gmgn_depth_probe for ONE wallet and "
-                "commit its result, before writing any new backfill code. That "
-                "single measurement converts the 90/180/365 verdicts from "
-                "NO-by-omission into evidence-based answers."
+                "commit its result. That measurement is now the missing evidence "
+                "needed to validate the existing cursor implementation and "
+                "determine whether 90/180/365-day retrieval is actually available."
             ),
         },
         "limitations": LIMITATIONS,

@@ -30,7 +30,15 @@ import wallet_history_validation as whv  # noqa: E402
 REPORT = HERE / "historical_depth_audit.json"
 SOURCE = HERE / "gmgn_wallet_history.json"
 REGISTRY = HERE / "proven_wallet_registry.json"
-SOURCE_MD5 = "ef1e23b980ae3b4cb0ad239267cbbae4"
+def current_source_md5() -> str:
+    if SOURCE.exists():
+        return hda.file_md5(SOURCE)
+    import gzip
+    with gzip.open(HERE / "gmgn_wallet_history.json.gz", "rb") as handle:
+        return hashlib.md5(handle.read()).hexdigest()
+
+
+SOURCE_MD5 = current_source_md5()
 DAY = 86_400
 
 #: MD5 of every dataset and registry the audit must leave untouched.

@@ -28,12 +28,34 @@ class GMGNHistoryMergeTests(unittest.TestCase):
         self.assertEqual(len(history["wallet"]), 2)
         self.assertEqual({row["transaction_hash"] for row in history["wallet"]}, {"tx-1", "tx-2"})
 
+    def test_same_transaction_different_asset_legs_are_preserved(self):
+        first = trade("tx-1", 1.0)
+        second = dict(trade("tx-1", 2.0), base_address="TokenXYZ", base_token={"symbol": "OTHER"})
+        history = {}
+        gmgn_layer.update_history([first, second], history)
+        self.assertEqual(len(history["wallet"]), 2)
+        self.assertEqual({row["address"] for row in history["wallet"]}, {"TokenABC", "TokenXYZ"})
+
+    def test_same_transaction_asset_leg_different_execution_prices_are_preserved(self):
+        history = {}
+        gmgn_layer.update_history([trade("tx-1", 1.0), trade("tx-1", 1.1)], history)
+        self.assertEqual(len(history["wallet"]), 2)
+        self.assertEqual({row["price_usd"] for row in history["wallet"]}, {1.0, 1.1})
     def test_different_prices_without_transaction_hash_are_preserved(self):
         history = {}
         gmgn_layer.update_history([trade("", 1.0), trade("", 1.1)], history)
         self.assertEqual(len(history["wallet"]), 2)
         self.assertEqual({row["price_usd"] for row in history["wallet"]}, {1.0, 1.1})
 
+    def test_scanner_identity_keeps_same_transaction_distinct_assets(self):
+        first = {"chain": "eth", "transaction_hash": "tx-1", "address": "0x" + "a" * 40, "side": "buy", "amount_usd": 10, "price_usd": 1.0}
+        second = dict(first, address="0x" + "b" * 40)
+        self.assertNotEqual(scanner._gmgn_history_key(first, "wallet"), scanner._gmgn_history_key(second, "wallet"))
+
+    def test_scanner_identity_keeps_same_transaction_distinct_prices(self):
+        first = {"chain": "eth", "transaction_hash": "tx-1", "address": "0x" + "a" * 40, "side": "buy", "amount_usd": 10, "price_usd": 1.0}
+        second = dict(first, price_usd=2.0)
+        self.assertNotEqual(scanner._gmgn_history_key(first, "wallet"), scanner._gmgn_history_key(second, "wallet"))
     def test_scanner_identity_keeps_distinct_transaction_hashes(self):
         first = {"chain": "eth", "tx_hash": "tx-1", "timestamp": 1000, "address": "0xabc"}
         second = {"chain": "eth", "tx_hash": "tx-2", "timestamp": 1000, "address": "0xabc"}
