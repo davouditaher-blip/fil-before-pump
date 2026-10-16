@@ -213,6 +213,10 @@ def audit_endpoints() -> dict[str, Any]:
     backfill_calls = _cli_invocations(BACKFILL)
     probe_calls = _cli_invocations(DEPTH_PROBE)
     constants = _module_assignments(GMGN_LAYER)
+    depth = audit_demonstrated_depth()
+    primary = depth.get("gmgn_wallet_history") or {}
+    wallet_count = int(primary.get("unique_wallets") or 0)
+    chain_count = len(constants.get("CHAINS") or ("sol", "bsc", "base", "eth"))
 
     return {
         "transport": {
