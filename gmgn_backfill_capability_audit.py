@@ -713,12 +713,11 @@ def build_report() -> dict[str, Any]:
                 {
                     "gap": "no time-range request for wallet activity",
                     "detail": (
-                        "portfolio activity is called with only --limit. "
-                        "Adding a from/to window is only possible if the CLI "
-                        "accepts one; the kline call shows the CLI does accept "
-                        "--from/--to for that subcommand, which is suggestive "
-                        "but not proof for portfolio activity."
-                    ),
+                        "Portfolio activity sends --cursor on subsequent pages but "
+                        "no from/to time range. Adding a time window is only possible "
+                        "if the CLI accepts one; kline accepts --from/--to, which is "
+                        "suggestive but not proof for portfolio activity."
+                    ,
                     "verified": "The absence of the flag in code is verified.",
                     "cli_support": UNVERIFIED,
                 },
