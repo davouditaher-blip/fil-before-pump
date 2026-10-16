@@ -588,9 +588,8 @@ def audit_capability() -> dict[str, Any]:
         "B_180_days": verdict(180),
         "C_365_days": verdict(365),
         "why_no_is_safer_than_unverified": (
-            "UNVERIFIED is reserved for what the provider might do. The "
-            "question 'can this project obtain 90 days today' has a definite "
-            "the code has cursor loops, but no live provider response or committed "
+            "UNVERIFIED is reserved for provider-side behaviour. The code "
+            "has cursor loops, but no live provider response or committed "
             "activity backfill proves a 90-day window. The safe verdict is NO "
             "until a depth probe demonstrates the required span."
         ),
