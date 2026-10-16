@@ -459,9 +459,10 @@ def audit_limits() -> dict[str, Any]:
                 "value": True,
                 "evidence": "wallet_trade_backfill.run_cli checks only returncode; it never calls detect_rate_limit.",
                 "consequence": (
-                    "The backfill path has no rate-limit policy at all and, per "
-                    "the provider's own quoted warning, retrying into a ban "
-                    "extends it."
+                    "The backfill stops on a failed page rather than retrying, "
+                    "so it does not automatically extend a ban. It does not "
+                    "classify 429 separately or record a cooldown hint, so an "
+                    "operator could rerun too early without inspecting status."
                 ),
             },
         },
@@ -767,11 +768,12 @@ def build_report() -> dict[str, Any]:
                 {
                     "gap": "no rate-limit policy in the backfill path",
                     "detail": (
-                        "The provider states retrying during a ban extends it. "
-                        "A backfill without a terminal-on-429 policy risks "
-                        "escalating to a 5-minute IP ban."
+                        "The backfill stops after a failed page and does not "
+                        "retry automatically. It also lacks explicit 429 "
+                        "classification/cooldown metadata, so an operator must "
+                        "inspect the persisted status before manually rerunning."
                     ),
-                    "verified": "Verified: wallet_trade_backfill never calls detect_rate_limit.",
+                    "verified": "Verified: wallet_trade_backfill does not call detect_rate_limit and has no 429-specific branch or automatic retry loop.",
                 },
                 {
                     "gap": "no live provider integration evidence",
