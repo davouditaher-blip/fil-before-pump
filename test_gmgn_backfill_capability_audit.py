@@ -356,25 +356,24 @@ class TestReportIsReadOnlyAndHonest(unittest.TestCase):
         import reverse_historical_discovery as rhd
         self.assertEqual(rhd.MIN_ASSET_HISTORY_DAYS, 90)
 
-    def test_the_absence_of_gmgn_tests_is_recorded_not_glossed(self):
+    def test_gmgn_unit_tests_are_acknowledged_but_not_overstated(self):
         maturity = self.report["codebase_maturity"]
-        self.assertFalse(maturity["gmgn_tests_exist"])
-        self.assertEqual(maturity["gmgn_test_files"], [])
-        self.assertIn("no unit tests", maturity["note"])
+        self.assertTrue(maturity["gmgn_tests_exist"])
+        self.assertIn("test_gmgn_chain_attribution.py", maturity["gmgn_test_files"])
+        self.assertIn("do not prove", maturity["note"])
 
     def test_historical_audit_explicitly_excludes_its_own_test(self):
-        # Regression: the audit globs test_*.py for "gmgn", which matches its own
-        # test file. Without an explicit exclusion the coverage finding flips to
-        # True the moment this file exists, silently.
+        # The audit's own test is excluded from the production GMGN test count,
+        # but real offline unit tests are now present.
         maturity = self.report["codebase_maturity"]
         excluded = maturity["audit_self_test_files_excluded"]
         self.assertEqual(excluded, ["test_gmgn_backfill_capability_audit.py"])
         self.assertNotIn("test_gmgn_backfill_capability_audit.py",
                          maturity["gmgn_test_files"])
-        self.assertIn("covers the audit and not GMGN production code",
+        self.assertIn("do not prove the",
                       maturity["note"])
-        # The report is a historical snapshot. New repair tests are expected
-        # to exist now and are documented in gmgn_backfill_repair_status.json.
+        # Production logic has offline unit coverage; provider behaviour still
+        # needs a recorded live probe.
         globbed = {p.name for p in HERE.glob("test_*.py") if "gmgn" in p.name}
         self.assertIn("test_gmgn_backfill_capability_audit.py", globbed)
         self.assertIn("test_gmgn_chain_attribution.py", globbed)
@@ -386,7 +385,7 @@ class TestReportIsReadOnlyAndHonest(unittest.TestCase):
 
     def test_backfill_requirements_are_listed_with_gaps(self):
         req = self.report["requirements_for_a_real_90d_backfill"]
-        self.assertIn("NOT POSSIBLE", req["current_state"])
+        self.assertIn("NOT DEMONSTRATED", req["current_state"])
         self.assertTrue(req["blocking_gaps"])
         for gap in req["blocking_gaps"]:
             self.assertIn("verified", gap)
