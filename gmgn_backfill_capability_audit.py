@@ -717,7 +717,7 @@ def build_report() -> dict[str, Any]:
                         "no from/to time range. Adding a time window is only possible "
                         "if the CLI accepts one; kline accepts --from/--to, which is "
                         "suggestive but not proof for portfolio activity."
-                    ,
+                    ),
                     "verified": "The absence of the flag in code is verified.",
                     "cli_support": UNVERIFIED,
                 },
