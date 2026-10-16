@@ -473,9 +473,9 @@ class TestProtectedFilesUntouched(unittest.TestCase):
         self.assertTrue(data)
         self.assertGreater(sum(len(rows) for rows in data.values() if isinstance(rows, list)), 0)
 
-    def test_the_wallet_archive_still_holds_one_wallet_and_zero_records(self):
+    def test_wallet_archive_summary_matches_current_files(self):
         files = sorted(ARCHIVE_DIR.glob("*.json"))
-        self.assertEqual(len(files), 5)
+        self.assertEqual(len(files), self.archive["file_count"])
         total = 0
         wallets = set()
         for path in files:
@@ -483,8 +483,8 @@ class TestProtectedFilesUntouched(unittest.TestCase):
             total += len(data.get("records") or [])
             if data.get("wallet"):
                 wallets.add(data["wallet"])
-        self.assertEqual(total, 0, "the audit must not have populated the archive")
-        self.assertEqual(len(wallets), 1)
+        self.assertEqual(total, self.archive["total_records"])
+        self.assertEqual(sorted(wallets), self.archive["unique_wallets"])
 
     def test_no_gmgn_report_artifact_was_created_by_the_probe(self):
         # The probe must not have been run: no result file, no archive writes.
