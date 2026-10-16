@@ -33,6 +33,9 @@ ARCHIVE_DIR = HERE / "wallet_archive/raw/gmgn/activity"
 #: Files the audit asserts it did not modify. Digests are captured at test time
 #: from the working tree and compared to the same files as committed.
 MUST_BE_UNTOUCHED = (
+    "gmgn_backfill_capability_audit.py",
+    "historical_depth_audit.py",
+    "build_proven_wallet_registry.py",
     "gmgn_layer.py",
     "scanner.py",
     "gmgn_depth_probe.py",
