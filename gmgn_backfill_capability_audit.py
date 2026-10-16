@@ -541,7 +541,7 @@ def audit_wallet_archive() -> dict[str, Any]:
             "what_is_not_the_cause": [
                 "The current code no longer treats malformed/error responses as an empty successful history.",
                 "The historical empty artifact is not evidence that the selected wallet had no activity.",
-                "The USD qualification threshold does not explain records: 0 because the artifact was empty before qualification.",
+                "The empty archive artifact was observed before any later wallet-quality qualification; an empty records array is not evidence that the wallet was inactive.",
             ],
             "conclusion_strength": ("The empty archive and missing error fields are directly verifiable. The current writer is hardened, but the exact cause of the old empty files is NOT recoverable from the persisted artifact."),
         },
@@ -603,7 +603,7 @@ def audit_capability() -> dict[str, Any]:
 
 
 def audit_demonstrated_depth() -> dict[str, Any]:
-    """What local data actually proves about depth, from the prior audit."""
+    """What local data actually proves about depth, using the current audit artifact."""
     primary: dict[str, Any] = {"present": False}
     if HISTORY.exists():
         # Read the committed prior audit rather than re-deriving the same numbers.
@@ -625,8 +625,12 @@ def audit_demonstrated_depth() -> dict[str, Any]:
     return {
         "gmgn_wallet_history": primary,
         "wallet_archive": {
-            "records": 0,
-            "proves": "nothing about depth; it is an empty run artifact",
+            "records": audit_wallet_archive()["total_records"],
+            "proves": (
+                "no depth evidence: the archive is empty"
+                if audit_wallet_archive()["total_records"] == 0
+                else "records exist, but 90-day depth is not proven until their event timestamps are measured"
+            ),
         },
         "gmgn_depth_probe_result": {
             "present": DEPTH_PROBE.with_name("gmgn_depth_probe.json").exists(),
