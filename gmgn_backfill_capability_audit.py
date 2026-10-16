@@ -85,6 +85,9 @@ NON_DETERMINISTIC = ("generated_at",)
 #: Project files this audit must leave byte-identical. Recorded so the claim is
 #: checkable rather than asserted.
 READ_ONLY_FILES = (
+    "gmgn_backfill_capability_audit.py",
+    "historical_depth_audit.py",
+    "build_proven_wallet_registry.py",
     "gmgn_layer.py",
     "scanner.py",
     "wallet_trade_backfill.py",
