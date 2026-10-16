@@ -377,7 +377,7 @@ def audit_limits() -> dict[str, Any]:
     constants = _module_assignments(GMGN_LAYER)
     probe_constants = _module_assignments(DEPTH_PROBE)
     depth = audit_demonstrated_depth()
-    primary = depth.get("primary_archive") or {}
+    primary = depth.get("gmgn_wallet_history") or {}
     wallet_count = int(primary.get("unique_wallets") or 0)
     chain_count = len(constants.get("CHAINS") or ("sol", "bsc", "base", "eth"))
 
@@ -686,6 +686,10 @@ def audit_codebase_maturity() -> dict[str, Any]:
 
 def build_report() -> dict[str, Any]:
     """Assemble the audit. Pure function of the repository files."""
+    depth = audit_demonstrated_depth()
+    primary = depth.get("gmgn_wallet_history") or {}
+    wallet_count = int(primary.get("unique_wallets") or 0)
+    chain_count = len(_module_assignments(GMGN_LAYER).get("CHAINS") or ("sol", "bsc", "base", "eth"))
     present = [name for name in READ_ONLY_FILES if (HERE / name).exists()]
 
     report: dict[str, Any] = {
@@ -788,7 +792,7 @@ def build_report() -> dict[str, Any]:
         "is_gmgn_worth_attempting_first": {
             "verdict": "YES, but only as a measured probe first -- not as an assumed backfill source.",
             "reasons_for": [
-                f"It is the only wallet-trade provider already integrated, with a committed {int(primary.get('rows') or 0):,}-row archive. The archive proves schema presence, not 90-day provider depth.",
+                f"It is the only wallet-trade provider already integrated, with a committed {int(primary.get('reconstructed_rows') or 0):,}-row archive. The archive proves schema presence, not 90-day provider depth.",
                 "Its kline subcommand already accepts --from/--to, so the CLI is not obviously incapable of time-windowed queries.",
                 "A one-wallet probe already exists, is read-only, and is bounded by MAX_PAGES. Running it is cheap and decisive.",
             ],
