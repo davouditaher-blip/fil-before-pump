@@ -34,13 +34,19 @@ ARCHIVE_DIR = HERE / "wallet_archive/raw/gmgn/activity"
 #: from the working tree and compared to the same files as committed.
 MUST_BE_UNTOUCHED = (
     "gmgn_layer.py",
+    "scanner.py",
     "gmgn_depth_probe.py",
     "wallet_trade_backfill.py",
     "gmgn_wallet_history.json",
     "wallet_history_validation.py",
+    "recover_gmgn_history_metadata.py",
+    "merge_gmgn_history_metadata.py",
+    "validate_gmgn_history_preservation.py",
     "historical_discovery.py",
     "proven_wallet_registry.json",
     "reverse_historical_discovery.json",
+    ".github/workflows/fil-before-pump.yml",
+    ".github/workflows/gmgn-smart-money.yml",
 )
 
 
