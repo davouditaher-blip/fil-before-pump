@@ -280,10 +280,11 @@ class TestLimitsAreAccurate(unittest.TestCase):
         self.assertTrue(policy["terminal_for_run"])
         self.assertTrue(policy["detection_shapes"])
 
-    def test_the_backfill_rate_limit_gap_is_recorded(self):
+    def test_the_backfill_rate_limit_gap_is_recorded_precisely(self):
         gap = self.limits["rate_limits"]["backfill_has_no_rate_limit_handling"]
         self.assertTrue(gap["value"])
-        self.assertIn("extends it", gap["consequence"])
+        self.assertIn("does not automatically extend a ban", gap["consequence"])
+        self.assertIn("rerun too early", gap["consequence"])
 
     def test_authentication_records_the_preflight(self):
         auth = self.limits["authentication"]
