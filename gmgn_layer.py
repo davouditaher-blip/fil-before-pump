@@ -209,26 +209,14 @@ def update_history(trades, history):
         }
         bucket = history.setdefault(wallet, [])
 
-        # Update the same transaction instead of appending a duplicate every
-        # 30 minutes. This is important because price_change evolves over time.
-        match = None
-        if tx:
-            for existing in bucket:
-                if existing.get("transaction_hash") == tx:
-                    match = existing
-                    break
-        if match is None and not tx:
-            for existing in bucket:
-                if (
-                    existing.get("trade_timestamp") == trade_ts
-                    and existing.get("chain") == row["chain"]
-                    and existing.get("address") == address
-                    and existing.get("side") == row["side"]
-                    and abs(float(existing.get("amount_usd") or 0) - row["amount_usd"]) < 0.01
-                    and abs(float(existing.get("price_usd") or 0) - row["price_usd"]) < 1e-12
-                ):
-                    match = existing
-                    break
+        # Match by the shared stable event identity, not transaction hash alone.
+        # One transaction may contain multiple asset legs or distinct fills.
+        row_identity = whv.history_event_identity(wallet, row)
+        match = next(
+            (existing for existing in bucket
+             if whv.history_event_identity(wallet, existing) == row_identity),
+            None,
+        )
         if match is None:
             bucket.append(row)
         else:

@@ -60,14 +60,28 @@ def wallet_key(chain,wallet):
     value=str(wallet or "").strip()
     return value.lower() if chain in ("bsc","base","eth") else value
 
+def _identity_number(value):
+    if value is None or value == "":
+        return ""
+    try:
+        return format(float(value), ".12g")
+    except (TypeError, ValueError):
+        return str(value).strip()
+
+
 def identity(row):
     tx=row.get("tx_hash") or row.get("transaction_hash") or row.get("transactionHash") or row.get("id")
-    if tx: return ("tx",str(tx).lower())
     token=row.get("token") if isinstance(row.get("token"),dict) else {}
     chain=str(row.get("chain") or "").lower()
     address=str(row.get("token_address") or row.get("base_address") or row.get("address") or token.get("address") or "")
     if chain in ("bsc","base","eth"): address=address.lower()
-    return ("fallback",str(row.get("timestamp") or row.get("trade_timestamp") or ""),str(row.get("side") or row.get("event_type") or row.get("type") or "").lower(),address,str(row.get("cost_usd") or row.get("buy_cost_usd") or row.get("amount_usd") or ""))
+    side=str(row.get("side") or row.get("event_type") or row.get("type") or "").lower()
+    amount=_identity_number(row.get("cost_usd") or row.get("buy_cost_usd") or row.get("amount_usd") or row.get("usd_value"))
+    price=_identity_number(row.get("price_usd") or row.get("price") or row.get("priceUsd"))
+    if tx and chain and address:
+        # A transaction can contain multiple assets/fills; never dedupe on tx alone.
+        return ("tx",str(tx).lower(),chain,address,side,amount,price)
+    return ("fallback",str(tx or "").lower(),chain,str(row.get("timestamp") or row.get("trade_timestamp") or ""),side,address,amount,price)
 
 def _sort_timestamp(row):
     value=row.get("timestamp") or row.get("trade_timestamp") or 0

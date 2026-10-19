@@ -33,10 +33,20 @@ class HistoryPersistenceWorkflowTests(unittest.TestCase):
             self.assertIn("recover_gmgn_history_metadata.py", source, name)
             self.assertIn("merge_gmgn_history_metadata.py --baseline", source, name)
             self.assertIn("gmgn_history_recovery_done.json", source, name)
+            self.assertIn("python build_proven_wallet_registry.py", source, name)
+            self.assertIn("historical_depth_audit.py", source, name)
+            self.assertIn("gmgn_backfill_capability_audit.py", source, name)
+            self.assertIn("proven_wallet_registry.json", source, name)
+            self.assertIn("historical_depth_audit.json", source, name)
+            self.assertIn("gmgn_backfill_capability_audit.json", source, name)
             if name == ".github/workflows/gmgn-smart-money.yml":
                 self.assertIn("python reverse_historical_discovery.py", source, name)
+                self.assertIn('id: proven_registry', source, name)
+                self.assertIn('steps.proven_registry.outputs.changed', source, name)
                 self.assertIn('id: reverse_discovery', source, name)
                 self.assertIn('steps.reverse_discovery.outputs.changed', source, name)
+                self.assertIn('steps.historical_depth.outputs.changed', source, name)
+                self.assertIn('steps.gmgn_capability_audit.outputs.changed', source, name)
                 self.assertIn('git add reverse_historical_discovery.json', source, name)
             self.assertIn("refusing to prefer either history archive", source, name)
             self.assertIn("validate_gmgn_history_preservation.py --baseline", source, name)
@@ -53,8 +63,8 @@ class HistoryPersistenceWorkflowTests(unittest.TestCase):
 
     def test_scanner_dedup_keeps_different_prices_as_distinct_events(self):
         scanner = (ROOT / "scanner.py").read_text(encoding="utf-8")
-        self.assertIn("def _gmgn_history_key(row):", scanner)
-        self.assertIn('row.get("price_usd") or row.get("price")', scanner)
+        self.assertIn("def _gmgn_history_key(row, wallet=None):", scanner)
+        self.assertIn("whv.history_event_identity", scanner)
         self.assertIn("whv.merge_history_record(dedup[key], row)", scanner)
         self.assertIn("'trade_timestamp': trade.get('trade_timestamp') or trade_ts", scanner)
 

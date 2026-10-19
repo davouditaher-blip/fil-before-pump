@@ -18,6 +18,10 @@ on:
       - "paper_performance.json"
       - "wallet_paper_feedback.json"
       - "wallet_performance_memory.json"
+      - "proven_wallet_registry.json"
+      - "reverse_historical_discovery.json"
+      - "historical_depth_audit.json"
+      - "gmgn_backfill_capability_audit.json"
       - "gmgn_backfill_repair_status.json"
       - "test_*.py"
       - "tests/**"
@@ -108,7 +112,7 @@ jobs:
 
       - name: Validate Python modules
         run: |
-          python -m py_compile scanner.py gmgn_layer.py wallet_quality_engine.py validate_gmgn_history_preservation.py wallet_history_validation.py merge_gmgn_history_metadata.py recover_gmgn_history_metadata.py
+          python -m py_compile scanner.py gmgn_layer.py wallet_quality_engine.py build_proven_wallet_registry.py historical_depth_audit.py gmgn_backfill_capability_audit.py validate_gmgn_history_preservation.py wallet_history_validation.py merge_gmgn_history_metadata.py recover_gmgn_history_metadata.py
           python -m py_compile wallet_clustering.py wallet_radar.py wallet_performance_memory.py wallet_signal_profiles.py
           python -m py_compile wallet_intel_gate.py trade_readiness.py risk_engine.py paper_trading.py
           python -m py_compile paper_performance.py wallet_paper_feedback.py historical_replay.py test_historical_replay.py
@@ -138,11 +142,20 @@ jobs:
       - name: Restore baseline GMGN metadata after scanner merge
         run: python merge_gmgn_history_metadata.py --baseline gmgn_wallet_history.baseline.json --current gmgn_wallet_history.json
 
+      - name: Build PROVEN wallet registry from chain-attributed history
+        run: python build_proven_wallet_registry.py
+
       - name: Build long-term signal wallet profiles
         run: python wallet_signal_profiles.py
 
       - name: Refresh reverse historical discovery
         run: python reverse_historical_discovery.py
+
+      - name: Refresh historical depth audit
+        run: python historical_depth_audit.py
+
+      - name: Refresh GMGN backfill capability audit
+        run: python gmgn_backfill_capability_audit.py
 
       - name: Validate historical replay
         run: python test_historical_replay.py
@@ -189,7 +202,7 @@ jobs:
           git rm --cached -f --ignore-unmatch gmgn_wallet_history.json
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add historical_replay.json volume_history.json wallet_history.json wallet_events.json futures_volume_history.json gmgn_wallet_history.json.gz gmgn_history_recovery_done.json wallet_quality.json wallet_clusters.json wallet_radar.json wallet_signal_profiles.json trade_readiness.json paper_trades.json paper_performance.json wallet_paper_feedback.json wallet_performance_memory.json reverse_historical_discovery.json
+          git add historical_replay.json volume_history.json wallet_history.json wallet_events.json futures_volume_history.json gmgn_wallet_history.json.gz gmgn_history_recovery_done.json proven_wallet_registry.json wallet_quality.json wallet_clusters.json wallet_radar.json wallet_signal_profiles.json trade_readiness.json paper_trades.json paper_performance.json wallet_paper_feedback.json wallet_performance_memory.json reverse_historical_discovery.json historical_depth_audit.json gmgn_backfill_capability_audit.json
           if git diff --cached --quiet; then
             echo "No history changes to commit."
             exit 0
