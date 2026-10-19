@@ -22,29 +22,29 @@
       "generated_at"
     ],
     "note": "generated_at is the only wall-clock field. payload_sha256 covers every other field, so rebuilding from an unchanged archive reproduces it exactly.",
-    "payload_sha256": "5589c689155f20d30c7415bf2bc1680a811a2e733a7672a6079d209559d2dbbd"
+    "payload_sha256": "12e33954ba455094efe9858aa10be00ecead7294c1f01c537d2558006df0e6b2"
   },
   "diagnostics": {
     "asset_history_span_days": {
-      "max": 21.0271,
+      "max": 21.0424,
       "p50": 0.0024,
       "p90": 1.4928,
-      "p99": 20.7579
+      "p99": 20.7688
     },
-    "assets_scanned": 12505,
-    "candidate_count": 1752,
-    "plus20_events": 8135,
+    "assets_scanned": 12534,
+    "candidate_count": 1755,
+    "plus20_events": 8159,
     "purpose": "measurement only: the same algorithm with the asset-history gate removed, to quantify how much history is missing. Not a deliverable.",
     "required_days": 90,
-    "wallets_observed_before_moves": 1752,
-    "wallets_with_repeated_independent_events": 1345
+    "wallets_observed_before_moves": 1755,
+    "wallets_with_repeated_independent_events": 1346
   },
   "eligibility": {
     "gate_applied": true,
     "min_asset_history_days": 90,
     "note": "Assets need this much observed history before their moves are considered. Assets below it are counted in assets_rejected_short_history and are not scanned for moves."
   },
-  "generated_at": "2026-10-19T02:01:56.087285+00:00",
+  "generated_at": "2026-10-19T02:21:48.007922+00:00",
   "limitations": {
     "discovery_is_not_conviction": "A candidate here is evidence, not a rating. proven_status is copied read-only from the committed registry and is never written, and no PROVEN threshold was added, relaxed or reused as a discovery cut.",
     "entry_window_is_defined_not_inferred": "A pre-move entry is a buy at or after the move's start observation and strictly before its +20% confirmation. Requiring entry before confirmation is what prevents look-ahead; a wallet that bought after the move was already +20% is not counted as early.",
@@ -59,25 +59,25 @@
   "schema_version": 1,
   "source": {
     "artifact": "gmgn_wallet_history.json.gz",
-    "bytes": 143935901,
-    "md5": "c28b34db656ff218506c95b5e192aa13",
+    "bytes": 144118503,
+    "md5": "caea3abddaa1ff0a8df6d3d0cac3dd1d",
     "proven_status_mutated": false,
     "proven_status_source": "proven_wallet_registry.json",
     "provider": "gmgn",
-    "rows_in_source": 236235,
-    "wallets_in_source": 2760
+    "rows_in_source": 236505,
+    "wallets_in_source": 2761
   },
   "totals": {
     "assets_eligible": 0,
     "assets_eligible_with_moves": 0,
-    "assets_rejected_short_history": 12505,
-    "assets_with_priced_history": 8656,
+    "assets_rejected_short_history": 12534,
+    "assets_with_priced_history": 8671,
     "moves_with_no_pre_move_entry": 0,
-    "total_assets_scanned": 12505,
+    "total_assets_scanned": 12534,
     "total_plus20_events": 0,
     "total_pre_move_entries": 0,
     "total_wallets_observed_before_moves": 0,
-    "total_wallets_scanned": 2760,
+    "total_wallets_scanned": 2761,
     "wallets_with_repeated_independent_events": 0
   }
 }
