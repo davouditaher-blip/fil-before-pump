@@ -1,9 +1,9 @@
 {
   "mode": "HISTORICAL_FORWARD_ONLY",
   "orders_enabled": false,
-  "generated_at": "2026-10-20T18:52:37.527256+00:00",
+  "generated_at": "2026-10-20T22:02:19.723766+00:00",
   "threshold_usd": 5000.0,
-  "observation_count": 1872,
+  "observation_count": 1876,
   "wallet_count": 85,
   "statistics": {
     "6": {
@@ -18,26 +18,26 @@
       "avg_mae_pct": -0.394
     },
     "12": {
-      "observations": 1739,
+      "observations": 1741,
       "hit_rate_pct": {
-        "5": 10.12,
+        "5": 10.11,
         "10": 4.14,
-        "20": 1.04,
+        "20": 1.03,
         "30": 0.63
       },
-      "avg_mfe_pct": 1.979,
-      "avg_mae_pct": -0.878
+      "avg_mfe_pct": 1.98,
+      "avg_mae_pct": -0.875
     },
     "24": {
-      "observations": 1872,
+      "observations": 1876,
       "hit_rate_pct": {
-        "5": 12.98,
-        "10": 5.72,
+        "5": 12.95,
+        "10": 5.7,
         "20": 1.28,
         "30": 0.75
       },
       "avg_mfe_pct": 2.555,
-      "avg_mae_pct": -1.744
+      "avg_mae_pct": -1.736
     }
   },
   "cohort_statistics": {
@@ -61,19 +61,19 @@
           "20": 2.42,
           "30": 1.41
         },
-        "avg_mfe_pct": 3.218,
+        "avg_mfe_pct": 3.22,
         "avg_mae_pct": -0.894
       },
       "24": {
-        "observations": 535,
+        "observations": 536,
         "hit_rate_pct": {
-          "5": 17.57,
-          "10": 9.72,
+          "5": 17.54,
+          "10": 9.7,
           "20": 2.99,
           "30": 1.68
         },
-        "avg_mfe_pct": 4.088,
-        "avg_mae_pct": -1.704
+        "avg_mfe_pct": 4.083,
+        "avg_mae_pct": -1.7
       }
     },
     "REPEAT_ENTRY": {
@@ -89,26 +89,26 @@
         "avg_mae_pct": -0.369
       },
       "12": {
-        "observations": 1244,
+        "observations": 1246,
         "hit_rate_pct": {
-          "5": 8.36,
+          "5": 8.35,
           "10": 2.89,
           "20": 0.48,
           "30": 0.32
         },
-        "avg_mfe_pct": 1.486,
-        "avg_mae_pct": -0.872
+        "avg_mfe_pct": 1.488,
+        "avg_mae_pct": -0.867
       },
       "24": {
-        "observations": 1337,
+        "observations": 1340,
         "hit_rate_pct": {
-          "5": 11.14,
-          "10": 4.11,
+          "5": 11.12,
+          "10": 4.1,
           "20": 0.6,
           "30": 0.37
         },
-        "avg_mfe_pct": 1.942,
-        "avg_mae_pct": -1.76
+        "avg_mfe_pct": 1.944,
+        "avg_mae_pct": -1.75
       }
     }
   },
@@ -45826,6 +45826,27 @@
     },
     {
       "wallet": "0xff7f47680660b53ac58ea0df732980df69aaf873",
+      "symbol": "AAVE",
+      "entry_timestamp": 1792447715,
+      "entry_price": 149.0332302873466,
+      "entry_usd": 6676.552631272019,
+      "prior_qualified_buys": 3,
+      "entry_type": "REPEAT_ENTRY",
+      "windows": {
+        "24": {
+          "mfe_pct": 3.897,
+          "mae_pct": 3.897,
+          "targets_hit": {
+            "5": false,
+            "10": false,
+            "20": false,
+            "30": false
+          }
+        }
+      }
+    },
+    {
+      "wallet": "0xff7f47680660b53ac58ea0df732980df69aaf873",
       "symbol": "UNI",
       "entry_timestamp": 1792460495,
       "entry_price": 7.23512814554735,
@@ -50772,6 +50793,27 @@
         "24": {
           "mfe_pct": 2.489,
           "mae_pct": 0.732,
+          "targets_hit": {
+            "5": false,
+            "10": false,
+            "20": false,
+            "30": false
+          }
+        }
+      }
+    },
+    {
+      "wallet": "0xa70d360ad921dd04448c23e1d12260d0d9542ae0",
+      "symbol": "FWDAI",
+      "entry_timestamp": 1792458587,
+      "entry_price": 0.9962364296618464,
+      "entry_usd": 10117.565107132721,
+      "prior_qualified_buys": 0,
+      "entry_type": "FIRST_ENTRY",
+      "windows": {
+        "24": {
+          "mfe_pct": 0.529,
+          "mae_pct": 0.529,
           "targets_hit": {
             "5": false,
             "10": false,
@@ -71562,7 +71604,7 @@
           }
         },
         "12": {
-          "mfe_pct": 1.057,
+          "mfe_pct": 2.142,
           "mae_pct": -0.177,
           "targets_hit": {
             "5": false,
@@ -71572,7 +71614,7 @@
           }
         },
         "24": {
-          "mfe_pct": 1.057,
+          "mfe_pct": 2.142,
           "mae_pct": -0.177,
           "targets_hit": {
             "5": false,
@@ -71603,7 +71645,7 @@
           }
         },
         "12": {
-          "mfe_pct": 0.978,
+          "mfe_pct": 2.062,
           "mae_pct": -0.255,
           "targets_hit": {
             "5": false,
@@ -71613,8 +71655,70 @@
           }
         },
         "24": {
-          "mfe_pct": 0.978,
+          "mfe_pct": 2.062,
           "mae_pct": -0.255,
+          "targets_hit": {
+            "5": false,
+            "10": false,
+            "20": false,
+            "30": false
+          }
+        }
+      }
+    },
+    {
+      "wallet": "0x3db107e2b67aa7c86403c3f4db4a49cb98aaddc4",
+      "symbol": "TSLAON",
+      "entry_timestamp": 1792507846,
+      "entry_price": 369.20098400202335,
+      "entry_usd": 5906.169414785,
+      "prior_qualified_buys": 2,
+      "entry_type": "REPEAT_ENTRY",
+      "windows": {
+        "12": {
+          "mfe_pct": 1.904,
+          "mae_pct": 1.904,
+          "targets_hit": {
+            "5": false,
+            "10": false,
+            "20": false,
+            "30": false
+          }
+        },
+        "24": {
+          "mfe_pct": 1.904,
+          "mae_pct": 1.904,
+          "targets_hit": {
+            "5": false,
+            "10": false,
+            "20": false,
+            "30": false
+          }
+        }
+      }
+    },
+    {
+      "wallet": "0x3db107e2b67aa7c86403c3f4db4a49cb98aaddc4",
+      "symbol": "TSLAON",
+      "entry_timestamp": 1792507846,
+      "entry_price": 369.5293907183817,
+      "entry_usd": 6126.358574375,
+      "prior_qualified_buys": 2,
+      "entry_type": "REPEAT_ENTRY",
+      "windows": {
+        "12": {
+          "mfe_pct": 1.814,
+          "mae_pct": 1.814,
+          "targets_hit": {
+            "5": false,
+            "10": false,
+            "20": false,
+            "30": false
+          }
+        },
+        "24": {
+          "mfe_pct": 1.814,
+          "mae_pct": 1.814,
           "targets_hit": {
             "5": false,
             "10": false,
