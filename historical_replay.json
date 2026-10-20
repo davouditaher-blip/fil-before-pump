@@ -1,43 +1,43 @@
 {
   "mode": "HISTORICAL_FORWARD_ONLY",
   "orders_enabled": false,
-  "generated_at": "2026-10-20T03:24:00.987674+00:00",
+  "generated_at": "2026-10-20T04:01:12.829333+00:00",
   "threshold_usd": 5000.0,
-  "observation_count": 1862,
+  "observation_count": 1865,
   "wallet_count": 85,
   "statistics": {
     "6": {
-      "observations": 1531,
+      "observations": 1532,
       "hit_rate_pct": {
-        "5": 7.45,
+        "5": 7.44,
         "10": 2.87,
         "20": 1.11,
         "30": 0.72
       },
-      "avg_mfe_pct": 1.699,
+      "avg_mfe_pct": 1.698,
       "avg_mae_pct": -0.394
     },
     "12": {
-      "observations": 1732,
+      "observations": 1734,
       "hit_rate_pct": {
-        "5": 10.16,
-        "10": 4.16,
+        "5": 10.15,
+        "10": 4.15,
         "20": 1.04,
-        "30": 0.64
+        "30": 0.63
       },
-      "avg_mfe_pct": 1.985,
-      "avg_mae_pct": -0.88
+      "avg_mfe_pct": 1.983,
+      "avg_mae_pct": -0.879
     },
     "24": {
-      "observations": 1862,
+      "observations": 1865,
       "hit_rate_pct": {
-        "5": 13.05,
-        "10": 5.75,
+        "5": 13.03,
+        "10": 5.74,
         "20": 1.29,
         "30": 0.75
       },
-      "avg_mfe_pct": 2.555,
-      "avg_mae_pct": -1.753
+      "avg_mfe_pct": 2.551,
+      "avg_mae_pct": -1.75
     }
   },
   "cohort_statistics": {
@@ -78,37 +78,37 @@
     },
     "REPEAT_ENTRY": {
       "6": {
-        "observations": 1084,
+        "observations": 1085,
         "hit_rate_pct": {
-          "5": 5.72,
+          "5": 5.71,
           "10": 1.94,
           "20": 0.46,
           "30": 0.37
         },
-        "avg_mfe_pct": 1.189,
+        "avg_mfe_pct": 1.188,
         "avg_mae_pct": -0.368
       },
       "12": {
-        "observations": 1238,
+        "observations": 1240,
         "hit_rate_pct": {
-          "5": 8.4,
-          "10": 2.91,
+          "5": 8.39,
+          "10": 2.9,
           "20": 0.48,
           "30": 0.32
         },
-        "avg_mfe_pct": 1.492,
-        "avg_mae_pct": -0.874
+        "avg_mfe_pct": 1.49,
+        "avg_mae_pct": -0.872
       },
       "24": {
-        "observations": 1328,
+        "observations": 1331,
         "hit_rate_pct": {
-          "5": 11.22,
-          "10": 4.14,
+          "5": 11.19,
+          "10": 4.13,
           "20": 0.6,
           "30": 0.38
         },
-        "avg_mfe_pct": 1.937,
-        "avg_mae_pct": -1.771
+        "avg_mfe_pct": 1.933,
+        "avg_mae_pct": -1.767
       }
     }
   },
@@ -1893,6 +1893,27 @@
         "24": {
           "mfe_pct": -0.32,
           "mae_pct": -0.32,
+          "targets_hit": {
+            "5": false,
+            "10": false,
+            "20": false,
+            "30": false
+          }
+        }
+      }
+    },
+    {
+      "wallet": "0x43605d68015b0a4df59e20afc77c9413665eb8dd",
+      "symbol": "XAUT",
+      "entry_timestamp": 1792417130,
+      "entry_price": 4143.788563767645,
+      "entry_usd": 15961.011639611708,
+      "prior_qualified_buys": 6,
+      "entry_type": "REPEAT_ENTRY",
+      "windows": {
+        "24": {
+          "mfe_pct": 0.06,
+          "mae_pct": 0.06,
           "targets_hit": {
             "5": false,
             "10": false,
@@ -35320,6 +35341,37 @@
       }
     },
     {
+      "wallet": "0xdc0d3715f7e32e6f602c7cc5e78576f5e97c569d",
+      "symbol": "FWWBTC",
+      "entry_timestamp": 1792426365,
+      "entry_price": 81444.79909817554,
+      "entry_usd": 6137.566037319772,
+      "prior_qualified_buys": 7,
+      "entry_type": "REPEAT_ENTRY",
+      "windows": {
+        "12": {
+          "mfe_pct": 0.32,
+          "mae_pct": 0.32,
+          "targets_hit": {
+            "5": false,
+            "10": false,
+            "20": false,
+            "30": false
+          }
+        },
+        "24": {
+          "mfe_pct": 0.32,
+          "mae_pct": 0.32,
+          "targets_hit": {
+            "5": false,
+            "10": false,
+            "20": false,
+            "30": false
+          }
+        }
+      }
+    },
+    {
       "wallet": "0xc14c987f9922e9457a2d9c04f72daeafd4080a61",
       "symbol": "CBBTC",
       "entry_timestamp": 1790361923,
@@ -43504,7 +43556,48 @@
         },
         "24": {
           "mfe_pct": -0.612,
-          "mae_pct": -0.612,
+          "mae_pct": -0.848,
+          "targets_hit": {
+            "5": false,
+            "10": false,
+            "20": false,
+            "30": false
+          }
+        }
+      }
+    },
+    {
+      "wallet": "0x45e6345d5755f13e98e6cf94c426f6ffbc7aadcc",
+      "symbol": "CIRBTC",
+      "entry_timestamp": 1792467537,
+      "entry_price": 81835.59048421295,
+      "entry_usd": 168200.63605273195,
+      "prior_qualified_buys": 8,
+      "entry_type": "REPEAT_ENTRY",
+      "windows": {
+        "6": {
+          "mfe_pct": 0.243,
+          "mae_pct": 0.243,
+          "targets_hit": {
+            "5": false,
+            "10": false,
+            "20": false,
+            "30": false
+          }
+        },
+        "12": {
+          "mfe_pct": 0.243,
+          "mae_pct": 0.243,
+          "targets_hit": {
+            "5": false,
+            "10": false,
+            "20": false,
+            "30": false
+          }
+        },
+        "24": {
+          "mfe_pct": 0.243,
+          "mae_pct": 0.243,
           "targets_hit": {
             "5": false,
             "10": false,
