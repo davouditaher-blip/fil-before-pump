@@ -1,9 +1,9 @@
 {
   "mode": "HISTORICAL_FORWARD_ONLY",
   "orders_enabled": false,
-  "generated_at": "2026-11-09T17:10:23.232727+00:00",
+  "generated_at": "2026-11-10T00:49:51.097725+00:00",
   "threshold_usd": 5000.0,
-  "observation_count": 2234,
+  "observation_count": 2235,
   "wallet_count": 87,
   "statistics": {
     "6": {
@@ -18,18 +18,18 @@
       "avg_mae_pct": -0.406
     },
     "12": {
-      "observations": 1987,
+      "observations": 1988,
       "hit_rate_pct": {
-        "5": 9.11,
+        "5": 9.1,
         "10": 3.67,
         "20": 0.91,
         "30": 0.55
       },
       "avg_mfe_pct": 1.807,
-      "avg_mae_pct": -0.798
+      "avg_mae_pct": -0.797
     },
     "24": {
-      "observations": 2234,
+      "observations": 2235,
       "hit_rate_pct": {
         "5": 12.13,
         "10": 4.83,
@@ -37,7 +37,7 @@
         "30": 0.63
       },
       "avg_mfe_pct": 2.289,
-      "avg_mae_pct": -1.491
+      "avg_mae_pct": -1.49
     }
   },
   "cohort_statistics": {
@@ -89,26 +89,26 @@
         "avg_mae_pct": -0.303
       },
       "12": {
-        "observations": 1465,
+        "observations": 1466,
         "hit_rate_pct": {
           "5": 7.37,
           "10": 2.46,
           "20": 0.41,
           "30": 0.27
         },
-        "avg_mfe_pct": 1.363,
-        "avg_mae_pct": -0.697
+        "avg_mfe_pct": 1.362,
+        "avg_mae_pct": -0.696
       },
       "24": {
-        "observations": 1659,
+        "observations": 1660,
         "hit_rate_pct": {
-          "5": 10.61,
-          "10": 3.32,
+          "5": 10.6,
+          "10": 3.31,
           "20": 0.48,
           "30": 0.3
         },
         "avg_mfe_pct": 1.763,
-        "avg_mae_pct": -1.381
+        "avg_mae_pct": -1.38
       }
     }
   },
@@ -24034,6 +24034,37 @@
         "24": {
           "mfe_pct": -1.168,
           "mae_pct": -1.211,
+          "targets_hit": {
+            "5": false,
+            "10": false,
+            "20": false,
+            "30": false
+          }
+        }
+      }
+    },
+    {
+      "wallet": "0x9a37432524ee22826f8e05d4c1d70d9a4086f744",
+      "symbol": "AAVE",
+      "entry_timestamp": 1794220889,
+      "entry_price": 130.9714504260318,
+      "entry_usd": 5060.8198223781355,
+      "prior_qualified_buys": 3,
+      "entry_type": "REPEAT_ENTRY",
+      "windows": {
+        "12": {
+          "mfe_pct": 1.059,
+          "mae_pct": 1.059,
+          "targets_hit": {
+            "5": false,
+            "10": false,
+            "20": false,
+            "30": false
+          }
+        },
+        "24": {
+          "mfe_pct": 1.059,
+          "mae_pct": 1.059,
           "targets_hit": {
             "5": false,
             "10": false,
